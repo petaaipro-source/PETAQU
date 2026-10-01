@@ -27,13 +27,12 @@
   function init() {
     if (!C()) return;
     const b = document.createElement('button'); b.innerHTML = '<i class="fa-solid fa-cloud"></i>'; b.title = 'Sinkron awan (klik: kirim/tarik)';
-    b.style.cssText = 'position:fixed;right:10px;bottom:240px;z-index:3900;width:44px;height:44px;border-radius:50%;border:0;background:#0e7490;color:#fff;font-size:18px;box-shadow:0 2px 10px #0006;cursor:pointer';
     b.onclick = async () => { try {
       if (!sess()) { const e = prompt('Email akun awan:'), p = e && prompt('Kata sandi:'); if (!p) return; say('Masuk sebagai ' + await P.login(e, p)); }
       const a = (prompt('Ketik: 1 = Kirim data ke awan, 2 = Tarik data dari awan, 3 = Keluar') || '').trim();
       if (a === '1') await P.push(); else if (a === '2') await P.pull(); else if (a === '3') P.logout();
     } catch (e) { say(e.message); } };
-    document.body.append(b);
+    PQ_DOCK.adopt(b, 'Sinkron awan');
   }
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', init) : init();
 })();

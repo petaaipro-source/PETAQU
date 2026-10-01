@@ -4,8 +4,29 @@
   const $ = (t, css, html) => { const e = document.createElement(t); e.style.cssText = css || ''; if (html) e.innerHTML = html; return e; };
   const sw = () => navigator.serviceWorker && navigator.serviceWorker.controller;
 
+  // Dock tunggal: satu tombol "Alat" di kiri bawah, menu berlabel mengembang ke atas (tidak menimpa kontrol peta).
+  if (!window.PQ_DOCK) (function () {
+    let box, main, list, items = [];
+    function build() {
+      box = document.createElement('div'); box.style.cssText = 'position:fixed;left:10px;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:3900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:8px;font:600 12.5px system-ui';
+      main = document.createElement('button'); main.innerHTML = '<i class="fa-solid fa-screwdriver-wrench"></i>'; main.title = 'Alat PETAQU';
+      main.style.cssText = 'width:44px;height:44px;border-radius:50%;border:1px solid #22d3ee66;background:#071a26ee;color:#22d3ee;font-size:17px;box-shadow:0 2px 10px #0007;cursor:pointer';
+      list = document.createElement('div'); list.style.cssText = 'display:none;flex-direction:column-reverse;gap:6px';
+      box.append(main, list); document.body.append(box);
+      main.onclick = e => { e.stopPropagation(); const o = list.style.display === 'none'; list.style.display = o ? 'flex' : 'none'; main.style.background = o ? '#0e7490' : '#071a26ee'; main.style.color = o ? '#fff' : '#22d3ee'; };
+      document.addEventListener('click', e => { if (!box.contains(e.target)) { list.style.display = 'none'; main.style.background = '#071a26ee'; main.style.color = '#22d3ee'; } });
+    }
+    window.PQ_DOCK = { adopt(btn, label) {
+      if (!box) build();
+      const ico = btn.innerHTML; btn.innerHTML = '<span style="width:20px;text-align:center">' + ico + '</span><span>' + label + '</span>';
+      btn.style.cssText = 'display:flex;align-items:center;gap:8px;height:38px;padding:0 14px 0 11px;border-radius:19px;border:1px solid #22d3ee55;background:#0e7490;color:#fff;font:600 12.5px system-ui;box-shadow:0 2px 8px #0006;cursor:pointer;white-space:nowrap';
+      const orig = btn.onclick; btn.onclick = function (e) { list.style.display = 'none'; main.style.background = '#071a26ee'; main.style.color = '#22d3ee'; return orig && orig.call(this, e); };
+      list.append(btn); return btn;
+    } };
+  })();
+
   // 1) Lencana status jaringan
-  const badge = $('div', 'position:fixed;left:10px;bottom:10px;z-index:4000;padding:5px 11px;border-radius:14px;font:600 12px system-ui;color:#fff;display:none;pointer-events:none');
+  const badge = $('div', 'position:fixed;left:50%;transform:translateX(-50%);top:76px;z-index:4000;padding:5px 11px;border-radius:14px;font:600 12px system-ui;color:#fff;display:none;pointer-events:none');
   const upd = () => { const on = navigator.onLine; badge.style.display = on ? 'none' : 'block'; badge.style.background = '#b45309'; badge.textContent = '● Offline — memakai data tersimpan'; if (on) flush(); };
   addEventListener('online', upd); addEventListener('offline', upd);
 
@@ -57,5 +78,5 @@
     if (d.type === 'TILES_CLEARED') say('Tile offline dihapus', 2500);
     if (d.type === 'FLUSH_OUTBOX') flush();
   });
-  document.addEventListener('DOMContentLoaded', () => { document.body.append(badge, btn, toast); upd(); });
+  document.addEventListener('DOMContentLoaded', () => { document.body.append(badge, toast); PQ_DOCK.adopt(btn, 'Peta offline'); upd(); });
 })();

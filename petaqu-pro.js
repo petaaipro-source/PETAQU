@@ -111,9 +111,9 @@
   };
 
   function init() {
-    const mk = (ico, title, top, fn) => { const b = el('button', `position:fixed;right:10px;bottom:${top}px;z-index:3900;width:44px;height:44px;border-radius:50%;border:0;background:#0e7490;color:#fff;font-size:18px;box-shadow:0 2px 10px #0006;cursor:pointer`, ico); b.title = title; b.onclick = fn; document.body.append(b); return b; };
-    mk('<i class="fa-solid fa-ranking-star"></i>', 'Prioritas penanganan & RAB', 136, open);
-    gbtn = mk('<i class="fa-solid fa-bell"></i>', 'Peringatan mendekati jalan rusak/jembatan', 188, geoToggle);
+    const mk = (ico, title, label, fn) => { const b = el('button', '', ico); b.title = title; b.onclick = fn; PQ_DOCK.adopt(b, label); return b; };
+    mk('<i class="fa-solid fa-ranking-star"></i>', 'Prioritas penanganan & RAB', 'Prioritas & RAB', open);
+    gbtn = mk('<i class="fa-solid fa-bell"></i>', 'Peringatan mendekati jalan rusak/jembatan', 'Peringatan area', geoToggle);
     setTimeout(snapshot, 4000);
   }
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', init) : init();
