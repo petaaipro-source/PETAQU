@@ -13,6 +13,17 @@
       main.style.cssText = 'width:44px;height:44px;border-radius:50%;border:1px solid #22d3ee66;background:#071a26ee;color:#22d3ee;font-size:17px;box-shadow:0 2px 10px #0007;cursor:pointer';
       list = document.createElement('div'); list.style.cssText = 'display:none;flex-direction:column-reverse;gap:6px';
       box.append(main, list); document.body.append(box);
+      // Letakkan dock tepat di atas tumpukan kontrol kiri-bawah milik aplikasi (legenda, tombol tema, dll.), baik di HP maupun PC.
+      const big = e => { const r = e.getBoundingClientRect(); return r.width > innerWidth * .6 && r.height > innerHeight * .5; };
+      const place = () => {
+        const x = 26; let top = innerHeight, gap = 0;
+        for (let y = innerHeight - 4; y > innerHeight * .35; y -= 4) {
+          const hit = document.elementsFromPoint(x, y).some(e => e !== document.documentElement && e !== document.body && !box.contains(e) && !big(e) && !e.closest('.leaflet-pane') && getComputedStyle(e).pointerEvents !== 'none');
+          if (hit) { top = y; gap = 0; } else if (top < innerHeight && ++gap > 4) break;
+        }
+        box.style.bottom = Math.max(14, innerHeight - top + 10) + 'px';
+      };
+      place(); setInterval(place, 1200); addEventListener('resize', place); addEventListener('orientationchange', () => setTimeout(place, 300));
       main.onclick = e => { e.stopPropagation(); const o = list.style.display === 'none'; list.style.display = o ? 'flex' : 'none'; main.style.background = o ? '#0e7490' : '#071a26ee'; main.style.color = o ? '#fff' : '#22d3ee'; };
       document.addEventListener('click', e => { if (!box.contains(e.target)) { list.style.display = 'none'; main.style.background = '#071a26ee'; main.style.color = '#22d3ee'; } });
     }
