@@ -128,7 +128,7 @@
         b.onclick = e => { e.stopPropagation(); o.close(); profil(r); };
         list.append(item("\ud83d\udee3\ufe0f", esc(r.name), esc(r.kabupaten || "ruas"), () => focusRoad(r.id), b));
       });
-      BR().filter(j => (j.name || "").toLowerCase().includes(q)).slice(0, 6).forEach(j => list.append(item("\ud83c\udf09", esc(j.name), "jembatan", () => focusJembatan(j.id))));
+      BR().filter(j => (j.nama || j.name || "").toLowerCase().includes(q)).slice(0, 6).forEach(j => list.append(item("\ud83c\udf09", esc(j.nama || j.name || ""), "jembatan", () => focusJembatan(j.id))));
       if (!list.children.length) list.textContent = "Tidak ada hasil.";
     };
     inp.oninput = render; render();
@@ -143,6 +143,7 @@
     const b = $("button"); b.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>'; b.onclick = palette;
     window.PQ_DOCK ? PQ_DOCK.adopt(b, "Palet perintah (Ctrl+K)") : (b.style.cssText = "position:fixed;left:10px;bottom:120px;z-index:3900", document.body.append(b));
   }
-  window.PETAQU_NEXUS = { palette, heatToggle, profil, optimasi };
+  window.esc = window.esc || (s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])));
+  window.PETAQU_NEXUS = { palette, heatToggle, profil, optimasi, ACT };
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", mount) : setTimeout(mount, 0);
 })();
