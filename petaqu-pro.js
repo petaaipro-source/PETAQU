@@ -102,6 +102,7 @@
   });
 
   // ---- perintah cepat: ketik di konsol: PETAQU_CMD('iri>8') / PETAQU_CMD('cari banyumas') ----
+  window.PETAQU_PRO = { open, all, geoToggle, trend };
   window.PETAQU_CMD = q => {
     q = String(q).toLowerCase().trim(); let m;
     if ((m = q.match(/^iri\s*>\s*([\d.]+)/))) return all().filter(a => a.avg > +m[1]).map(a => a.r.name);

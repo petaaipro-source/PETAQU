@@ -1,9 +1,9 @@
 // PETAQU Service Worker v4: offline penuh (shell + pustaka CDN + tile peta), update lewat banner, sinkron latar.
-const V = 'v5';
+const V = 'v6';
 const SHELL_C = 'petaqu-shell-' + V, LIB_C = 'petaqu-lib-' + V, TILE_C = 'petaqu-tile-v1';
 const KEEP = [SHELL_C, LIB_C, TILE_C];
 const MAX_TILES = 4000;
-const SHELL = ['./', 'index.html', 'petaqu-extra.js', 'petaqu-pro.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
+const SHELL = ['./', 'index.html', 'petaqu-extra.js', 'petaqu-pro.js', 'petaqu-ai.js', 'petaqu-cloud.js', 'petaqu-detect.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 const LIBS = [
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
