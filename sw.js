@@ -1,9 +1,9 @@
 // PETAQU Service Worker v4: offline penuh (shell + pustaka CDN + tile peta), update lewat banner, sinkron latar.
-const V = 'v12';
+const V = 'v13';
 const SHELL_C = 'petaqu-shell-' + V, LIB_C = 'petaqu-lib-' + V, TILE_C = 'petaqu-tile-v1';
 const KEEP = [SHELL_C, LIB_C, TILE_C];
 const MAX_TILES = 4000;
-const SHELL = ['./', 'index.html', 'petaqu-extra.js', 'petaqu-pro.js', 'petaqu-ai.js', 'petaqu-cloud.js', 'petaqu-detect.js', 'petaqu-scan.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
+const SHELL = ['./', 'index.html', 'data-ruas.js', 'petaqu-extra.js', 'petaqu-pro.js', 'petaqu-ai.js', 'petaqu-cloud.js', 'petaqu-detect.js', 'petaqu-scan.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 const LIBS = [
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
@@ -67,6 +67,14 @@ self.addEventListener('fetch', e => {
   }
   if (TILE_HOSTS.some(h => url.hostname.endsWith(h)) && /\.(png|jpe?g|webp)|\/tile|\/vt\/|\/MapServer\/tile/i.test(url.pathname + url.search)) { e.respondWith(tileFirst(req)); return; }
   if (LIB_HOSTS.includes(url.hostname)) { e.respondWith(libSWR(req)); return; }
+  // Database ruas: network-first agar update data-ruas.js langsung terbaca; offline pakai salinan cache.
+  if (url.origin === location.origin && url.pathname.endsWith('/data-ruas.js')) {
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
+      if (res.ok) { const cp = res.clone(); caches.open(SHELL_C).then(c => c.put(req, cp)); }
+      return res;
+    }).catch(() => caches.match(req)));
+    return;
+  }
   if (url.origin === location.origin) e.respondWith(caches.match(req).then(r => r || fetch(req).then(res => {
     if (res.ok) { const cp = res.clone(); caches.open(SHELL_C).then(c => c.put(req, cp)); }
     return res;
