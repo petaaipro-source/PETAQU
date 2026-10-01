@@ -9,7 +9,7 @@
   const prices = () => Object.assign({ rb: 2500000, rr: 1000000, sedang: 300000 }, jget(P, {}));   // Rp per meter, ASUMSI: ubah sesuai HSPK setempat
 
   // ---- analisis tiap ruas dari titik ber-IRI ----
-  function analyze(r) {
+  function analyzeIri(r) {
     const pts = r.points || [], v = pts.filter(p => p.iri !== undefined && p.iri !== null && p.iri !== '' && !isNaN(p.iri));
     const len = computeLength(pts), n = v.length;
     if (!n) return { r, len, n: 0, avg: null, share: { baik: 0, sedang: 0, rr: 0, rb: 0 }, score: 0, cost: 0 };
@@ -20,6 +20,18 @@
     // skor 0-100: keparahan (rusak berat 1, ringan .6, sedang .25) dikali bobot panjang (maks 5 km = 1)
     const sev = share.rb + .6 * share.rr + .25 * share.sedang, score = Math.round(100 * sev * (.5 + .5 * Math.min(1, len / 5000)));
     return { r, len, n, avg, share, score, cost };
+  }
+  // gabungkan hasil Scan video: skor = yang tertinggi antara skor IRI dan kerapatan temuan/km; biaya = yang tertinggi (hindari hitung ganda area yang sama)
+  function analyze(r) {
+    const a = analyzeIri(r), S = window.PETAQU_SCAN, l = (S && S.data()[r.id]) || [];
+    a.scan = { n: l.length, area: 0 };
+    if (!l.length) return a;
+    const sm = S.summarize(l), km = Math.max(a.len / 1000, .1);
+    a.scan.area = Object.keys(sm.r).reduce((t, k) => t + sm.r[k].a, 0);
+    const dens = l.reduce((t, x) => t + (x.cls === 'lubang' || x.cls === 'retak_buaya' ? 1 : x.cls === 'retak_memanjang' ? .4 : 0), 0) / km;
+    a.score = Math.max(a.score, Math.min(100, Math.round(dens * 5)));
+    a.cost = Math.max(a.cost, sm.tot);
+    return a;
   }
   const all = () => (typeof roads !== 'undefined' ? roads : []).map(analyze).sort((a, b) => b.score - a.score);
 
@@ -51,16 +63,16 @@
       '<div style="padding:10px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">Harga satuan (Rp/m, <i>asumsi</i>):' +
       ['rb:Rusak Berat', 'rr:Rusak Ringan', 'sedang:Sedang'].map(s => { const [k, l] = s.split(':'); return `<label>${l} <input data-k="${k}" type="number" value="${pr[k]}" style="width:100px;background:#0b2a3b;color:#fff;border:1px solid #22d3ee55;border-radius:6px;padding:3px"></label>`; }).join('') +
       '<button id="pqRe" style="background:#0e7490;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer">Hitung ulang</button><button id="pqXl" style="background:#15803d;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer">Ekspor Excel</button></div>' +
-      '<div style="padding:0 14px 6px">Total perkiraan: <b>' + fmt(total) + '</b> · ' + rows.length + ' ruas. Hanya ruas ber-data IRI yang dinilai.</div>' +
-      '<div style="overflow:auto;padding:0 14px 14px"><table style="width:100%;border-collapse:collapse;min-width:640px"><thead><tr style="text-align:left;color:#22d3ee"><th>#</th><th>Ruas</th><th>Km</th><th>IRI</th><th>%RB</th><th>%RR</th><th>Skor</th><th>Tren IRI</th><th>Biaya</th></tr></thead><tbody>' +
-      rows.map((a, i) => `<tr data-id="${a.r.id}" style="border-top:1px solid #ffffff14;cursor:pointer"><td>${i + 1}</td><td>${esc(a.r.name)}</td><td>${(a.len / 1000).toFixed(2)}</td><td>${a.avg == null ? '–' : a.avg.toFixed(1)}</td><td>${(a.share.rb * 100).toFixed(0)}</td><td>${(a.share.rr * 100).toFixed(0)}</td><td><b style="color:${a.score > 60 ? '#f43f5e' : a.score > 30 ? '#f59e0b' : '#34d399'}">${a.score}</b></td><td>${trend(a.r.id).txt}</td><td>${fmt(a.cost)}</td></tr>`).join('') + '</tbody></table></div>';
+      '<div style="padding:0 14px 6px">Total perkiraan: <b>' + fmt(total) + '</b> · ' + rows.length + ' ruas. Ruas dinilai dari data IRI dan/atau hasil Scan video.</div>' +
+      '<div style="overflow:auto;padding:0 14px 14px"><table style="width:100%;border-collapse:collapse;min-width:640px"><thead><tr style="text-align:left;color:#22d3ee"><th>#</th><th>Ruas</th><th>Km</th><th>IRI</th><th>%RB</th><th>%RR</th><th>Skor</th><th>Tren IRI</th><th>Scan</th><th>Biaya</th></tr></thead><tbody>' +
+      rows.map((a, i) => `<tr data-id="${a.r.id}" style="border-top:1px solid #ffffff14;cursor:pointer"><td>${i + 1}</td><td>${esc(a.r.name)}</td><td>${(a.len / 1000).toFixed(2)}</td><td>${a.avg == null ? '–' : a.avg.toFixed(1)}</td><td>${(a.share.rb * 100).toFixed(0)}</td><td>${(a.share.rr * 100).toFixed(0)}</td><td><b style="color:${a.score > 60 ? '#f43f5e' : a.score > 30 ? '#f59e0b' : '#34d399'}">${a.score}</b></td><td>${trend(a.r.id).txt}</td><td>${a.scan && a.scan.n ? a.scan.n : '–'}</td><td>${fmt(a.cost)}</td></tr>`).join('') + '</tbody></table></div>';
     panel.append(box); document.body.append(panel);
     box.querySelector('#pqX').onclick = () => panel.remove();
     panel.onclick = e => { if (e.target === panel) panel.remove(); };
     box.querySelector('#pqRe').onclick = () => { const o = {}; box.querySelectorAll('input[data-k]').forEach(i => o[i.dataset.k] = +i.value || 0); localStorage.setItem(P, JSON.stringify(o)); open(); };
     box.querySelector('#pqXl').onclick = () => {
-      const aoa = [['Peringkat', 'Ruas', 'Kabupaten', 'Panjang (m)', 'IRI rata-rata', '% Rusak Berat', '% Rusak Ringan', '% Sedang', 'Skor', 'Tren IRI', 'Perkiraan Biaya (Rp)']]
-        .concat(rows.map((a, i) => [i + 1, a.r.name, a.r.kabupaten || '', Math.round(a.len), a.avg == null ? '' : +a.avg.toFixed(2), +(a.share.rb * 100).toFixed(1), +(a.share.rr * 100).toFixed(1), +(a.share.sedang * 100).toFixed(1), a.score, trend(a.r.id).txt, Math.round(a.cost)]));
+      const aoa = [['Peringkat', 'Ruas', 'Kabupaten', 'Panjang (m)', 'IRI rata-rata', '% Rusak Berat', '% Rusak Ringan', '% Sedang', 'Skor', 'Tren IRI', 'Perkiraan Biaya (Rp)', 'Temuan Scan', 'Luas Scan (m2)']]
+        .concat(rows.map((a, i) => [i + 1, a.r.name, a.r.kabupaten || '', Math.round(a.len), a.avg == null ? '' : +a.avg.toFixed(2), +(a.share.rb * 100).toFixed(1), +(a.share.rr * 100).toFixed(1), +(a.share.sedang * 100).toFixed(1), a.score, trend(a.r.id).txt, Math.round(a.cost), a.scan ? a.scan.n : 0, a.scan ? +a.scan.area.toFixed(1) : 0]));
       aoa.push([], ['Asumsi Rp/m', 'RB', pr.rb, 'RR', pr.rr, 'Sedang', pr.sedang], ['TOTAL', '', '', '', '', '', '', '', '', '', Math.round(total)]);
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Prioritas'); XLSX.writeFile(wb, 'prioritas-rab-' + new Date().toISOString().slice(0, 10) + '.xlsx');
     };

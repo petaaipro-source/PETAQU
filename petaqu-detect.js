@@ -10,7 +10,7 @@
     sess = await ort.InferenceSession.create(M.url, { executionProviders: ['webgpu', 'wasm'] }); return sess;
   }
   const iou = (a, b) => { const x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]), x2 = Math.min(a[0] + a[2], b[0] + b[2]), y2 = Math.min(a[1] + a[3], b[1] + b[3]), i = Math.max(0, x2 - x1) * Math.max(0, y2 - y1); return i / (a[2] * a[3] + b[2] * b[3] - i || 1); };
-  async function run(src) {
+  async function run(src, opt) {
     const M = window.PETAQU_MODEL, S = M.size || 640, s = await load();
     const w = src.videoWidth || src.naturalWidth || src.width, h = src.videoHeight || src.naturalHeight || src.height;
     const sc = Math.min(S / w, S / h), nw = Math.round(w * sc), nh = Math.round(h * sc), dx = (S - nw) >> 1, dy = (S - nh) >> 1;
@@ -26,7 +26,7 @@
     }
     c.sort((a, b) => b.score - a.score); const keep = [];
     for (const x of c) if (keep.every(k => k.cls !== x.cls || iou(k.box, x.box) < .5)) keep.push(x);   // NMS
-    if (keep.length) tag(keep); return keep;
+    if (keep.length && !(opt && opt.noTag)) tag(keep); return keep;
   }
   function tag(dets) {
     if (!navigator.geolocation) return;
