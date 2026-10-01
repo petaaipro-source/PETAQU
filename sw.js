@@ -1,10 +1,12 @@
 // Service worker sederhana: syarat Chrome agar aplikasi bisa DIINSTAL (bukan sekadar pintasan).
-const CACHE = 'petaqu-shell-v2';
+const CACHE = 'petaqu-shell-v3';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {})));
 });
+// Versi baru menunggu sampai pengguna menekan "Muat ulang" di banner.
+self.addEventListener('message', e => { if (e.data === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))

@@ -1,0 +1,74 @@
+{
+  "id": "./",
+  "name": "Peta Ruas Jalan",
+  "short_name": "PETAQU",
+  "description": "Peta Ruas Jalan & Jembatan",
+  "lang": "id",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#071a26",
+  "theme_color": "#071a26",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Rekam IRI",
+      "short_name": "IRI",
+      "description": "Deteksi IRI jalan (AI)",
+      "url": "./?aksi=iri",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Mode AR",
+      "short_name": "AR",
+      "description": "Lihat titik STA lewat kamera",
+      "url": "./?aksi=ar",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Kamera Ukur",
+      "short_name": "Ukur",
+      "description": "Ukur tinggi, jarak & lebar",
+      "url": "./?aksi=ukur",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}
