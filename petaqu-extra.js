@@ -16,13 +16,22 @@
       // Letakkan dock tepat di atas tumpukan kontrol kiri-bawah milik aplikasi (legenda, tombol tema, dll.), baik di HP maupun PC.
       const big = e => { const r = e.getBoundingClientRect(); return r.width > innerWidth * .6 && r.height > innerHeight * .5; };
       const place = () => {
-        const x = 26; let top = innerHeight, gap = 0;
+        // Jangan menimpa sidebar: di HP sembunyikan dock saat sidebar terbuka; di PC geser ke kanan sidebar.
+        const sb = document.getElementById('sidebar'), mobile = innerWidth <= 860;
+        if (mobile && sb && sb.classList.contains('open')) { box.style.display = 'none'; return; }
+        box.style.display = 'flex';
+        const left = (!mobile && sb) ? Math.max(10, Math.round(sb.getBoundingClientRect().right) + 10) : 10;
+        box.style.left = left + 'px';
+        const x = left + 16; let top = innerHeight, gap = 0;
         for (let y = innerHeight - 4; y > innerHeight * .35; y -= 4) {
-          const hit = document.elementsFromPoint(x, y).some(e => e !== document.documentElement && e !== document.body && !box.contains(e) && !big(e) && !e.closest('.leaflet-pane') && getComputedStyle(e).pointerEvents !== 'none');
+          const hit = document.elementsFromPoint(x, y).some(e => e !== document.documentElement && e !== document.body && !box.contains(e) && !big(e) && !e.closest('.leaflet-pane') && !e.closest('#sidebar, #sidebarScrim') && getComputedStyle(e).pointerEvents !== 'none');
           if (hit) { top = y; gap = 0; } else if (top < innerHeight && ++gap > 4) break;
         }
         box.style.bottom = Math.max(14, innerHeight - top + 10) + 'px';
       };
+      const sbEl = document.getElementById('sidebar');
+      if (sbEl && window.MutationObserver) new MutationObserver(place).observe(sbEl, { attributes: true, attributeFilter: ['class'] });
+      if (document.body && window.MutationObserver) new MutationObserver(place).observe(document.body, { attributes: true, attributeFilter: ['class'] });
       place(); setInterval(place, 1200); addEventListener('resize', place); addEventListener('orientationchange', () => setTimeout(place, 300));
       main.onclick = e => { e.stopPropagation(); const o = list.style.display === 'none'; list.style.display = o ? 'flex' : 'none'; main.style.background = o ? '#0e7490' : '#071a26ee'; main.style.color = o ? '#fff' : '#22d3ee'; };
       document.addEventListener('click', e => { if (!box.contains(e.target)) { list.style.display = 'none'; main.style.background = '#071a26ee'; main.style.color = '#22d3ee'; } });
