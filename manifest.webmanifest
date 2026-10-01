@@ -70,5 +70,38 @@
         }
       ]
     }
-  ]
+  ],
+  "categories": [
+    "navigation",
+    "utilities",
+    "productivity"
+  ],
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/json": [
+          ".geojson",
+          ".json"
+        ],
+        "application/vnd.google-earth.kml+xml": [
+          ".kml"
+        ],
+        "application/vnd.google-earth.kmz": [
+          ".kmz"
+        ],
+        "application/gpx+xml": [
+          ".gpx"
+        ],
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+          ".xlsx"
+        ]
+      }
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
 }
