@@ -1125,3 +1125,52 @@
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
   }
 })();
+
+/* ==========================================================================
+   Daftar ruas: baris ikon aksi disembunyikan, tampil hanya saat kartu diklik
+   ========================================================================== */
+(function () {
+  if (typeof document === "undefined" || typeof window.__PQJ_TEST !== "undefined") return;
+  var st = document.createElement("style");
+  st.textContent = ".pq-aksi-hide{display:none!important}[data-pq-card]{cursor:pointer}";
+  document.head.appendChild(st);
+
+  function rows() {
+    var out = [];
+    document.querySelectorAll("i.fa-trash, i.fa-trash-can").forEach(function (ic) {
+      if (ic.closest("#pqjPanel")) return;
+      var p = (ic.closest("button") || ic).parentElement;
+      while (p && p.querySelectorAll("button").length < 6) p = p.parentElement;
+      if (p && p.querySelectorAll("button").length <= 10 && out.indexOf(p) < 0) out.push(p);
+    });
+    return out;
+  }
+
+  function init() {
+    rows().forEach(function (r) {
+      if (r.dataset.pqInit) return;
+      r.dataset.pqInit = 1;
+      r.classList.add("pq-aksi-hide");
+      if (r.parentElement) r.parentElement.dataset.pqCard = 1;
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("button, input, label, a, select")) return;
+    var card = e.target.closest("[data-pq-card]");
+    if (!card) return;
+    var row = rows().find(function (r) { return r.parentElement === card; });
+    if (!row) return;
+    var wasHidden = row.classList.contains("pq-aksi-hide");
+    rows().forEach(function (r) { r.classList.add("pq-aksi-hide"); });
+    if (wasHidden) row.classList.remove("pq-aksi-hide");
+  });
+
+  var t;
+  function start() {
+    new MutationObserver(function () { clearTimeout(t); t = setTimeout(init, 50); })
+      .observe(document.body, { childList: true, subtree: true });
+    init();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+})();
