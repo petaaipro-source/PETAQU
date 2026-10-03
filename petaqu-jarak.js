@@ -1022,8 +1022,22 @@
     document.head.appendChild(s);
   }
 
+  /* panel menempel tepat di kiri tombolnya (toolbar kanan), sejajar vertikal; tidak menimpa tombol folder di kiri atas */
+  function place() {
+    if (!panel || !btn) return;
+    var st = panel.style;
+    if (window.innerWidth <= 860) { st.left = st.right = st.top = st.bottom = st.maxHeight = ""; return; }   // HP: lembar bawah (CSS)
+    var host = panel.offsetParent || panel.parentNode, hr = host.getBoundingClientRect(), br = btn.getBoundingClientRect();
+    if (!br.width) return;
+    var H = hr.height, top = Math.max(56, Math.min(br.top - hr.top - 4, H - 380));
+    st.left = "auto"; st.bottom = "auto";
+    st.right = Math.max(8, Math.round(hr.right - br.left + 8)) + "px";
+    st.top = Math.round(top) + "px";
+    st.maxHeight = Math.max(260, Math.round(H - top - 20)) + "px";
+  }
   function toggle(force) {
     S.open = typeof force === "boolean" ? force : !S.open;
+    if (S.open) place();
     if (panel) panel.classList.toggle("open", S.open);
     if (btn) btn.classList.toggle("active", S.open);
     save(); if (S.open) refresh();
@@ -1060,6 +1074,7 @@
     btn.onclick = function (e) { e.stopPropagation(); toggle(); };
     if (tb) { var ref = document.getElementById("pqlokBtn") || document.getElementById("basemapBtn"); ref && ref.nextSibling ? tb.insertBefore(btn, ref.nextSibling) : tb.appendChild(btn); }
     else { btn.style.cssText = "position:absolute;top:104px;right:14px;z-index:900;width:38px;height:38px"; host.appendChild(btn); }
+    window.addEventListener("resize", place);
     toggle(!!S.open); if (!S.open) drawMap(active() ? calc(active()) : null);
   }
 
