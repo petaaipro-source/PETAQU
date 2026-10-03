@@ -1805,4 +1805,33 @@ body:has(.modal-overlay.show) #pqDock,body:has(.modal-overlay.show) #jtFloat{dis
 #jtFloat{left:62px!important}
 @media(max-width:860px){#jtFloat{right:70px!important}}
 </style>
+<style id="pqLayoutCss">
+/* ===== Tata letak sudut bawah yang konsisten =====
+   KIRI-BAWAH, satu baris sejajar:  [Alat 44px] [◐ Transparansi 44px] [Legenda]
+   KANAN-BAWAH: [Skala km] [Zoom +/-]  satu baris, rata bawah; atribusi di bawahnya.
+   Semua memakai jarak 10px / 8px yang sama, tidak ada lagi posisi hasil hitung JS. */
+:root{--pq-edge:10px;--pq-gap:8px;--pq-btn:44px;--pq-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+/* -- kiri-bawah -- */
+html body #jtFloat{left:calc(var(--pq-edge) + var(--pq-btn) + var(--pq-gap))!important;bottom:var(--pq-bottom)!important}
+html body #jtFloat .jt-fb{width:var(--pq-btn);height:var(--pq-btn);font-size:18px;background:#071a26ee;border:1px solid #22d3ee66;color:#22d3ee;box-shadow:0 2px 10px #0007;-webkit-backdrop-filter:none;backdrop-filter:none;transition:background .15s,color .15s,transform .15s}
+html body #jtFloat .jt-fb:hover{background:#0b2b3d;transform:translateY(-1px)}
+html body #jtFloat.open .jt-fb{background:#0e7490;color:#fff}
+html body #jtFloat .jt-fp{background:rgba(7,26,38,.9);border-color:#22d3ee44;max-width:230px}
+html body #legend{left:calc(var(--pq-edge) + 2*(var(--pq-btn) + var(--pq-gap)))!important;bottom:var(--pq-bottom)!important;max-width:calc(100% - 270px);overflow:hidden;box-sizing:border-box}
+/* -- kanan-bawah: skala di samping zoom -- */
+html body .leaflet-bottom.leaflet-right{display:grid;grid-template-columns:1fr auto;align-items:end;justify-items:end;column-gap:var(--pq-gap);padding-right:var(--pq-edge);box-sizing:border-box}
+html body .leaflet-bottom.leaflet-right>.leaflet-control{float:none;clear:none;margin:0}
+html body .leaflet-bottom.leaflet-right>.leaflet-control-scale{grid-column:1;grid-row:1;margin-bottom:var(--pq-edge)}
+html body .leaflet-bottom.leaflet-right>.leaflet-control-zoom{grid-column:2;grid-row:1;margin-bottom:var(--pq-edge)}
+html body .leaflet-bottom.leaflet-right>.leaflet-control-attribution{grid-column:1/-1;grid-row:2;margin-right:calc(-1*var(--pq-edge))}
+html body .leaflet-control-scale-line{background:#0a0e17e6;color:#dbe7f3;text-shadow:none;border:1.5px solid #9db3c9;border-top:none;border-radius:0 0 5px 5px;padding:3px 8px 2px;font:600 10.5px/1.1 system-ui,sans-serif;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 2px 8px #0005}
+/* -- zoom bergaya gelap, serasi dengan tombol lain -- */
+html body .leaflet-control-zoom.leaflet-bar{border:1px solid #22d3ee55;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px #0007}
+html body .leaflet-control-zoom.leaflet-bar a{background:#071a26ee;color:#e6f1fb;border-bottom:1px solid #22d3ee33;width:36px;height:36px;line-height:36px}
+html body .leaflet-control-zoom.leaflet-bar a:last-child{border-bottom:none}
+html body .leaflet-control-zoom.leaflet-bar a:hover{background:#0e7490;color:#fff}
+html body .leaflet-control-zoom.leaflet-bar a.leaflet-disabled{background:#071a26ee;color:#5b7186}
+/* -- layar sempit: skala di atas zoom agar tidak menabrak legenda -- */
+@media(max-width:400px){html body #legend{max-width:calc(100% - 175px)}html body .leaflet-bottom.leaflet-right>.leaflet-control-scale{grid-column:2;grid-row:1;margin-bottom:6px}html body .leaflet-bottom.leaflet-right>.leaflet-control-zoom{grid-row:2}html body .leaflet-bottom.leaflet-right>.leaflet-control-attribution{grid-row:3}}
+</style>
 </body></html>
