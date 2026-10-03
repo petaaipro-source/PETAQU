@@ -122,74 +122,233 @@
 
   function anchor(pk) { var g = geom(pk); return g.an[pk.acuan || "tengah"] || g.an.tengah; }
 
-  /* ---------------- hitung jarak ---------------- */
-  var osrmC = {};   // "lat,lng>idx" -> {km,min}
-  function okey(a, f) { return a.lat.toFixed(5) + "," + a.lng.toFixed(5) + ">" + f.i; }
+  /* ==========================================================================
+     HITUNG JARAK  —  seluruh jarak = RUTE JALAN NYATA (OSRM / data OpenStreetMap)
+     • Peringkat ditentukan jarak jalan, bukan jarak lurus. Jarak lurus hanya
+       dipakai sebagai batas bawah (jarak jalan >= jarak lurus) untuk memangkas
+       kandidat, sehingga hasilnya eksak tanpa perlu menghitung semua fasilitas.
+     • Garis di peta = geometri jalan sebenarnya. Tidak ada garis lurus.
+     • Estimasi (lurus × faktor) hanya cadangan saat server rute tak terjangkau,
+       selalu ditandai "~".
+     ========================================================================== */
+  var ANCH = ["awal", "tengah", "akhir"];
+  var osrmC = {};   // "lat,lng>lat,lng" -> {km,min,sa,sf} | {nr:1}   jarak jalan (sa/sf = jarak titik ke jalan, m)
+  var snapC = {};   // "lat,lng" -> {d,loc:[lat,lng]}                 jarak pin ke jalan terdekat
+  var rtC = {};     // "lat,lng>lat,lng" -> {pts:[[lat,lng]..],km,min}  geometri rute jalan
+  var RCKEY = "petaqu_jarak_rc_v2";
+  function pkey(a) { return (+a.lat).toFixed(5) + "," + (+a.lng).toFixed(5); }
+  function okey(a, f) { return pkey(a) + ">" + pkey(f); }   // kunci berdasarkan koordinat (bukan indeks) -> cache tetap benar walau data-lokasi berubah
+  function loadRC() { try { var sv = JSON.parse(localStorage.getItem(RCKEY) || "null"); if (sv) { osrmC = sv.o || {}; snapC = sv.s || {}; } } catch (e) {} }
+  var rcTimer = null;
+  function saveRC() {
+    clearTimeout(rcTimer);
+    rcTimer = setTimeout(function () {
+      try {
+        var ks = Object.keys(osrmC); if (ks.length > 3000) ks.slice(0, ks.length - 3000).forEach(function (k) { delete osrmC[k]; });
+        var sk = Object.keys(snapC); if (sk.length > 1000) sk.slice(0, sk.length - 1000).forEach(function (k) { delete snapC[k]; });
+        localStorage.setItem(RCKEY, JSON.stringify({ o: osrmC, s: snapC }));
+      } catch (e) {}
+    }, 800);
+  }
 
   function calc(pk) {
-    var g = geom(pk), an = anchor(pk), n = g.pts.length, step = Math.max(1, Math.floor(n / 300));
-    var rows = F.map(function (f) {
-      var mn = 1e9, mx = 0, sm = 0, c = 0;
-      for (var i = 0; i < n; i++) {
-        var d = hav(g.pts[i], f);
-        if (d < mn) mn = d; if (d > mx) mx = d;
-        if (i % step === 0) { sm += d; c++; }
-      }
-      return { f: f, lurus: hav(an, f), min: mn, max: mx, avg: sm / c, os: osrmC[okey(an, f)] || null };
-    });
+    var g = geom(pk), an = anchor(pk);
+    var rows = F.map(function (f) { return { f: f, lurus: hav(an, f), os: osrmC[okey(an, f)] || null }; });
     var by = {};
     JK.forEach(function (j) { by[j] = rows.filter(function (r) { return r.f.jenis === j; }).sort(function (a, b) { return a.lurus - b.lurus; }); });
     return { pk: pk, g: g, an: an, rows: rows, by: by };
   }
   function derive(r, pk) {
-    var j = r.f.jenis, P = S.par;
-    var jalan = r.os ? r.os.km : r.lurus * P.faktor;
+    var j = r.f.jenis, P = S.par, ok = r.os && !r.os.nr;
+    var jalan = ok ? r.os.km : r.lurus * P.faktor;
     var waktu = jalan / Math.max(1, P.kec[j]) * 60 + P.load[j];
     var vol = num(pk.vol && pk.vol[j], 0);
-    return {
-      jalan: jalan, est: !r.os, waktu: waktu, biaya: vol * P.tarif[j] * jalan,
-      lewat: P.batas[j] > 0 && waktu > P.batas[j]
-    };
+    return { jalan: jalan, est: !ok, sf: ok ? (r.os.sf || 0) : 0, waktu: waktu, biaya: vol * P.tarif[j] * jalan, lewat: P.batas[j] > 0 && waktu > P.batas[j] };
   }
-  function topOf(res, j) {
-    var P = S.par, arr = res.by[j];
-    if (P.radius > 0) arr = arr.filter(function (r) { return r.lurus <= P.radius; });
-    arr = arr.slice(0, P.topN);
-    // urut menurut jarak jalan bila ada
-    return arr.map(function (r) { r.d = derive(r, res.pk); return r; }).sort(function (a, b) { return a.d.jalan - b.d.jalan; });
+  /* N fasilitas terbaik (jenis j) menurut JARAK JALAN. Yang belum diketahui jarak jalannya dianggap estimasi. */
+  function ranked(res, j, N) {
+    var P = S.par, pool = [], i, r, k = 0;
+    for (i = 0; i < res.by[j].length; i++) {
+      r = res.by[j][i];
+      if (P.radius > 0 && r.lurus > P.radius) break;
+      r.os = osrmC[okey(res.an, r.f)] || null;
+      if (r.os && r.os.nr) continue;          // tidak terhubung lewat jalan (mis. beda pulau)
+      if (k < N || r.os) pool.push(r);
+      k++;
+    }
+    pool.forEach(function (x) { x.d = derive(x, res.pk); });
+    return pool.sort(function (a, b) { return a.d.jalan - b.d.jalan; }).slice(0, N);
   }
+  function topOf(res, j) { return ranked(res, j, S.par.topN); }
 
-  /* ---------------- OSRM ---------------- */
+  /* ---------------- OSRM: server, antrean, retry ---------------- */
+  var HOSTS = [
+    { u: "https://router.project-osrm.org", bad: 0 },
+    { u: "https://routing.openstreetmap.de/routed-car", bad: 0 }   // cadangan (OSRM FOSSGIS)
+  ];
   function fetchT(url, ms) {
     var ctl = typeof AbortController !== "undefined" ? new AbortController() : null, t = ctl && setTimeout(function () { ctl.abort(); }, ms || 15000);
-    return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) { if (t) clearTimeout(t); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+    return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) { if (t) clearTimeout(t); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }, function (e) { if (t) clearTimeout(t); throw e; });
   }
-  function needOsrm(res) {
-    var out = [];
-    JK.forEach(function (j) { res.by[j].slice(0, Math.max(S.par.topN, 3)).forEach(function (r) { if (!r.os) out.push(r); }); });
-    return out;
+  function osrmReq(path, ms) {
+    var now = Date.now(), i = 0;
+    var order = HOSTS.slice().sort(function (a, b) { return (now - a.bad < 60000 ? 1 : 0) - (now - b.bad < 60000 ? 1 : 0); });
+    function nxt(err) {
+      if (i >= order.length) return Promise.reject(err || new Error("OSRM"));
+      var h = order[i++];
+      return fetchT(h.u + path, ms).then(function (j) {
+        if (j && (j.code === "Ok" || j.code === "NoRoute" || j.code === "NoSegment")) { h.bad = 0; return j; }
+        throw new Error((j && j.code) || "OSRM");
+      }).catch(function (e) { h.bad = Date.now(); return nxt(e); });
+    }
+    return nxt();
   }
-  function fetchOsrm(res) {
-    var list = needOsrm(res); if (!list.length) return Promise.resolve(0);
-    var an = res.an, got = 0, chunks = [];
-    for (var i = 0; i < list.length; i += 60) chunks.push(list.slice(i, i + 60));
-    return chunks.reduce(function (p, ch) {
-      return p.then(function () {
-        var co = [an.lng + "," + an.lat].concat(ch.map(function (r) { return r.f.lng + "," + r.f.lat; })).join(";");
-        var dst = ch.map(function (_, k) { return k + 1; }).join(";");
-        return fetchT(OSRM + "/table/v1/driving/" + co + "?sources=0&destinations=" + dst + "&annotations=distance,duration").then(function (j) {
-          if (j.code !== "Ok") throw new Error(j.code);
-          ch.forEach(function (r, k) {
-            var d = j.distances && j.distances[0][k], t = j.durations && j.durations[0][k];
-            if (d != null) { r.os = osrmC[okey(an, r.f)] = { km: d / 1000, min: t != null ? t / 60 : null }; got++; }
-          });
+  function resetHosts() { HOSTS.forEach(function (h) { h.bad = 0; }); }
+
+  // antrean: maks 2 permintaan paralel, jeda >= 180 ms (server publik OSRM dibatasi), prioritas kecil = lebih dulu
+  var Q = { run: 0, last: 0, list: [] };
+  var seqNet = 0;
+  function stale(tok) { return tok != null && tok !== seqNet; }
+  function qRun(fn, tok, pri) {
+    return new Promise(function (ok, no) {
+      Q.list.push({ fn: fn, tok: tok, pri: pri || 0, ok: ok, no: no });
+      Q.list.sort(function (a, b) { return a.pri - b.pri; });
+      qPump();
+    });
+  }
+  function qPump() {
+    while (Q.run < 2 && Q.list.length) {
+      var t = Q.list.shift();
+      if (stale(t.tok)) { t.ok(0); continue; }
+      var wait = Math.max(0, Q.last + 180 - Date.now()); Q.last = Date.now() + wait; Q.run++;
+      (function (t, wait) {
+        setTimeout(function () {
+          if (stale(t.tok)) { Q.run--; t.ok(0); return qPump(); }
+          Promise.resolve().then(t.fn).then(t.ok, t.no).then(function () { Q.run--; qPump(); });
+        }, wait);
+      })(t, wait);
+    }
+  }
+
+  /* tabel jarak: sumber[] x fasilitas[] -> osrmC. Satu koordinat yang tak bisa dipetakan ke jalan hanya melewatkan fasilitas itu. */
+  function tableCall(srcs, fs) {
+    var pts = srcs.concat(fs), co = pts.map(function (p) { return (+p.lng).toFixed(6) + "," + (+p.lat).toFixed(6); }).join(";");
+    var si = srcs.map(function (_, i) { return i; }).join(";"), di = fs.map(function (_, i) { return srcs.length + i; }).join(";");
+    return osrmReq("/table/v1/driving/" + co + "?sources=" + si + "&destinations=" + di + "&annotations=distance,duration", 20000).then(function (j) {
+      if (j.code === "NoSegment") {
+        var m = /coordinate (\d+)/.exec(j.message || ""), bi = m ? +m[1] : -1;
+        if (bi >= srcs.length && bi < pts.length) {
+          var bad = fs[bi - srcs.length];
+          srcs.forEach(function (s) { osrmC[okey(s, bad)] = { nr: 1 }; });
+          var rest = fs.filter(function (x) { return x !== bad; });
+          return rest.length ? tableCall(srcs, rest).then(function (n) { return n + 1; }) : 1;
+        }
+        throw new Error("NoSegmentSrc");
+      }
+      if (j.code !== "Ok") throw new Error(j.code);
+      var n = 0;
+      srcs.forEach(function (s, a) {
+        var sn = j.sources && j.sources[a];
+        if (sn && sn.distance != null && sn.location) snapC[pkey(s)] = { d: Math.round(sn.distance), loc: [sn.location[1], sn.location[0]] };
+        fs.forEach(function (f, k) {
+          var d = j.distances && j.distances[a] && j.distances[a][k], t = j.durations && j.durations[a] && j.durations[a][k], dn = j.destinations && j.destinations[k];
+          osrmC[okey(s, f)] = d == null ? { nr: 1 } : { km: r3(d / 1000), min: t != null ? Math.round(t / 6) / 10 : null, sa: sn ? Math.round(sn.distance) : 0, sf: dn ? Math.round(dn.distance) : 0 };
+          n++;
         });
       });
-    }, Promise.resolve()).then(function () { return got; });
+      saveRC();
+      return n;
+    });
+  }
+  function fetchTable(srcs, fs, o) {
+    return qRun(function () { return tableCall(srcs, fs).then(function (n) { if (o.ctx) o.ctx.ok++; return n; }); }, o.tok, o.pri || 0);
+  }
+  function errMsg(e) { return e && e.message === "NoSegmentSrc" ? "Titik paket tidak dekat jalan manapun — geser pin ke jalan." : ""; }
+
+  /* pencarian eksak (branch & bound): periksa fasilitas berurutan dari jarak lurus terdekat; berhenti bila
+     jarak lurus fasilitas berikutnya sudah melebihi jarak jalan ke-N terbaik (jalan tak mungkin lebih pendek dari garis lurus) */
+  var BATCH = 20, MAXPROBE = 80;
+  function probeType(res, j, N, o) {
+    var arr = res.by[j], an = res.an, idx = 0;
+    if (S.par.radius > 0) arr = arr.filter(function (r) { return r.lurus <= S.par.radius; });
+    function kth() {
+      var km = [];
+      for (var i = 0; i < idx && i < arr.length; i++) { var c = osrmC[okey(an, arr[i].f)]; if (c && !c.nr) km.push(c.km); }
+      if (km.length < N) return Infinity;
+      km.sort(function (a, b) { return a - b; }); return km[N - 1];
+    }
+    function step() {
+      if (stale(o.tok) || idx >= arr.length || idx >= MAXPROBE) return Promise.resolve();
+      var k = kth();
+      if (k < Infinity && arr[idx].lurus - 0.5 >= k) return Promise.resolve();
+      var batch = arr.slice(idx, idx + BATCH); idx += batch.length;
+      var need = batch.filter(function (r) { return !osrmC[okey(an, r.f)]; }).map(function (r) { return r.f; });
+      if (!need.length) return step();
+      return fetchTable([an], need, o).then(step, function (e) { if (o.ctx) { o.ctx.fail++; o.ctx.msg = o.ctx.msg || errMsg(e); } });
+    }
+    return step();
+  }
+  // ruas: jarak jalan dari titik awal / tengah / akhir ke fasilitas terbaik
+  function fetchAnchors(res, N, o) {
+    var cur = res.pk.acuan || "tengah", seen = {}, srcs = [], fs = [];
+    seen[pkey(res.an)] = 1;
+    ANCH.forEach(function (k) { var p = res.g.an[k]; if (k !== cur && !seen[pkey(p)]) { seen[pkey(p)] = 1; srcs.push(p); } });
+    if (!srcs.length) return Promise.resolve();
+    JK.forEach(function (j) { ranked(res, j, N).forEach(function (r) { if (srcs.some(function (s) { return !osrmC[okey(s, r.f)]; })) fs.push(r.f); }); });
+    var chunks = []; for (var i = 0; i < fs.length; i += 25) chunks.push(fs.slice(i, i + 25));
+    return chunks.reduce(function (pr, ch) {
+      return pr.then(function () { return stale(o.tok) ? 0 : fetchTable(srcs, ch, o).catch(function () { return 0; }); });
+    }, Promise.resolve());
+  }
+  function solve(res, o) {
+    var N = o.N || Math.max(S.par.topN, 3);
+    return Promise.all(JK.map(function (j) { return probeType(res, j, N, o).then(function () { if (!o.silent) netRender(); }); }))
+      .then(function () { return stale(o.tok) || res.pk.tipe !== "ruas" ? 0 : fetchAnchors(res, N, o); });
+  }
+
+  /* geometri rute jalan (untuk digambar di peta) */
+  function fetchRoute(an, f, tok, pri) {
+    var k = okey(an, f);
+    if (rtC[k]) return Promise.resolve(rtC[k]);
+    return qRun(function () {
+      var path = "/route/v1/driving/" + (+an.lng).toFixed(6) + "," + (+an.lat).toFixed(6) + ";" + (+f.lng).toFixed(6) + "," + (+f.lat).toFixed(6) + "?overview=full&geometries=geojson&steps=false";
+      return osrmReq(path, 25000).then(function (j) {
+        if (j.code !== "Ok" || !j.routes || !j.routes[0]) return null;
+        var rt = j.routes[0], o = rtC[k] = { pts: rt.geometry.coordinates.map(function (c) { return [c[1], c[0]]; }), km: rt.distance / 1000, min: rt.duration / 60 };
+        if (!osrmC[k]) osrmC[k] = { km: r3(o.km), min: Math.round(o.min * 10) / 10, sa: 0, sf: 0 };
+        var ks = Object.keys(rtC); if (ks.length > 80) delete rtC[ks[0]];
+        return o;
+      });
+    }, tok, pri == null ? 1 : pri).catch(function () { return null; });   // 0 = dibatalkan, null = gagal
+  }
+  function routesFor(res, o) {
+    var jobs = [];
+    JK.forEach(function (j) { ranked(res, j, S.par.topN).forEach(function (r, k) { if (r.os && !r.os.nr) jobs.push({ f: r.f, k: k }); }); });
+    return Promise.all(jobs.map(function (jb) {
+      return fetchRoute(res.an, jb.f, o.tok, jb.k === 0 ? 1 : 2).then(function (rt) {
+        if (rt === null) o.ctx.rfail++; else if (rt) drawSoon(o.tok);
+      });
+    }));
+  }
+
+  /* latar belakang: hitung juga paket lain agar "Rekap semua paket" memakai jarak jalan nyata */
+  var bg = { run: false, again: false };
+  function bgSolve() {
+    if (!S.par.osrm) return;
+    if (bg.run) { bg.again = true; return; }
+    bg.run = true;
+    var list = S.pakets.filter(function (p) { return p.id !== S.aktif; }).slice(0, 40), stop = false;
+    list.reduce(function (pr, p) {
+      return pr.then(function () {
+        if (stop) return;
+        var ctx = { ok: 0, fail: 0, msg: "" };
+        return solve(calc(p), { tok: null, pri: 3, ctx: ctx, silent: true }).catch(function () { ctx.fail++; }).then(function () { if (ctx.fail) stop = true; netRender(); });
+      });
+    }, Promise.resolve()).then(function () { bg.run = false; if (bg.again) { bg.again = false; bgSolve(); } });
   }
 
   /* ---------------- peta ---------------- */
-  var group = null, routeLayer = null, panel = null, btn = null, picking = false, renderTimer = null, osrmState = "";
+  var group = null, rgroup = null, panel = null, btn = null, picking = false, renderTimer = null, osrmState = "", warnMsg = "", hl = {};
   function pkIcon(n, on) {
     return L.divIcon({
       className: "pqj-ico",
@@ -210,42 +369,61 @@
       });
       group.addLayer(m);
     });
-    if (!res) return;
-    var pk = res.pk;
-    if (pk.tipe === "ruas" && res.g.pts.length > 1) {
-      group.addLayer(L.polyline(res.g.pts.map(function (p) { return [p.lat, p.lng]; }), { color: "#ef4444", weight: 5, opacity: .85 }));
-      ["awal", "tengah", "akhir"].forEach(function (k) {
-        var p = res.g.an[k];
-        group.addLayer(L.circleMarker([p.lat, p.lng], { radius: k === (pk.acuan || "tengah") ? 7 : 4, color: "#fff", weight: 2, fillColor: k === (pk.acuan || "tengah") ? "#ef4444" : "#64748b", fillOpacity: 1 }).bindTooltip(k));
-      });
+    if (res) {
+      var pk = res.pk;
+      if (pk.tipe === "ruas" && res.g.pts.length > 1) {
+        group.addLayer(L.polyline(res.g.pts.map(function (p) { return [p.lat, p.lng]; }), { color: "#ef4444", weight: 5, opacity: .85 }));
+        ANCH.forEach(function (k) {
+          var p = res.g.an[k];
+          group.addLayer(L.circleMarker([p.lat, p.lng], { radius: k === (pk.acuan || "tengah") ? 7 : 4, color: "#fff", weight: 2, fillColor: k === (pk.acuan || "tengah") ? "#ef4444" : "#64748b", fillOpacity: 1 }).bindTooltip(k));
+        });
+      }
+      if (S.par.radius > 0) group.addLayer(L.circle([res.an.lat, res.an.lng], { radius: S.par.radius * 1000, color: "#22d3ee", weight: 1.5, dashArray: "6 6", fillOpacity: .04 }));
     }
-    if (S.par.radius > 0) group.addLayer(L.circle([res.an.lat, res.an.lng], { radius: S.par.radius * 1000, color: "#22d3ee", weight: 1.5, dashArray: "6 6", fillOpacity: .04 }));
-    JK.forEach(function (j) {
-      topOf(res, j).forEach(function (r, k) {
-        var best = k === 0, c = JN[j].color;
-        group.addLayer(L.polyline([[res.an.lat, res.an.lng], [r.f.lat, r.f.lng]], { color: c, weight: best ? 3 : 1.5, opacity: best ? .95 : .55, dashArray: r.os ? null : "7 6" }));
-        group.addLayer(L.circleMarker([r.f.lat, r.f.lng], { radius: best ? 12 : 8, color: best ? "#22c55e" : c, weight: best ? 4 : 2, fillColor: c, fillOpacity: .25 })
-          .bindTooltip(esc(r.f.owner) + " — " + fmtKm(r.d.jalan) + " km", { direction: "top" }));
-      });
+    drawRoutes(res);
+  }
+  /* rute jalan nyata ke fasilitas teratas. Rute belum tiba = hanya penanda, TIDAK pernah garis lurus. */
+  function drawRoutes(res) {
+    var M = getMap(); if (!M || !window.L) return;
+    if (!rgroup) rgroup = L.layerGroup().addTo(M); else rgroup.clearLayers();
+    hl = {};
+    if (!res) return;
+    var items = [];
+    JK.forEach(function (j) { ranked(res, j, S.par.topN).forEach(function (r, k) { items.push({ j: j, r: r, k: k }); }); });
+    items.sort(function (a, b) { return (a.k === 0 ? 1 : 0) - (b.k === 0 ? 1 : 0); });   // terbaik digambar paling atas
+    items.forEach(function (it) {
+      var r = it.r, c = JN[it.j].color, best = it.k === 0, rt = rtC[okey(res.an, r.f)];
+      var tip = JN[it.j].lab + " #" + (it.k + 1) + " · " + esc(r.f.owner) + " — " + fmtKm(r.d.jalan) + " km" + (r.d.est ? " (estimasi)" : " via jalan");
+      if (rt && rt.pts.length > 1) {
+        if (best) rgroup.addLayer(L.polyline(rt.pts, { color: "#fff", weight: 9, opacity: .5, lineCap: "round", lineJoin: "round", interactive: false }));
+        var w = best ? 5 : 3, op = best ? .95 : .72;
+        var ln = L.polyline(rt.pts, { color: c, weight: w, opacity: op, lineCap: "round", lineJoin: "round" }).bindTooltip(tip, { sticky: true });
+        rgroup.addLayer(ln); hl[it.j + ":" + r.f.i] = { line: ln, w: w, op: op };
+      }
+      rgroup.addLayer(L.circleMarker([r.f.lat, r.f.lng], { radius: best ? 12 : 8, color: best ? "#22c55e" : c, weight: best ? 4 : 2, fillColor: c, fillOpacity: .25 }).bindTooltip(tip, { direction: "top" }));
     });
+  }
+  function hilite(key, on) {
+    var o = hl[key]; if (!o) return;
+    o.line.setStyle({ weight: on ? o.w + 3 : o.w, opacity: on ? 1 : o.op }); if (on) o.line.bringToFront();
+  }
+  var drawT = null;
+  function drawSoon(tok) {
+    clearTimeout(drawT);
+    drawT = setTimeout(function () { if (stale(tok)) return; var pk = active(); drawRoutes(pk ? calc(pk) : null); }, 150);
   }
   function showRoute(pk, r) {
     var M = getMap(); if (!M) return;
-    var a = anchor(pk);
-    if (routeLayer) { M.removeLayer(routeLayer); routeLayer = null; }
-    var url = OSRM + "/route/v1/driving/" + a.lng + "," + a.lat + ";" + r.f.lng + "," + r.f.lat + "?overview=full&geometries=geojson";
+    var a = anchor(pk), k = okey(a, r.f);
+    function go(rt) {
+      var b = L.latLngBounds(rt.pts); M.fitBounds(b, { padding: [60, 60] });
+      say("Rute jalan " + fmtKm(rt.km) + " km");
+    }
+    if (rtC[k]) return go(rtC[k]);
     say("Mengambil rute jalan…");
-    fetchT(url, 15000).then(function (j) {
-      if (j.code !== "Ok" || !j.routes || !j.routes[0]) throw new Error(j.code);
-      var rt = j.routes[0];
-      r.os = osrmC[okey(a, r.f)] = { km: rt.distance / 1000, min: rt.duration / 60 };
-      routeLayer = L.geoJSON(rt.geometry, { style: { color: JN[r.f.jenis].color, weight: 6, opacity: .95 } }).addTo(M);
-      M.fitBounds(routeLayer.getBounds(), { padding: [60, 60] });
-      say("Rute " + fmtKm(rt.distance / 1000) + " km · ± " + fmtMin(rt.duration / 60) + " (mobil)");
-      refresh(true);
-    }).catch(function () {
-      M.fitBounds([[a.lat, a.lng], [r.f.lat, r.f.lng]], { padding: [60, 60] });
-      say("Rute jalan tidak tersedia (offline / server sibuk) — ditampilkan garis lurus");
+    fetchRoute(a, r.f, null, 0).then(function (rt) {
+      if (!rt) return say("Rute jalan tidak tersedia (server rute tidak terjangkau)");
+      go(rt); drawSoon(null);
     });
   }
 
@@ -303,23 +481,60 @@
     clearTimeout(renderTimer);
     renderTimer = setTimeout(function () { doRefresh(noNet); }, 30);
   }
-  var seqNet = 0;
+  var nrT = null, pend = false;
+  function panelBusy() { var a = document.activeElement; return !!(panel && a && panel.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)); }
+  // render ulang akibat data jaringan; tidak menimpa kolom yang sedang diketik
+  function netRender() {
+    clearTimeout(nrT);
+    nrT = setTimeout(function () {
+      var pk = active(), res = pk ? calc(pk) : null;
+      if (panelBusy()) { pend = true; drawRoutes(res); renderStatus(); return; }
+      render(res); drawRoutes(res);
+    }, 120);
+  }
   function doRefresh(noNet) {
     var pk = active(), res = pk ? calc(pk) : null;
     render(res); drawMap(res);
-    if (res && !noNet && S.par.osrm && needOsrm(res).length) {
-      var my = ++seqNet; osrmState = "load"; renderStatus();
-      fetchOsrm(res).then(function (g) { if (my !== seqNet) return; osrmState = g ? "ok" : ""; if (g) doRefresh(true); else renderStatus(); })
-        .catch(function () { if (my !== seqNet) return; osrmState = "err"; renderStatus(); });
-    } else osrmState = res && !needOsrm(res).length && S.par.osrm ? "ok" : (res && !S.par.osrm ? "off" : osrmState);
-    if (!noNet) renderStatus();
+    if (!res) { osrmState = ""; warnMsg = ""; return; }
+    if (noNet) return;
+    if (!S.par.osrm) { ++seqNet; osrmState = "off"; warnMsg = ""; renderStatus(); return; }
+    var my = ++seqNet, ctx = { ok: 0, fail: 0, rfail: 0, msg: "" };
+    osrmState = "load"; warnMsg = ""; renderStatus();
+    solve(res, { tok: my, pri: 0, ctx: ctx }).then(function () {
+      if (my !== seqNet) return;
+      warnMsg = ctx.msg;
+      var r2 = calc(pk);
+      osrmState = ctx.fail ? (ctx.ok ? "part" : "err") : "route";
+      netRender();
+      if (ctx.fail && !ctx.ok) return;
+      return routesFor(r2, { tok: my, ctx: ctx }).then(function () {
+        if (my !== seqNet) return;
+        osrmState = ctx.fail ? "part" : (ctx.rfail ? "geo" : "ok"); renderStatus(); bgSolve();
+      });
+    }).catch(function () { if (my === seqNet) { osrmState = "err"; renderStatus(); } });
   }
   function renderStatus() {
     var el = panel && panel.querySelector("#pqjSt"); if (!el) return;
-    var m = { load: ['#fbbf24', 'fa-spinner fa-spin', 'Mengambil jarak jalan nyata (OSRM)…'], ok: ['#34d399', 'fa-circle-check', 'Jarak jalan nyata (OSRM)'], err: ['#f87171', 'fa-triangle-exclamation', 'OSRM tidak terjangkau — memakai estimasi (lurus × ' + S.par.faktor + ')'], off: ['#94a3b8', 'fa-ruler', 'Estimasi (lurus × ' + S.par.faktor + ')'], "": ['#94a3b8', 'fa-ruler', 'Estimasi (lurus × ' + S.par.faktor + ')'] }[osrmState || ""];
-    el.innerHTML = '<span style="color:' + m[0] + '"><i class="fa-solid ' + m[1] + '"></i> ' + m[2] + '</span>';
+    var m = {
+      load:  ["#fbbf24", "fa-spinner fa-spin", "Menghitung rute jalan…"],
+      route: ["#fbbf24", "fa-spinner fa-spin", "Menggambar rute…"],
+      ok:    ["#34d399", "fa-circle-check", "Rute jalan nyata"],
+      part:  ["#fbbf24", "fa-triangle-exclamation", "Sebagian jarak ~ estimasi"],
+      geo:   ["#fbbf24", "fa-triangle-exclamation", "Gambar rute gagal"],
+      err:   ["#f87171", "fa-triangle-exclamation", "Server rute offline · ~ estimasi"],
+      off:   ["#94a3b8", "fa-ruler", "Estimasi (lurus × " + S.par.faktor + ")"],
+      "":    ["#94a3b8", "fa-ruler", ""]
+    }[osrmState || ""];
+    el.innerHTML = '<span style="color:' + m[0] + '"><i class="fa-solid ' + m[1] + '"></i> ' + m[2] + '</span>' +
+      (osrmState === "err" || osrmState === "part" || osrmState === "geo" ? ' <u data-retry style="cursor:pointer;color:#22d3ee">Coba lagi</u>' : "");
   }
 
+  function snapHTML(pk, a) {
+    var sn = snapC[pkey(a)], h = "";
+    if (warnMsg) h += '<div class="pqj-warn"><i class="fa-solid fa-triangle-exclamation"></i> ' + esc(warnMsg) + '</div>';
+    if (sn && sn.d > 100 && pk.tipe !== "ruas") h += '<div class="pqj-warn"><i class="fa-solid fa-road"></i> Pin ±' + sn.d + ' m dari jalan terdekat — jarak jalan dihitung dari jalan itu. <button class="pqj-ib" data-snap>Tempel ke jalan</button></div>';
+    return h;
+  }
   function inp(id, v, w, step) { return '<input class="pqj-in" data-f="' + id + '" type="number" step="' + (step || "any") + '" value="' + esc(v) + '" style="width:' + (w || 64) + 'px">'; }
 
   function blockHTML(res, j) {
@@ -327,14 +542,19 @@
     var head = '<div class="pqj-bh" style="border-color:' + c.color + '"><span class="dot" style="background:' + c.color + '"><i class="fa-solid ' + c.icon + '"></i></span><b>' + c.lab + '</b><small>' + c.full + '</small><span class="n">' + res.by[j].length + ' titik</span></div>';
     if (!rows.length) return '<div class="pqj-blk">' + head + '<div class="pqj-empty">Tidak ada ' + c.lab + (S.par.radius > 0 ? ' dalam radius ' + S.par.radius + ' km' : "") + '</div></div>';
     var body = rows.map(function (r, k) {
-      var d = r.d, ruasInfo = pk.tipe === "ruas" ? '<div class="sub">ruas: min ' + fmtKm(r.min) + ' · rata² ' + fmtKm(r.avg) + ' · maks ' + fmtKm(r.max) + ' km (lurus)</div>' : "";
+      var d = r.d, ruasInfo = "";
+      if (pk.tipe === "ruas") {
+        ruasInfo = '<div class="sub">jalan dari ' + ANCH.map(function (a) { var o = osrmC[okey(res.g.an[a], r.f)]; return a + " " + (o && !o.nr ? fmtKm(o.km) : "…"); }).join(" · ") + " km</div>";
+      }
+      var far = d.sf > 300 ? '<div class="sub" style="color:#fbbf24">koordinat fasilitas ±' + Math.round(d.sf) + ' m dari jalan</div>' : "";
       return '<tr class="' + (k === 0 ? "best " : "") + (d.lewat ? "warn" : "") + '" data-rt="' + j + ':' + r.f.i + '">' +
-        '<td class="rk">' + (k + 1) + '</td><td class="nm"><b>' + esc(r.f.owner) + '</b><div class="sub">' + esc(r.f.kab) + ' · ' + esc(r.f.prov) + '</div>' + ruasInfo + '</td>' +
-        '<td class="r">' + fmtKm(r.lurus) + '</td><td class="r jl">' + fmtKm(d.jalan) + (d.est ? '<i class="est" title="Estimasi">~</i>' : '<i class="ok" title="OSRM">●</i>') + '</td>' +
+        '<td class="rk">' + (k + 1) + '</td><td class="nm"><b>' + esc(r.f.owner) + '</b><div class="sub">' + esc(r.f.kab) + ' · ' + esc(r.f.prov) + '</div>' + ruasInfo + far + '</td>' +
+        '<td class="r jl">' + fmtKm(d.jalan) + (d.est ? '<i class="est" title="Estimasi (lurus × faktor) — rute jalan belum tersedia">~</i>' : '<i class="ok" title="Rute jalan nyata (OSRM)">●</i>') + '</td>' +
+        '<td class="r dim">' + fmtKm(r.lurus) + '</td>' +
         '<td class="r">' + fmtMin(d.waktu) + (d.lewat ? '<div class="lw">lewat batas</div>' : "") + '</td>' +
         '<td class="r">' + fmtRp(d.biaya) + '</td></tr>';
     }).join("");
-    return '<div class="pqj-blk">' + head + '<table class="pqj-t"><thead><tr><th>#</th><th>Lokasi</th><th>Lurus<br>km</th><th>Jalan<br>km</th><th>Waktu</th><th>Biaya</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+    return '<div class="pqj-blk">' + head + '<table class="pqj-t"><thead><tr><th>#</th><th>Lokasi</th><th>Jalan<br>km</th><th>Lurus<br>km</th><th>Waktu</th><th>Biaya</th></tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
   function cardsHTML(res) {
@@ -352,11 +572,11 @@
     var rows = S.pakets.map(function (pk, i) {
       var res = calc(pk), cells = JK.map(function (j) {
         var r = topOf(res, j)[0]; if (!r) return '<td class="r">-</td>';
-        return '<td class="r" title="' + esc(r.f.owner) + '">' + fmtKm(r.d.jalan) + '</td>';
+        return '<td class="r" title="' + esc(r.f.owner) + '">' + fmtKm(r.d.jalan) + (r.d.est ? '<i class="est" title="Estimasi">~</i>' : "") + '</td>';
       }).join("");
       return '<tr data-pk="' + pk.id + '" class="' + (pk.id === S.aktif ? "best" : "") + '"><td class="rk">' + (i + 1) + '</td><td class="nm"><b>' + esc(pk.nama) + '</b></td>' + cells + '</tr>';
     }).join("");
-    return '<div class="pqj-sec"><div class="t" data-tg="rekap"><i class="fa-solid fa-chevron-' + (S.sec.rekap ? "down" : "right") + '"></i> Rekap semua paket (jarak terdekat, km)</div>' +
+    return '<div class="pqj-sec"><div class="t" data-tg="rekap"><i class="fa-solid fa-chevron-' + (S.sec.rekap ? "down" : "right") + '"></i> Rekap semua paket (jarak jalan terdekat, km)</div>' +
       (S.sec.rekap ? '<table class="pqj-t"><thead><tr><th>#</th><th>Paket</th><th>AMP</th><th>BP</th><th>Quarry</th></tr></thead><tbody>' + rows + '</tbody></table>' : "") + '</div>';
   }
 
@@ -375,6 +595,7 @@
           ? '<span class="lb">Acuan</span><select class="pqj-in" data-f="acuan">' + ["awal", "tengah", "akhir"].map(function (k) { return '<option value="' + k + '"' + ((pk.acuan || "tengah") === k ? " selected" : "") + ">Titik " + k + "</option>"; }).join("") + '</select><span class="lb">' + fmtKm(res ? res.g.len : 0) + ' km</span>'
           : '<span class="lb">Lat</span><input class="pqj-in" data-f="lat" value="' + pk.lat + '" style="width:92px"><span class="lb">Lng</span><input class="pqj-in" data-f="lng" value="' + pk.lng + '" style="width:92px"><button class="pqj-ib" data-cpy title="Salin koordinat"><i class="fa-regular fa-copy"></i></button>') + '</div>' +
         (pk.tipe === "ruas" ? '<div class="sub">Titik acuan: ' + a.lat.toFixed(5) + ', ' + a.lng.toFixed(5) + '</div>' : "") +
+        snapHTML(pk, a) +
         '<div class="row vol"><span class="lb">Volume</span>' + JK.map(function (j) { return '<label>' + JN[j].lab + ' ' + inp("vol_" + j, (pk.vol && pk.vol[j]) || 0, 58) + '<small>' + JN[j].unit + '</small></label>'; }).join("") + '</div></div>';
     }
     var ruasList = "";
@@ -399,8 +620,8 @@
       (res ? cardsHTML(res) + JK.map(function (j) { return blockHTML(res, j); }).join("") : "") +
       rekapHTML() +
       '<div class="pqj-sec"><div class="t" data-tg="par"><i class="fa-solid fa-chevron-' + (S.sec.par ? "down" : "right") + '"></i> Parameter perhitungan</div>' + (S.sec.par ?
-        '<div class="pqj-par"><div class="row"><span class="lb">Faktor jalan (estimasi)</span>' + inp("p_faktor", P.faktor, 60, 0.05) + '<span class="lb">Top-N</span>' + inp("p_topN", P.topN, 46, 1) + '<span class="lb">Radius km</span>' + inp("p_radius", P.radius, 52, 1) + '</div>' +
-        '<label class="chk"><input type="checkbox" data-f="p_osrm"' + (P.osrm ? " checked" : "") + '> Ambil jarak jalan nyata via OSRM (butuh internet)</label>' +
+        '<div class="pqj-par"><div class="row"><span class="lb">Faktor jalan (cadangan)</span>' + inp("p_faktor", P.faktor, 60, 0.05) + '<span class="lb">Top-N</span>' + inp("p_topN", P.topN, 46, 1) + '<span class="lb">Radius km</span>' + inp("p_radius", P.radius, 52, 1) + '</div>' +
+        '<label class="chk"><input type="checkbox" data-f="p_osrm"' + (P.osrm ? " checked" : "") + '> Hitung jarak lewat rute jalan nyata (OSRM, butuh internet)</label>' +
         '<table class="pqj-t pp"><thead><tr><th></th><th>km/jam</th><th>Muat+bongkar<br>menit</th><th>Tarif<br>Rp/sat·km</th><th>Batas waktu<br>menit (0=bebas)</th></tr></thead><tbody>' +
         JK.map(function (j) { return '<tr><td><b style="color:' + JN[j].color + '">' + JN[j].lab + '</b></td><td>' + inp("kec_" + j, P.kec[j], 52) + '</td><td>' + inp("load_" + j, P.load[j], 52) + '</td><td>' + inp("tarif_" + j, P.tarif[j], 70) + '</td><td>' + inp("batas_" + j, P.batas[j], 56) + '</td></tr>'; }).join("") +
         '</tbody></table><div class="sub">Tarif & batas waktu adalah nilai awal — sesuaikan dengan HSPK/analisa harga satuan dan spesifikasi proyek.</div></div>' : "") + '</div>' +
@@ -413,9 +634,15 @@
   function onClick(e) {
     var t = e.target, el, M = getMap();
     if (t.closest("[data-close]")) return toggle(false);
+    if (t.closest("[data-retry]")) { resetHosts(); return refresh(); }
+    if (t.closest("[data-snap]")) {
+      var p3 = active(), sn = p3 && snapC[pkey(anchor(p3))];
+      if (sn && sn.loc) { p3.lat = +sn.loc[0].toFixed(6); p3.lng = +sn.loc[1].toFixed(6); save(); say("Pin dipindah ke jalan terdekat"); refresh(); }
+      return;
+    }
     if ((el = t.closest("[data-rt]"))) {
       var pr = el.getAttribute("data-rt").split(":"), f = F[+pr[1]], pk = active(); if (!f || !pk) return;
-      var an = anchor(pk); var row = { f: f, os: osrmC[okey(an, f)] || null }; return showRoute(pk, row);
+      return showRoute(pk, { f: f });
     }
     if ((el = t.closest("[data-pk]"))) { S.aktif = el.getAttribute("data-pk"); save(); var p = active(); if (p && M) { var a = anchor(p); M.setView([a.lat, a.lng], Math.max(M.getZoom(), 11)); } return refresh(); }
     if ((el = t.closest("[data-tg]"))) { var id = el.getAttribute("data-tg"); S.sec[id] = !S.sec[id]; save(); return refresh(true); }
@@ -605,7 +832,7 @@
     PKS.forEach(function (p) { p.rows.forEach(function (r) { rowsD.push({ p: p, r: r }); }); });
     var nD = rowsD.length, kD = 4 + nD;
     title(wsD, "Detail Jarak Semua Paket × Semua Fasilitas", "Kolom K (OSRM) = jarak jalan nyata bila tersedia, kosong = memakai estimasi (lurus × faktor). Ketik jarak jalan sendiri di kolom K untuk menimpa.");
-    head(wsD, 4, ["Paket", "Jenis", "Owner", "Kabupaten/Kota", "Provinsi", "Lat fasilitas", "Lng fasilitas", "Lat paket", "Lng paket", "Jarak lurus (km)", "Jarak jalan OSRM (km)", "Jarak jalan dipakai (km)", "Sumber", "Waktu (menit)", "Biaya angkut (Rp)", "Status", "Peringkat", "Kunci", "Min ke ruas (km)", "Maks ke ruas (km)", "Rata-rata ke ruas (km)"]);
+    head(wsD, 4, ["Paket", "Jenis", "Owner", "Kabupaten/Kota", "Provinsi", "Lat fasilitas", "Lng fasilitas", "Lat paket", "Lng paket", "Jarak lurus (km)", "Jarak jalan OSRM (km)", "Jarak jalan dipakai (km)", "Sumber", "Waktu (menit)", "Biaya angkut (Rp)", "Status", "Peringkat", "Kunci", "Jalan dari awal ruas (km)", "Jalan dari tengah ruas (km)", "Jalan dari akhir ruas (km)"]);
     // cache peringkat per paket+jenis
     var rk = [];
     PKS.forEach(function (p) {
@@ -634,7 +861,7 @@
         wsD.getCell(row, 16).value = res(st, 'IF(AND(INDEX(Parameter!$E$6:$E$8,' + pr + ')>0,N' + row + '>INDEX(Parameter!$E$6:$E$8,' + pr + ')),"MELEBIHI BATAS","OK")');
         wsD.getCell(row, 17).value = res(r.rank, 'COUNTIFS($A$5:$A$' + kD + ',A' + row + ',$B$5:$B$' + kD + ',B' + row + ',$L$5:$L$' + kD + ',"<"&L' + row + ')+COUNTIFS($A$5:A' + row + ',A' + row + ',$B$5:B' + row + ',B' + row + ',$L$5:L' + row + ',L' + row + ')');
         wsD.getCell(row, 18).value = res(p.nama + "|" + L + "|" + r.rank, 'A' + row + '&"|"&B' + row + '&"|"&Q' + row);
-        wsD.getCell(row, 19).value = r3(r.min); wsD.getCell(row, 20).value = r3(r.max); wsD.getCell(row, 21).value = r3(r.avg);
+        if (p.tipe === "ruas" && r.anc) { ["awal", "tengah", "akhir"].forEach(function (k, q) { if (r.anc[k] != null) wsD.getCell(row, 19 + q).value = r3(r.anc[k]); }); }
         [6, 7, 8, 9].forEach(function (c) { wsD.getCell(row, c).numFmt = "0.000000"; });
         [10, 11, 12, 19, 20, 21].forEach(function (c) { wsD.getCell(row, c).numFmt = "0.000"; });
         wsD.getCell(row, 11).fill = INPUT; wsD.getCell(row, 15).numFmt = "#,##0";
@@ -695,12 +922,19 @@
     return wb;
   }
 
-  function buildModel(withOsrm) {
+  function buildModel() {
     var pk = S.pakets.map(function (p) {
       var res = calc(p), g = res.g;
       return {
         nama: p.nama, tipe: p.tipe, acuan: p.acuan || "tengah", lat: res.an.lat, lng: res.an.lng, len: g.len, vol: p.vol || {},
-        rows: res.rows.map(function (r) { return { f: r.f, lurus: r.lurus, min: r.min, max: r.max, avg: r.avg, osrmKm: r.os ? r.os.km : null }; })
+        rows: res.rows.map(function (r) {
+          var anc = null;
+          if (p.tipe === "ruas") {
+            anc = {};
+            ANCH.forEach(function (k) { var o = osrmC[okey(g.an[k], r.f)]; anc[k] = o && !o.nr ? o.km : null; });
+          }
+          return { f: r.f, lurus: r.lurus, osrmKm: r.os && !r.os.nr ? r.os.km : null, anc: anc };
+        })
       };
     });
     return { par: clone(S.par), pakets: pk, fas: F };
@@ -719,7 +953,14 @@
     if (!S.pakets.length) return say("Tentukan minimal satu lokasi paket dulu");
     if (!F.length) loadFas();
     exporting = true; say("Menyiapkan Excel…");
-    var tasks = S.par.osrm ? S.pakets.map(function (p) { return function () { return fetchOsrm(calc(p)).catch(function () { return 0; }); }; }) : [];
+    var nExp = Math.max(S.par.topN, 8), done = 0, gagal = 0;
+    var tasks = S.par.osrm ? S.pakets.map(function (p) {
+      return function () {
+        say("Menghitung rute jalan paket " + (++done) + "/" + S.pakets.length + "…");
+        var ctx = { ok: 0, fail: 0, msg: "" };
+        return solve(calc(p), { tok: null, pri: 0, ctx: ctx, N: nExp, silent: true }).catch(function () { ctx.fail++; }).then(function () { if (ctx.fail) gagal++; });
+      };
+    }) : [];
     tasks.reduce(function (pr, t) { return pr.then(t); }, Promise.resolve())
       .then(function () { return loadExcelJS().catch(function () { return null; }); })
       .then(function (EJ) {
@@ -731,7 +972,7 @@
           a.download = "petaqu-jarak-paket-" + new Date().toISOString().slice(0, 10) + ".xlsx";
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
           setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
-          say("Excel diunduh: " + S.pakets.length + " paket × " + F.length + " fasilitas");
+          say("Excel diunduh: " + S.pakets.length + " paket × " + F.length + " fasilitas" + (gagal ? " — " + gagal + " paket sebagian masih estimasi (server rute tak terjangkau)" : ""));
         });
       })
       .catch(function (e) { say("Gagal membuat Excel: " + e.message); })
@@ -773,6 +1014,8 @@
       ".pqj-t{width:100%;border-collapse:collapse;font-size:11.5px}.pqj-t th{font-size:9.5px;text-transform:uppercase;color:#94a3b8;text-align:right;padding:5px 5px;border-bottom:1px solid var(--line,#1e2938);font-weight:700}.pqj-t th:nth-child(2){text-align:left}" +
       ".pqj-t td{padding:5px;border-bottom:1px solid #1e293b66;vertical-align:top}.pqj-t td.r{text-align:right;white-space:nowrap}.pqj-t td.rk{color:#94a3b8;width:20px}.pqj-t tbody tr[data-rt],.pqj-t tbody tr[data-pk]{cursor:pointer}.pqj-t tbody tr:hover{background:#0e749022}" +
       ".pqj-t tr.best td{background:#16a34a1c}.pqj-t tr.best .jl{color:#4ade80;font-weight:800}.pqj-t tr.warn .lw{color:#f87171;font-size:9.5px;font-weight:700}.pqj-t .est{color:#fbbf24;margin-left:2px;font-style:normal}.pqj-t .ok{color:#34d399;margin-left:3px;font-size:7px;font-style:normal;vertical-align:middle}" +
+      ".pqj-t td.dim{color:#64748b}.pqj-t tr.best td.dim{color:#94a3b8}#pqjPanel .hd .sum{white-space:nowrap}" +
+      ".pqj-warn{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:#fbbf24;background:#fbbf2418;border:1px solid #fbbf2455;border-radius:7px;padding:5px 7px}" +
       ".pqj-t.pp td{vertical-align:middle}.pqj-par .chk{display:flex;gap:6px;align-items:center;margin:8px 0;font-size:11.5px}" +
       "#pqjPanel .ft{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line,#1e2938)}#pqjPanel .ft button{flex:1;padding:8px;border-radius:8px;border:1px solid #22d3ee66;background:#0e7490;color:#fff;font:700 12px system-ui;cursor:pointer}#pqjPanel .ft button.sec{background:#131a28;color:inherit;border-color:var(--line,#1e2938)}" +
       "@media(max-width:860px){#pqjPanel{left:8px;right:8px;top:auto;bottom:70px;width:auto;max-width:none;max-height:72%}.pqj-cards{grid-template-columns:repeat(3,1fr)}}";
@@ -802,6 +1045,15 @@
         render(active() && calc(active())); var n = panel.querySelector("#pqjRq"); if (n) { n.focus(); n.setSelectionRange(pos, pos); }
       }
     });
+    panel.addEventListener("mouseover", function (e) { var el = e.target.closest && e.target.closest("[data-rt]"); if (el) hilite(el.getAttribute("data-rt"), true); });
+    panel.addEventListener("mouseout", function (e) {
+      var el = e.target.closest && e.target.closest("[data-rt]");
+      if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) hilite(el.getAttribute("data-rt"), false);
+    });
+    panel.addEventListener("focusout", function () {
+      if (!pend) return; pend = false;
+      setTimeout(function () { if (!panelBusy()) { var pk = active(); render(pk ? calc(pk) : null); } }, 80);
+    });
     var tb = document.getElementById("mapToolbar");
     btn = document.createElement("button"); btn.className = "tool-btn"; btn.id = "pqjBtn";
     btn.title = "Kalkulator jarak paket ke AMP / BP / Quarry"; btn.innerHTML = '<i class="fa-solid fa-ruler-combined"></i>';
@@ -812,7 +1064,7 @@
   }
 
   function init() {
-    load();
+    load(); loadRC();
     var tries = 0, t = setInterval(function () {
       var M = getMap();
       if ((M && window.L && document.getElementById("mapToolbar") && window.LOKASI_DATA) || ++tries > 200) {
@@ -823,7 +1075,7 @@
   }
 
   window.PQ_JARAK = {
-    toggle: toggle, addPaket: addPaket, exportXlsx: exportXlsx, pickOnMap: pickOnMap,
+    toggle: toggle, addPaket: addPaket, exportXlsx: exportXlsx, pickOnMap: pickOnMap, refresh: refresh,
     parseCoord: parseCoord, haversine: hav,
     _build: buildWorkbook, _model: function () { if (!F.length) loadFas(); return buildModel(); },
     _setState: function (o) { S = Object.assign(S, o); }, _fas: function (a) { F = a; }, _calc: calc
