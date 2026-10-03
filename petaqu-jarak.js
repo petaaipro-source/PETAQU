@@ -83,7 +83,7 @@
     (window.LOKASI_DATA || []).forEach(function (r) {
       var p = (typeof r.lat === "number" && typeof r.lng === "number") ? [r.lat, r.lng] : parseDMS(r.koordinat);
       if (!p || !JN[r.jenis] || !isFinite(p[0]) || !isFinite(p[1])) return;
-      F.push({ i: F.length, jenis: r.jenis, owner: r.owner || "-", kab: r.kabupaten || "-", prov: r.provinsi || "-", satker: r.satker || "-", alamat: r.alamat || "", lat: p[0], lng: p[1] });
+      F.push({ i: F.length, jenis: r.jenis, owner: r.owner || "-", kab: r.kabupaten || "-", prov: r.provinsi || "-", alamat: r.alamat || "", lat: p[0], lng: p[1] });
     });
   }
 
@@ -329,7 +329,7 @@
     var body = rows.map(function (r, k) {
       var d = r.d, ruasInfo = pk.tipe === "ruas" ? '<div class="sub">ruas: min ' + fmtKm(r.min) + ' · rata² ' + fmtKm(r.avg) + ' · maks ' + fmtKm(r.max) + ' km (lurus)</div>' : "";
       return '<tr class="' + (k === 0 ? "best " : "") + (d.lewat ? "warn" : "") + '" data-rt="' + j + ':' + r.f.i + '">' +
-        '<td class="rk">' + (k + 1) + '</td><td class="nm"><b>' + esc(r.f.owner) + '</b><div class="sub">' + esc(r.f.kab) + ' · ' + esc(r.f.satker) + '</div>' + ruasInfo + '</td>' +
+        '<td class="rk">' + (k + 1) + '</td><td class="nm"><b>' + esc(r.f.owner) + '</b><div class="sub">' + esc(r.f.kab) + ' · ' + esc(r.f.prov) + '</div>' + ruasInfo + '</td>' +
         '<td class="r">' + fmtKm(r.lurus) + '</td><td class="r jl">' + fmtKm(d.jalan) + (d.est ? '<i class="est" title="Estimasi">~</i>' : '<i class="ok" title="OSRM">●</i>') + '</td>' +
         '<td class="r">' + fmtMin(d.waktu) + (d.lewat ? '<div class="lw">lewat batas</div>' : "") + '</td>' +
         '<td class="r">' + fmtRp(d.biaya) + '</td></tr>';
@@ -546,7 +546,7 @@
     var kF = 4 + nF, kal = { lat: -7.0, lng: 110.4 };
     if (PKS[0]) { kal.lat = PKS[0].lat; kal.lng = PKS[0].lng; }
     title(wsF, "Daftar Fasilitas AMP / Batching Plant / Quarry", "Sumber: data-lokasi.js PETAQU. Kolom J–L dipakai sheet Kalkulator (jarak dari titik yang Anda isi).");
-    head(wsF, 4, ["No", "Jenis", "Owner", "Kabupaten/Kota", "Provinsi", "Satker / PPK", "Alamat", "Lat", "Lng", "Jarak lurus ke titik Kalkulator (km)", "Peringkat dalam jenis", "Kunci"]);
+    head(wsF, 4, ["No", "Jenis", "Owner", "Kabupaten/Kota", "Provinsi", "Tautan Google Maps", "Alamat", "Lat", "Lng", "Jarak lurus ke titik Kalkulator (km)", "Peringkat dalam jenis", "Kunci"]);
     var fRank = {}; // hitung peringkat kalkulator utk cache
     var kd = FAS.map(function (f) { return r3(hav(kal, f)); });
     FAS.forEach(function (f, i) {
@@ -555,14 +555,14 @@
     });
     FAS.forEach(function (f, i) {
       var r = 5 + i;
-      wsF.getRow(r).values = [i + 1, LAB[f.jenis], f.owner, f.kab, f.prov, f.satker, f.alamat, f.lat, f.lng];
+      wsF.getRow(r).values = [i + 1, LAB[f.jenis], f.owner, f.kab, f.prov, "https://www.google.com/maps?q=" + f.lat + "," + f.lng, f.alamat, f.lat, f.lng];
       wsF.getCell(r, 8).numFmt = "0.000000"; wsF.getCell(r, 9).numFmt = "0.000000";
       wsF.getCell(r, 10).value = res(kd[i], hf("Kalkulator!$C$4", "Kalkulator!$C$5", "H" + r, "I" + r));
       wsF.getCell(r, 11).value = res(fRank[i], 'COUNTIFS($B$5:$B$' + kF + ',B' + r + ',$J$5:$J$' + kF + ',"<"&J' + r + ')+COUNTIFS($B$5:B' + r + ',B' + r + ',$J$5:J' + r + ',J' + r + ')');
       wsF.getCell(r, 12).value = res(LAB[f.jenis] + "|" + fRank[i], "B" + r + '&"|"&K' + r);
       wsF.getCell(r, 2).font = { bold: true, color: { argb: JCOL[f.jenis] } };
     });
-    wsF.columns = [{ width: 6 }, { width: 9 }, { width: 38 }, { width: 22 }, { width: 16 }, { width: 18 }, { width: 50 }, { width: 12 }, { width: 12 }, { width: 18 }, { width: 12 }, { width: 12 }];
+    wsF.columns = [{ width: 6 }, { width: 9 }, { width: 38 }, { width: 22 }, { width: 16 }, { width: 38 }, { width: 50 }, { width: 12 }, { width: 12 }, { width: 18 }, { width: 12 }, { width: 12 }];
     wsF.autoFilter = { from: "A4", to: "L" + kF };
     var fRng = function (col) { return "Fasilitas!$" + col + "$5:$" + col + "$" + kF; };
 
@@ -605,7 +605,7 @@
     PKS.forEach(function (p) { p.rows.forEach(function (r) { rowsD.push({ p: p, r: r }); }); });
     var nD = rowsD.length, kD = 4 + nD;
     title(wsD, "Detail Jarak Semua Paket × Semua Fasilitas", "Kolom K (OSRM) = jarak jalan nyata bila tersedia, kosong = memakai estimasi (lurus × faktor). Ketik jarak jalan sendiri di kolom K untuk menimpa.");
-    head(wsD, 4, ["Paket", "Jenis", "Owner", "Kabupaten/Kota", "Satker", "Lat fasilitas", "Lng fasilitas", "Lat paket", "Lng paket", "Jarak lurus (km)", "Jarak jalan OSRM (km)", "Jarak jalan dipakai (km)", "Sumber", "Waktu (menit)", "Biaya angkut (Rp)", "Status", "Peringkat", "Kunci", "Min ke ruas (km)", "Maks ke ruas (km)", "Rata-rata ke ruas (km)"]);
+    head(wsD, 4, ["Paket", "Jenis", "Owner", "Kabupaten/Kota", "Provinsi", "Lat fasilitas", "Lng fasilitas", "Lat paket", "Lng paket", "Jarak lurus (km)", "Jarak jalan OSRM (km)", "Jarak jalan dipakai (km)", "Sumber", "Waktu (menit)", "Biaya angkut (Rp)", "Status", "Peringkat", "Kunci", "Min ke ruas (km)", "Maks ke ruas (km)", "Rata-rata ke ruas (km)"]);
     // cache peringkat per paket+jenis
     var rk = [];
     PKS.forEach(function (p) {
@@ -621,7 +621,7 @@
         var row = 5 + base++, j = r.f.jenis, L = LAB[j], pm = "MATCH($A" + row + "," + pRng("A") + ",0)", pr = 'MATCH($B' + row + ',Parameter!$A$6:$A$8,0)';
         var lur = r3(r.lurus), jal = r.jal, wk = Math.round((jal / P.kec[j] * 60 + P.load[j]) * 10) / 10, vol = p.vol[j] || 0, bia = Math.round(vol * P.tarif[j] * jal);
         var st = P.batas[j] > 0 && wk > P.batas[j] ? "MELEBIHI BATAS" : "OK";
-        wsD.getCell(row, 1).value = p.nama; wsD.getCell(row, 2).value = L; wsD.getCell(row, 3).value = r.f.owner; wsD.getCell(row, 4).value = r.f.kab; wsD.getCell(row, 5).value = r.f.satker;
+        wsD.getCell(row, 1).value = p.nama; wsD.getCell(row, 2).value = L; wsD.getCell(row, 3).value = r.f.owner; wsD.getCell(row, 4).value = r.f.kab; wsD.getCell(row, 5).value = r.f.prov;
         wsD.getCell(row, 6).value = r.f.lat; wsD.getCell(row, 7).value = r.f.lng;
         wsD.getCell(row, 8).value = res(p.lat, "INDEX(" + pRng("C") + "," + pm + ")");
         wsD.getCell(row, 9).value = res(p.lng, "INDEX(" + pRng("D") + "," + pm + ")");

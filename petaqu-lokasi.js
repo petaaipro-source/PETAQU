@@ -1,7 +1,7 @@
 /* ==========================================================================
    PETAQU – Layer Lokasi AMP / Batching Plant / Quarry
    Data diambil dari data-lokasi.js (window.LOKASI_DATA) -> edit file itu untuk update.
-   Fitur: marker per jenis, tombol ON/OFF per Jenis, Provinsi, Satker/Wilayah,
+   Fitur: marker per jenis, tombol ON/OFF per Jenis, Provinsi,
           Kabupaten/Kota, pencarian, zoom ke hasil, ingat pilihan terakhir.
    API  : window.PQ_LOKASI.reload() | .fit() | .toggle() | .setJenis('amp',false)
    ========================================================================== */
@@ -45,12 +45,12 @@
   }
 
   /* ---------- state ---------- */
-  var S = { jenis: { amp: true, bp: true, quarry: true }, offProv: [], offSatker: [], offKab: [], q: "", open: false, sec: { prov: true, satker: false, kab: true } };
+  var S = { jenis: { amp: true, bp: true, quarry: true }, offProv: [], offKab: [], q: "", open: false, sec: { prov: true, kab: true } };
   try { var sv = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); if (sv) { for (var k in sv) if (k in S) S[k] = sv[k]; } } catch (e) {}
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {} }
 
   var items = [], bad = [], group = null, panel = null, btn = null;
-  var cat = { prov: [], satker: [], kab: [] };
+  var cat = { prov: [], kab: [] };
 
   /* ---------- data ---------- */
   function build() {
@@ -61,8 +61,7 @@
       var p = ll(r);
       if (!p || !isFinite(p[0]) || !isFinite(p[1])) { bad.push(r); return; }
       var j = JENIS[r.jenis]; if (!j) { bad.push(r); return; }
-      var it = { r: r, lat: p[0], lng: p[1], prov: r.provinsi || "-", satker: r.satker || "-", kab: r.kabupaten || "-", marker: null, on: false };
-      it.skey = it.prov + "|" + it.satker;
+      var it = { r: r, lat: p[0], lng: p[1], prov: r.provinsi || "-", kab: r.kabupaten || "-", marker: null, on: false };
       it.marker = L.marker(p, { icon: mkIcon(r.jenis), riseOnHover: true, keyboard: false });
       it.marker.bindPopup(function () { return popup(it); }, { maxWidth: 300, className: "pqlok-pop" });
       it.marker.bindTooltip(esc(r.owner), { direction: "top", offset: [0, -14], opacity: .95 });
@@ -74,7 +73,6 @@
       return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return a.label.localeCompare(b.label, "id", { numeric: true }); });
     }
     cat.prov = tally(function (i) { return i.prov; }, function (i) { return i.prov; });
-    cat.satker = tally(function (i) { return i.skey; }, function (i) { return i.satker; });
     cat.kab = tally(function (i) { return i.kab; }, function (i) { return i.kab; });
     apply();
   }
@@ -96,7 +94,6 @@
       '<div class="pqlok-tag" style="background:' + c.color + ';color:' + c.fg + '"><i class="fa-solid ' + c.icon + '"></i> ' + esc(c.full) + '</div>' +
       '<div class="pqlok-own">' + esc(r.owner) + '</div>' +
       '<div class="pqlok-row"><b>Kabupaten/Kota</b><span>' + esc(it.kab) + ' &middot; ' + esc(it.prov) + '</span></div>' +
-      '<div class="pqlok-row"><b>Satker / PPK</b><span>' + esc(it.satker) + '</span></div>' +
       '<div class="pqlok-row"><b>Alamat</b><span>' + esc(r.alamat) + '</span></div>' +
       '<div class="pqlok-row"><b>Koordinat</b><span>' + it.lat.toFixed(6) + ', ' + it.lng.toFixed(6) + '</span></div>' +
       (r.catatan ? '<div class="pqlok-row"><b>Catatan</b><span>' + esc(r.catatan) + '</span></div>' : "") +
@@ -108,10 +105,9 @@
   function pass(it) {
     if (!S.jenis[it.r.jenis]) return false;
     if (S.offProv.indexOf(it.prov) > -1) return false;
-    if (S.offSatker.indexOf(it.skey) > -1) return false;
     if (S.offKab.indexOf(it.kab) > -1) return false;
     if (S.q) {
-      var t = (it.r.owner + " " + it.r.alamat + " " + it.kab + " " + it.satker).toLowerCase();
+      var t = (it.r.owner + " " + it.r.alamat + " " + it.kab).toLowerCase();
       if (t.indexOf(S.q.toLowerCase()) < 0) return false;
     }
     return true;
@@ -232,7 +228,6 @@
       '<div class="bd"><input type="search" id="pqlokQ" placeholder="Cari owner / alamat / kabupaten…" value="' + esc(S.q) + '">' +
       '<div style="display:flex;flex-direction:column;gap:6px">' + jh + "</div>" +
       secHTML("prov", "Provinsi", "offProv", cat.prov, function (c) { return c.label; }) +
-      secHTML("satker", "Satker / PPK / Wilayah", "offSatker", cat.satker, function (c) { return c.label + (cat.prov.length > 1 ? " (" + (c.prov === "DI Yogyakarta" ? "DIY" : "Jateng") + ")" : ""); }) +
       secHTML("kab", "Kabupaten / Kota", "offKab", cat.kab, function (c) { return c.label.replace(/^Kab\.\s*/, "").replace(/^Kota\s/, "Kota "); }) +
       (bad.length ? '<div class="pqlok-warn"><i class="fa-solid fa-triangle-exclamation"></i> ' + bad.length + " data tidak ditampilkan karena koordinat tidak valid: " + esc(bad.map(function (b) { return b.owner; }).join(", ")) + ". Perbaiki di data-lokasi.js.</div>" : "") +
       '</div><div class="ft"><button class="sec" data-reset><i class="fa-solid fa-rotate-left"></i> Reset</button><button data-fit><i class="fa-solid fa-expand"></i> Zoom ke hasil</button></div>';
@@ -255,14 +250,14 @@
     if ((el = t.closest("[data-all]"))) {
       e.stopPropagation();
       var ln = el.getAttribute("data-all"), on = el.getAttribute("data-on") === "1";
-      var map_ = { offProv: cat.prov, offSatker: cat.satker, offKab: cat.kab }[ln];
+      var map_ = { offProv: cat.prov, offKab: cat.kab }[ln];
       setAll(ln, map_.map(function (c) { return c.key; }), on); return apply();
     }
     if ((el = t.closest("[data-tg]"))) { var id = el.getAttribute("data-tg"); S.sec[id] = !S.sec[id]; save(); return render(); }
     if ((el = t.closest("[data-j]"))) { var j = el.getAttribute("data-j"); S.jenis[j] = !S.jenis[j]; return apply(); }
     if ((el = t.closest(".pqlok-chip"))) { toggleIn(S[el.getAttribute("data-l")], el.getAttribute("data-k")); return apply(); }
     if (t.closest("[data-fit]")) return fit();
-    if (t.closest("[data-reset]")) { S.jenis = { amp: true, bp: true, quarry: true }; S.offProv = []; S.offSatker = []; S.offKab = []; S.q = ""; return apply(); }
+    if (t.closest("[data-reset]")) { S.jenis = { amp: true, bp: true, quarry: true }; S.offProv = []; S.offKab = []; S.q = ""; return apply(); }
   }
 
   function toggle(force) {
