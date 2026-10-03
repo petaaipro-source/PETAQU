@@ -988,14 +988,14 @@
       ".pqj-pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#64748b;border:2px solid #fff;box-shadow:0 2px 8px #000a;display:flex;align-items:center;justify-content:center;margin-top:2px}" +
       ".pqj-pin.on{background:#ef4444;box-shadow:0 0 0 3px #ef444455,0 2px 8px #000a}" +
       ".pqj-pin span{transform:rotate(45deg);color:#fff;font:800 12px system-ui}" +
-      "#pqjPanel{position:absolute;top:60px;left:12px;width:440px;max-width:calc(100% - 24px);max-height:calc(100% - 150px);z-index:905;display:none;flex-direction:column;background:#0b1320f5;border:1px solid var(--line,#1e2938);border-radius:12px;color:var(--text,#e6edf5);backdrop-filter:blur(8px);box-shadow:0 8px 28px #000a;font:500 12.5px system-ui,sans-serif}" +
+      "#pqjPanel{position:absolute;top:64px;right:62px;left:auto;width:440px;max-width:calc(100% - 440px);max-height:calc(100% - 150px);z-index:905;display:none;flex-direction:column;background:#0b1320f5;border:1px solid var(--line,#1e2938);border-radius:12px;color:var(--text,#e6edf5);backdrop-filter:blur(8px);box-shadow:0 8px 28px #000a;font:500 12.5px system-ui,sans-serif}" +
       "#pqjPanel.open{display:flex}" +
-      "#pqjPanel .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line,#1e2938);font-weight:700;font-size:13.5px}" +
+      "#pqjPanel .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line,#1e2938);font-weight:700;font-size:13.5px;user-select:none;-webkit-user-select:none}" +
       "#pqjPanel .hd .sum{margin-left:auto;font-weight:600;font-size:10.5px}" +
       "#pqjPanel .x{background:none;border:0;color:inherit;cursor:pointer;font-size:15px;padding:2px 4px}" +
       "#pqjPanel .bd>*{flex-shrink:0}#pqjPanel .bd{overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:12px;overscroll-behavior:contain}" +
       ".pqj-sec>.t{font-weight:700;color:#22d3ee;text-transform:uppercase;letter-spacing:.04em;font-size:11px;padding:2px 0 6px;cursor:default}.pqj-sec>.t[data-tg]{cursor:pointer}" +
-      ".pqj-act{display:flex;flex-wrap:wrap;gap:6px}" +
+      ".pqj-act{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.pqj-act .pqj-b{display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;min-width:0}" +
       ".pqj-b{padding:7px 10px;border-radius:8px;border:1px solid #22d3ee66;background:#0e7490;color:#fff;font:700 11.5px system-ui;cursor:pointer}.pqj-b.s{background:#131a28;border-color:var(--line,#1e2938);color:inherit}.pqj-b:hover{border-color:#22d3ee}" +
       ".pqj-in{background:#080b12;color:inherit;border:1px solid var(--line,#1e2938);border-radius:7px;padding:5px 7px;font:inherit;outline:0}.pqj-in:focus{border-color:#22d3ee}" +
       ".pqj-ib{background:#131a28;border:1px solid var(--line,#1e2938);color:inherit;border-radius:7px;padding:5px 8px;cursor:pointer}.pqj-ib:hover{border-color:#f87171}" +
@@ -1022,23 +1022,48 @@
     document.head.appendChild(s);
   }
 
-  /* panel menempel tepat di kiri tombolnya (toolbar kanan), sejajar vertikal; tidak menimpa tombol folder di kiri atas */
+  /* panel menempel tepat di kiri tombolnya (toolbar kanan), sejajar vertikal; tidak menimpa sidebar maupun tombol folder.
+     Posisi dihitung ulang setiap kali ukuran layar/aplikasi berubah, dan dicoba lagi bila aplikasi belum tampil
+     (mis. masih di layar login/sambutan saat panel dibuka kembali otomatis). */
+  var plT = null, plN = 0, plRO = null;
+  function resetPos(st) { st.left = st.right = st.top = st.bottom = st.maxHeight = st.maxWidth = ""; }
+  function schedulePlace() { if (plN > 60) return; clearTimeout(plT); plT = setTimeout(function () { plN++; if (S.open) place(); }, 350); }
   function place() {
-    if (!panel || !btn) return;
+    if (!panel) return;
     var st = panel.style;
-    if (window.innerWidth <= 860) { st.left = st.right = st.top = st.bottom = st.maxHeight = ""; return; }   // HP: lembar bawah (CSS)
-    var host = panel.offsetParent || panel.parentNode, hr = host.getBoundingClientRect(), br = btn.getBoundingClientRect();
-    if (!br.width) return;
+    if (window.innerWidth <= 860) { resetPos(st); return; }   // HP: lembar bawah (CSS)
+    var host = panel.offsetParent || panel.parentNode, hr = host.getBoundingClientRect();
+    var ref = btn && btn.getBoundingClientRect().width ? btn : document.getElementById("mapToolbar"), br = ref && ref.getBoundingClientRect();
+    if (!hr.width || !br || !br.width) { resetPos(st); return schedulePlace(); }   // aplikasi belum tampil -> posisi bawaan CSS (kanan), coba lagi
+    plN = 0;
     var H = hr.height, top = Math.max(56, Math.min(br.top - hr.top - 4, H - 380));
+    var right = Math.max(8, Math.round(hr.right - br.left + 8));
+    // batas kiri: tepi kanan sidebar & tombol folder melayang, supaya tidak saling menimpa
+    var lim = hr.left + 8, sb = document.getElementById("sidebar"), fab = document.getElementById("pqFolder");
+    if (sb && sb.offsetWidth) lim = Math.max(lim, sb.getBoundingClientRect().right + 8);
+    if (fab && fab.offsetWidth) lim = Math.max(lim, fab.getBoundingClientRect().right + 10);
+    var avail = Math.floor(hr.right - right - lim);
     st.left = "auto"; st.bottom = "auto";
-    st.right = Math.max(8, Math.round(hr.right - br.left + 8)) + "px";
+    st.right = right + "px";
     st.top = Math.round(top) + "px";
+    st.maxWidth = Math.max(300, Math.min(440, avail)) + "px";
     st.maxHeight = Math.max(260, Math.round(H - top - 20)) + "px";
+  }
+  function watchPlace() {
+    window.addEventListener("resize", function () { if (S.open) place(); });
+    window.addEventListener("load", function () { if (S.open) place(); });
+    if (window.ResizeObserver && panel) {
+      try {
+        plRO = new ResizeObserver(function () { if (S.open) place(); });
+        var host = panel.parentNode, tb = document.getElementById("mapToolbar");
+        if (host) plRO.observe(host); if (tb) plRO.observe(tb);
+      } catch (e) {}
+    }
   }
   function toggle(force) {
     S.open = typeof force === "boolean" ? force : !S.open;
-    if (S.open) place();
     if (panel) panel.classList.toggle("open", S.open);
+    if (S.open) place();
     if (btn) btn.classList.toggle("active", S.open);
     save(); if (S.open) refresh();
   }
@@ -1074,7 +1099,7 @@
     btn.onclick = function (e) { e.stopPropagation(); toggle(); };
     if (tb) { var ref = document.getElementById("pqlokBtn") || document.getElementById("basemapBtn"); ref && ref.nextSibling ? tb.insertBefore(btn, ref.nextSibling) : tb.appendChild(btn); }
     else { btn.style.cssText = "position:absolute;top:104px;right:14px;z-index:900;width:38px;height:38px"; host.appendChild(btn); }
-    window.addEventListener("resize", place);
+    watchPlace();
     toggle(!!S.open); if (!S.open) drawMap(active() ? calc(active()) : null);
   }
 
