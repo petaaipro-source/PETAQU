@@ -13,6 +13,7 @@ async function segarkan(){   // perpanjang token otomatis; offline = tetap masuk
   try{const r=await post("/auth/v1/token?grant_type=refresh_token",{refresh_token:s.refresh_token});
     if(r.ok)simpan(await r.json(),s.email);else if(r.status===400||r.status===401||r.status===403){hapus();location.reload()}}catch{}
 }
+const tutupPanel=()=>{try{typeof toggleSidebarCollapse==="function"?toggleSidebarCollapse(true):document.body.classList.add("sidebar-collapsed");typeof toggleSidebar==="function"&&toggleSidebar(false)}catch{}};   // panel samping selalu tertutup saat masuk; buka lewat tombol panel
 const fit=()=>setTimeout(()=>{window.map&&(map.invalidateSize({pan:!1}),fitAllBounds())},50);
 function pesan(m,ok){const e=$("loginError"),c=$("loginCard");e.querySelector("span").textContent=m;e.style.color=ok?"var(--cyan)":"";e.classList.add("show");if(!ok){c.classList.remove("shake");c.offsetWidth;c.classList.add("shake")}}
 
@@ -28,7 +29,7 @@ window.PQ_AUTH_INIT=function(){
     (async()=>{try{
       const r=await fetch(CFG.url+"/auth/v1/user",{headers:{apikey:CFG.anon,Authorization:"Bearer "+t}});if(!r.ok)throw 0;
       const u=await r.json();simpan({access_token:t,refresh_token:rt,expires_in:ex,user:u},u.email);
-      scr.classList.add("hide");typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
+      scr.classList.add("hide");tutupPanel();typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
     }catch{pesan("Login Google gagal, coba lagi")}})();
   }else if(galatUrl){
     history.replaceState(null,"",location.pathname);
@@ -39,7 +40,7 @@ window.PQ_AUTH_INIT=function(){
     location.href=CFG.url+"/auth/v1/authorize?provider=google&redirect_to="+encodeURIComponent(location.origin+location.pathname);
   });
   if(localStorage.getItem(KEY)==="1"&&!getS())localStorage.removeItem(KEY);   // sesi login lama tanpa token -> kunci
-  if(localStorage.getItem(KEY)==="1"){scr.classList.add("hide");typeof resetWsIdleTimer==="function"&&resetWsIdleTimer();fit();segarkan();setInterval(segarkan,6e5)}
+  if(localStorage.getItem(KEY)==="1"){scr.classList.add("hide");tutupPanel();typeof resetWsIdleTimer==="function"&&resetWsIdleTimer();fit();segarkan();setInterval(segarkan,6e5)}
   const label=(t,ic)=>{btn.querySelector("span").textContent=t;btn.querySelector("i").className="fa-solid "+ic};
   function hitung(){clearInterval(tm);cd=60;rs.disabled=true;rs.textContent="Kirim ulang (60 dtk)";
     tm=setInterval(()=>{cd--;rs.textContent=cd>0?"Kirim ulang ("+cd+" dtk)":"Kirim ulang kode";if(cd<=0){clearInterval(tm);rs.disabled=false}},1e3)}
@@ -60,7 +61,7 @@ window.PQ_AUTH_INIT=function(){
     btn.disabled=true;
     try{
       const r=await post("/auth/v1/verify",{type:"email",email,token});if(!r.ok)throw 0;
-      simpan(await r.json(),email);$("loginError").classList.remove("show");scr.classList.add("hide");otp.value="";
+      simpan(await r.json(),email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();otp.value="";
       typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
     }catch{pesan(navigator.onLine?"Kode salah atau sudah kedaluwarsa":"Tidak ada koneksi internet");otp.value="";otp.focus()}finally{btn.disabled=false}
   }
