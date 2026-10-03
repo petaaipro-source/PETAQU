@@ -1,6 +1,6 @@
 /* PETAQU - Login OTP email (Supabase Auth). Sekali verifikasi, sesi tetap aktif sampai tombol Keluar ditekan. */
 (function(){"use strict";
-const CFG={url:"https://ISI_PROJECT_ID.supabase.co",anon:"ISI_ANON_KEY"};  // Supabase > Project Settings > API
+const CFG={url:"https://fhulmqwuzswxrqjcioww.supabase.co",anon:"sb_publishable_VkN9kEL6V9WZf-GwHtDfIw_TB2FcS3L"};  // Supabase > Project Settings > API
 const SK="pq_cloud_session",KEY="peta_auth_ok",$=id=>document.getElementById(id);
 const siap=()=>!/ISI_/.test(CFG.url+CFG.anon);
 if(siap())window.PETAQU_CFG=CFG;   // sekaligus mengaktifkan sinkron awan (petaqu-cloud.js) dengan sesi yang sama
