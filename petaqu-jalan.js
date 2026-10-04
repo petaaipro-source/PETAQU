@@ -73,7 +73,7 @@
     JPARJL: { 1: "1 lajur", 2: "2 lajur", 3: "3 lajur" }
   };
 
-  var DEF = { on: true, show: { tol: true, kons: true, renc: true, prov: false }, op: 0.9, osmTol: false, osmProv: false, sp: { on: false, layer: "", ep: "" } };
+  var DEF = { on: true, show: { tol: true, kons: true, renc: true, prov: false }, op: 0.9, osmTol: false, osmProv: false, lbl: true, sp: { on: false, layer: "", ep: "" } };
   var st = JSON.parse(JSON.stringify(DEF));
   try {
     var sv = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -169,6 +169,7 @@
       '<input type="file" id="tlImpFile" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
       '<button class="tl-b" id="tlImpBtn" type="button">Pilih file GeoJSON…</button><button class="tl-b" id="tlImpClr" type="button">Hapus impor</button><div id="tlImpSt" style="font-size:11px;color:#9fb0c8"></div>';
     h += '<div class="tl-h">Opasitas</div><input type="range" id="tlOp" min="3" max="10" step="1">';
+    h += '<label class="tl-c" style="margin-top:8px"><input type="checkbox" id="tlLbl"><span>Label nama tempat di atas semua layer (hanya basemap Google Hybrid)</span></label>';
     h += '<div class="tl-h">Lompat ke koridor tol</div>';
     PROYEK.forEach(function (x, i) { h += '<button class="tl-p" data-i="' + i + '">' + esc(x[0]) + "</button>"; });
     h += '<div class="tl-h">Buka peta resmi (tab baru)</div>';
@@ -177,7 +178,7 @@
     p.innerHTML = h; document.body.appendChild(p);
 
     p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
-    $("tlToggle").checked = !!st.on; $("tlOp").value = Math.round(st.op * 10);
+    $("tlLbl").checked = st.lbl !== false; $("tlToggle").checked = !!st.on; $("tlOp").value = Math.round(st.op * 10);
     $("tlOsmTol").checked = !!st.osmTol; $("tlOsmProv").checked = !!st.osmProv;
     $("tlSpOn").checked = !!st.sp.on; $("tlSpLayer").value = st.sp.layer || "";
     chips();
@@ -185,6 +186,7 @@
     $("tlClose").onclick = function () { p.classList.remove("open"); };
     p.addEventListener("change", function (e) {
       var t = e.target, k = t.dataset.k;
+      if (t.id === "tlLbl") { st.lbl = t.checked; save(); lblSync(); return; }
       if (t.id === "tlToggle") { st.on = t.checked; save(); sync(); spSync(false); if (st.on) fetchView(); return; }
       if (k) { st.show[k] = t.checked; var was = st.on; st.on = true; $("tlToggle").checked = true; save(); sync(); if (!was) spSync(false); fetchView(); return; }
       if (t.id === "tlOsmTol" || t.id === "tlOsmProv") {
@@ -701,6 +703,21 @@
     impStatus("Impor dihapus. Muat ulang halaman untuk membersihkan sepenuhnya.");
   }
 
+  /* ---------- label di atas layer ----------
+     Pada basemap Google Hybrid, nama tempat sudah "tertanam" di ubin dasar sehingga tertutup garis overlay.
+     Solusi: ubin Google khusus label/jalan (lyrs=h, transparan, posisi identik) digambar di pane z=450,
+     di atas semua garis overlay tetapi di bawah marker, tooltip & popup. */
+  var lblLayer = null;
+  function lblSync() {
+    var m = M(); if (!m) return;
+    var base = ""; try { base = typeof currentBaseId !== "undefined" ? currentBaseId : ""; } catch (e) {}
+    var want = st.lbl !== false && base === "google_hybrid";
+    if (want && !lblLayer) {
+      if (!m.getPane("pqJalanLbl")) { var pn = m.createPane("pqJalanLbl"); pn.style.zIndex = 450; pn.style.pointerEvents = "none"; }
+      lblLayer = L.tileLayer("https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}", { pane: "pqJalanLbl", subdomains: ["mt0", "mt1", "mt2", "mt3"], maxNativeZoom: 20, maxZoom: 22, keepBuffer: 2, updateWhenIdle: true, interactive: false }).addTo(m);
+    } else if (!want && lblLayer) { m.removeLayer(lblLayer); lblLayer = null; }
+  }
+
   function init() {
     var m = M();
     if (st.sp.layer && SP_NO.test(st.sp.layer)) { st.sp.layer = ""; st.sp.ep = ""; st.sp.on = false; save(); } /* bersihkan pilihan lama yang salah (mis. titik rawan kecelakaan) */
@@ -713,7 +730,7 @@
     try { imported = JSON.parse(localStorage.getItem(IK) || "{}") || {}; } catch (e) { imported = {}; }
     var ni = 0; Object.keys(imported).forEach(function (k) { if (CAT[k]) ni += draw(imported[k], k); });
     if (ni) impStatus(ni + " ruas hasil impor dipulihkan.");
-    count(); spSync(false); fetchView();
+    count(); spSync(false); fetchView(); lblSync(); setInterval(lblSync, 800);
     m.on("moveend", function () { clearTimeout(timer); timer = setTimeout(fetchView, 600); });
     window.__pqJalanDebug = { state: st, status: SS, discovery: function () { return disc; }, test: testSources };
   }
