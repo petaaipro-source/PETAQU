@@ -1,0 +1,676 @@
+/* PETAQU — Lapisan Jalan Tol (Trans Jawa), Tol Konstruksi/Rencana & Jalan Provinsi Jawa Tengah.  v3
+   PRIORITAS SUMBER RESMI (berurutan, otomatis turun ke sumber berikutnya bila gagal):
+
+   TOL (operasi · konstruksi · rencana)
+     1) Bina Marga / BPJT – Kementerian PU  : ArcGIS REST  gisportal.binamarga.pu.go.id  (folder "Tol"; ditemukan otomatis)
+     2) BIG Rupabumi Indonesia (RBI)         : atribut TOLRJL & status STARJL
+     3) OpenStreetMap (Overpass)             : hanya cadangan terakhir / pelengkap bila diaktifkan
+
+   JALAN PROVINSI JAWA TENGAH
+     1) Geoportal Borobudur/Palapa (Satu Peta Jateng, Dinas PU BM-CK) : overlay WMS
+        "Jalan Provinsi Kewenangan Provinsi Jawa Tengah Skala 1:50000" (nama layer dicari otomatis dari GetCapabilities)
+     2) Bina Marga – Kementerian PU (folder "Hosted", layer jalan provinsi)  : garis yang bisa diklik
+     3) BIG RBI (AUTRJL=2)                                                   : garis yang bisa diklik
+
+   Tambahan: impor GeoJSON sendiri (BPJT / PUPR / SHP Dinas PU yang dikonversi), uji koneksi sumber, tautan peta resmi.
+   Data di-cache per kotak 0,5° (localStorage). Tombol #tlBtn disembunyikan; dibuka lewat menu folder (petaqu-folder.js). */
+(function () {
+  "use strict";
+  if (window.__pqJalan) return;
+  window.__pqJalan = 1;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = "petaqu_jalan_v3", OLDKEY = "petaqu_jalan_v2", CK = "petaqu_jalan_cache_v3", DK = "petaqu_jalan_disc_v3", IK = "petaqu_jalan_import_v1";
+  var CELL = 0.5, TTL = 7 * 864e5, DTTL = 3 * 864e5;
+
+  var OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+  var BM = "https://gisportal.binamarga.pu.go.id/arcgis/rest/services";
+  var BIG = "https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/547/query";
+  var SP = "https://satupeta.jatengprov.go.id/geoserver/palapa/wms";
+  var BIG_F = "NAMRJL,KONRJL,FGSRJL,KLSRJL,JPARJL,STARJL,KLLRJL,TOLRJL,AUTRJL";
+
+  var SRCN = {
+    bm: "Bina Marga / BPJT – Kementerian PU",
+    big: "BIG – Rupabumi Indonesia",
+    osm: "OpenStreetMap",
+    sp: "Satu Peta Jateng (WMS)",
+    imp: "Impor GeoJSON"
+  };
+
+  /* tautan resmi untuk dibuka di tab baru */
+  var LINKS = [
+    ["Geoportal Borobudur – Satu Peta Jateng", "https://satupeta.jatengprov.go.id/main/peta"],
+    ["WebGIS Jalan – Dinas PU BM-CK Jateng", "https://dpubinmarcipka.jatengprov.go.id/webgis/index.php"],
+    ["Peta Jalan Provinsi (Open Data Jateng)", "https://data.jatengprov.go.id/dataset/peta-jalan-provinsi-jawa-tengah-tahun-2024"],
+    ["Peta Jalan Tol – BPJT / Kementerian PU", "https://gis.bpjt.pu.go.id"],
+    ["Bina Marga GIS Portal (ArcGIS REST)", "https://gisportal.binamarga.pu.go.id/arcgis/rest/services"]
+  ];
+
+  /* kategori. chain = urutan sumber; big = filter SQL layer BIG; q = filter Overpass; z = zoom minimum */
+  var CAT = {
+    tol:  { n: "Jalan Tol (operasi)",  c: "#f59e0b", w: 4, z: 8,  d: "",    big: "TOLRJL=1 AND STARJL=1", chain: ["bm", "big", "osm"], q: '[highway~"^(motorway|motorway_link)$"]' },
+    kons: { n: "Tol Dalam Konstruksi", c: "#f97316", w: 4, z: 8,  d: "9 6", big: "TOLRJL=1 AND STARJL=3", chain: ["bm", "big", "osm"], q: '[highway=construction][construction~"^(motorway|motorway_link|trunk)$"]' },
+    renc: { n: "Rencana Tol",          c: "#a78bfa", w: 3, z: 8,  d: "3 8", big: "TOLRJL=1 AND STARJL=2", chain: ["bm", "big", "osm"], q: '[highway=proposed][proposed~"^(motorway|trunk)$"]' },
+    prov: { n: "Ruas Jalan Provinsi",  c: "#38bdf8", w: 3, z: 10, d: "",    big: "AUTRJL=2 AND (TOLRJL IS NULL OR TOLRJL<>1)", chain: ["bm", "big"], q: '[highway~"^(secondary|secondary_link)$"]' }
+  };
+  var ORDER = ["tol", "kons", "renc", "prov"];
+
+  /* koridor tol untuk lompat cepat (status berubah; lihat BPJT) */
+  var PROYEK = [
+    ["Trans Jawa: Brebes–Pemalang–Batang–Semarang", -6.93, 109.45, 9],
+    ["Semarang ABC & Semarang–Demak", -6.97, 110.45, 11],
+    ["Semarang–Solo", -7.28, 110.58, 10],
+    ["Solo–Ngawi (Trans Jawa timur)", -7.52, 111.0, 10],
+    ["Yogyakarta–Bawen", -7.45, 110.4, 10],
+    ["Solo–Yogyakarta–YIA", -7.78, 110.5, 10],
+    ["Cilacap–Yogyakarta (rencana)", -7.65, 109.6, 9]
+  ];
+
+  var LBL = {
+    STARJL: { 1: "Operasional", 2: "Akan dibangun", 3: "Sedang dibangun" },
+    KONRJL: { 1: "Mantap", 2: "Tidak mantap", 3: "Kritis" },
+    FGSRJL: { 1: "Arteri primer", 2: "Kolektor primer", 5: "Arteri sekunder" },
+    JPARJL: { 1: "1 lajur", 2: "2 lajur", 3: "3 lajur" }
+  };
+
+  var DEF = { on: true, show: { tol: true, kons: true, renc: true, prov: false }, op: 0.9, osmTol: false, osmProv: false, sp: { on: false, layer: "" } };
+  var st = JSON.parse(JSON.stringify(DEF));
+  try {
+    var sv = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (!sv) { /* migrasi nama layer WMS dari versi lama */
+      var ov = JSON.parse(localStorage.getItem(OLDKEY) || "null");
+      if (ov && ov.sp && ov.sp.layer) st.sp.layer = ov.sp.layer;
+    } else {
+      Object.assign(st, sv); st.show = Object.assign({}, DEF.show, sv.show); st.sp = Object.assign({}, DEF.sp, sv.sp);
+    }
+  } catch (e) {}
+  var save = function () { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
+
+  var rend, rendOsm, groups = {}, seen = {}, cells = {}, timer, cache = {}, imported = {}, spLayer = null, spNames = [];
+  var disc = null, discP = null, discFail = null, SS = {}, chipT = 0;
+  try { cache = JSON.parse(localStorage.getItem(CK) || "{}"); } catch (e) {}
+
+  function M() { return window.map && window.map.addLayer ? window.map : null; }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  var useOsm = function (k) { return k === "prov" ? st.osmProv : st.osmTol; };
+  function explain(e) {
+    var m = (e && e.message) || String(e);
+    if (e && e.name === "AbortError") return "waktu habis";
+    if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return "tidak terjangkau (offline, diblokir CORS, atau server mati)";
+    return m;
+  }
+
+  /* ---------- status sumber ---------- */
+  function stat(s, ok, msg) {
+    var o = SS[s] || (SS[s] = { ok: 0, err: 0, last: "" });
+    if (ok) o.ok++; else { o.err++; o.last = msg || ""; }
+    clearTimeout(chipT); chipT = setTimeout(chips, 250);
+  }
+  function chips() {
+    var el = $("tlSrc"); if (!el) return;
+    el.innerHTML = ["bm", "big", "sp", "osm"].map(function (s) {
+      var o = SS[s], col = !o ? "#64748b" : (o.ok ? "#34d399" : "#f87171"), tx = !o ? "belum dipakai" : (o.ok ? "aktif (" + o.ok + ")" : "gagal");
+      return '<div class="tl-chip" title="' + esc(o && o.last ? o.last : "") + '"><i style="background:' + col + '"></i><span>' + SRCN[s] + '</span><em>' + tx + "</em></div>";
+    }).join("");
+  }
+
+  /* ---------- UI ---------- */
+  var CSS = "#tlBtn{display:none!important}" +
+    "#tlPanel{position:fixed;left:var(--pq-fl,364px);top:calc(var(--pq-ft,70px) + 52px);z-index:1260;width:min(340px,calc(100vw - 20px));max-height:calc(100dvh - var(--pq-ft,70px) - 80px);overflow:auto;display:none;box-sizing:border-box;padding:12px;border-radius:16px;border:1px solid rgba(245,158,11,.35);background:#0a0e17f5;color:#dbe7f3;font:13px/1.4 system-ui,sans-serif;box-shadow:0 14px 40px #0008;backdrop-filter:blur(10px)}" +
+    "#tlPanel.open{display:block}#tlPanel h3{margin:0 0 2px;font-size:14px}#tlPanel small{color:#9fb0c8}" +
+    ".tl-x{position:absolute;top:8px;right:10px;border:0;background:none;color:#8fa6bd;font-size:20px;cursor:pointer}" +
+    ".tl-r{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;cursor:pointer}.tl-r:hover{background:#ffffff0d}" +
+    ".tl-r input{accent-color:var(--c)}.tl-sw{width:30px;height:0;border-top:4px var(--ds,solid) var(--c);border-radius:2px;flex:none}" +
+    ".tl-r b{flex:1;font-weight:600}.tl-r em{font-style:normal;font-size:11px;color:#9fb0c8}" +
+    ".tl-h{margin:12px 0 4px;font:700 10px/1 system-ui;letter-spacing:.8px;text-transform:uppercase;color:#8fa6bd}" +
+    ".tl-p{display:block;width:100%;text-align:left;padding:7px 8px;margin:2px 0;border:0;border-radius:8px;background:#ffffff0a;color:inherit;font:600 12px system-ui;cursor:pointer}.tl-p:hover{background:#f59e0b26}" +
+    "a.tl-a{display:block;padding:6px 8px;margin:2px 0;border-radius:8px;background:#ffffff0a;color:#7dd3fc;font:600 12px system-ui;text-decoration:none}a.tl-a:hover{background:#38bdf826}" +
+    "#tlSt{margin-top:8px;font-size:11px;color:#9fb0c8}#tlPanel input[type=range]{width:100%}" +
+    ".tl-tip{background:#0a0e17f2;border:1px solid #f59e0b88;color:#fff;border-radius:8px;padding:5px 9px}" +
+    "#tlPanel input[type=text],#tlPanel select{width:100%;box-sizing:border-box;margin:3px 0;padding:6px 8px;border-radius:8px;border:1px solid #ffffff22;background:#0f1726;color:#dbe7f3;font:12px system-ui}" +
+    ".tl-b{display:inline-block;margin:3px 4px 3px 0;padding:6px 10px;border:0;border-radius:8px;background:#f59e0b26;color:#fde7b0;font:600 12px system-ui;cursor:pointer}.tl-b:hover{background:#f59e0b44}" +
+    ".tl-c{display:flex;align-items:flex-start;gap:8px;padding:4px 2px;font-size:12px;cursor:pointer}.tl-c input{margin-top:2px}" +
+    ".tl-src{display:inline-block;margin-top:4px;padding:1px 6px;border-radius:6px;background:#ffffff14;color:#9fb0c8;font-size:10px}" +
+    ".tl-chip{display:flex;align-items:center;gap:7px;padding:3px 2px;font-size:11px}.tl-chip i{width:8px;height:8px;border-radius:50%;flex:none}.tl-chip span{flex:1}.tl-chip em{font-style:normal;color:#9fb0c8}" +
+    "#tlTestOut{margin-top:4px;font-size:11px;line-height:1.5;color:#c6d4e6}";
+
+  function build() {
+    var s = document.createElement("style"); s.textContent = CSS; document.head.appendChild(s);
+    var b = document.createElement("button"); b.id = "tlBtn"; b.type = "button"; document.body.appendChild(b);
+    var p = document.createElement("div"); p.id = "tlPanel"; p.setAttribute("role", "dialog");
+    var h = '<button class="tl-x" id="tlClose" aria-label="Tutup">×</button><h3>Tol & Jalan Provinsi</h3>' +
+      "<small>Sumber resmi: Kementerian PU (Bina Marga/BPJT) · Dinas PU BM-CK & Geoportal Jateng · BIG</small>";
+
+    function row(k) {
+      var c = CAT[k];
+      return '<label class="tl-r" style="--c:' + c.c + '"><input type="checkbox" data-k="' + k + '"><span class="tl-sw" style="--ds:' + (c.d ? "dashed" : "solid") + '"></span><b>' + c.n + '</b><em id="tlN_' + k + '">0</em></label>';
+    }
+    h += '<div class="tl-h">Jalan tol · Trans Jawa & jaringan tol</div>' + row("tol") + row("kons") + row("renc");
+    h += '<div class="tl-h">Jalan provinsi Jawa Tengah</div>' +
+      '<label class="tl-c"><input type="checkbox" id="tlSpOn"><span>Peta resmi <b>Jalan Provinsi Kewenangan Prov. Jateng</b> (Geoportal Borobudur · Dinas PU BM-CK)</span></label>' +
+      '<input type="text" id="tlSpLayer" list="tlSpList" placeholder="Nama layer WMS (otomatis dicari)"><datalist id="tlSpList"></datalist>' +
+      '<button class="tl-b" id="tlSpFind" type="button">Cari layer otomatis</button><div id="tlSpSt" style="font-size:11px;color:#9fb0c8"></div>' +
+      row("prov") +
+      '<small>Garis “Ruas Jalan Provinsi” bisa diklik untuk info ruas (Bina Marga → BIG).</small>';
+    h += '<div class="tl-h">Status sumber data</div><div id="tlSrc"></div>' +
+      '<button class="tl-b" id="tlTest" type="button">Uji koneksi sumber</button><div id="tlTestOut"></div>';
+    h += '<div class="tl-h">Sumber tambahan (belum tentu resmi)</div>' +
+      '<label class="tl-c"><input type="checkbox" id="tlOsmTol"><span>Lengkapi tol/konstruksi/rencana dengan OpenStreetMap (lebih baru; digambar tipis di bawah data resmi)</span></label>' +
+      '<label class="tl-c"><input type="checkbox" id="tlOsmProv"><span>Lengkapi jalan provinsi dengan OSM (perkiraan, bisa mencampur jalan kabupaten)</span></label>';
+    h += '<div class="tl-h">Impor GeoJSON (BPJT / PUPR / Dinas PU)</div>' +
+      '<select id="tlImpCat"><option value="tol">Jalan Tol (operasi)</option><option value="kons">Tol Dalam Konstruksi</option><option value="renc">Rencana Tol</option><option value="prov">Jalan Provinsi</option></select>' +
+      '<input type="file" id="tlImpFile" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
+      '<button class="tl-b" id="tlImpBtn" type="button">Pilih file GeoJSON…</button><button class="tl-b" id="tlImpClr" type="button">Hapus impor</button><div id="tlImpSt" style="font-size:11px;color:#9fb0c8"></div>';
+    h += '<div class="tl-h">Opasitas</div><input type="range" id="tlOp" min="3" max="10" step="1">';
+    h += '<div class="tl-h">Lompat ke koridor tol</div>';
+    PROYEK.forEach(function (x, i) { h += '<button class="tl-p" data-i="' + i + '">' + esc(x[0]) + "</button>"; });
+    h += '<div class="tl-h">Buka peta resmi (tab baru)</div>';
+    LINKS.forEach(function (x) { h += '<a class="tl-a" target="_blank" rel="noopener" href="' + x[1] + '">' + esc(x[0]) + " ↗</a>"; });
+    h += '<div id="tlSt"></div><small>Status tol berubah cepat; rujukan akhir tetap BPJT/Kementerian PU. Status ruas jalan provinsi mengikuti SK Gubernur Jateng No. 622/2 Tahun 2023.</small>';
+    p.innerHTML = h; document.body.appendChild(p);
+
+    p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
+    $("tlOp").value = Math.round(st.op * 10);
+    $("tlOsmTol").checked = !!st.osmTol; $("tlOsmProv").checked = !!st.osmProv;
+    $("tlSpOn").checked = !!st.sp.on; $("tlSpLayer").value = st.sp.layer || "";
+    chips();
+    b.onclick = function () { p.classList.toggle("open"); };
+    $("tlClose").onclick = function () { p.classList.remove("open"); };
+    p.addEventListener("change", function (e) {
+      var t = e.target, k = t.dataset.k;
+      if (k) { st.show[k] = t.checked; st.on = true; save(); sync(); fetchView(); return; }
+      if (t.id === "tlOsmTol" || t.id === "tlOsmProv") {
+        st[t.id === "tlOsmTol" ? "osmTol" : "osmProv"] = t.checked; save();
+        if (!t.checked) clearOsm();
+        resetCells(); fetchView(); return;
+      }
+      if (t.id === "tlSpOn") { st.sp.on = t.checked; save(); spSync(true); return; }
+      if (t.id === "tlSpLayer") { st.sp.layer = t.value.trim(); save(); spSync(true); return; }
+      if (t.id === "tlImpFile") { impFile(t.files && t.files[0]); t.value = ""; }
+    });
+    $("tlOp").oninput = function () { st.op = this.value / 10; save(); each(function (l) { l.setStyle && l.setStyle({ opacity: st.op }); }); if (spLayer) spLayer.setOpacity(st.op); };
+    $("tlSpFind").onclick = function () { spDiscover(true); };
+    $("tlTest").onclick = function () { testSources(); };
+    $("tlImpBtn").onclick = function () { $("tlImpFile").click(); };
+    $("tlImpClr").onclick = function () { clearImport(); };
+    p.addEventListener("click", function (e) {
+      var q = e.target.closest(".tl-p"); if (!q || q.dataset.i == null) return;
+      var x = PROYEK[+q.dataset.i], m = M(); if (!x || !m) return;
+      st.show.tol = st.show.kons = st.show.renc = true; p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
+      save(); sync(); m.flyTo([x[1], x[2]], x[3], { duration: .8 });
+    });
+  }
+
+  /* ---------- peta ---------- */
+  function each(fn) { ORDER.forEach(function (k) { groups[k] && groups[k].eachLayer(fn); }); }
+
+  function sync() {
+    var m = M(); if (!m) return;
+    ORDER.forEach(function (k) {
+      var g = groups[k], want = st.on && st.show[k];
+      if (want && !m.hasLayer(g)) g.addTo(m);
+      if (!want && m.hasLayer(g)) m.removeLayer(g);
+    });
+    var on = ORDER.filter(function (k) { return st.show[k]; }).length;
+    var b = $("tlBtn"); if (b) b.classList.toggle("off", !st.on || !on);
+    legend();
+  }
+
+  function legend() {
+    var g = $("legend"); if (!g) return;
+    var el = $("tlLegend"); if (!el) { el = document.createElement("div"); el.id = "tlLegend"; g.appendChild(el); }
+    var rows = ORDER.filter(function (k) { return st.on && st.show[k]; }).map(function (k) {
+      var c = CAT[k];
+      return '<div class="jn-lg-row"><i style="background:' + (c.d ? "repeating-linear-gradient(90deg," + c.c + " 0 4px,transparent 4px 7px)" : c.c) + '"></i><span>' + c.n + "</span></div>";
+    }).join("");
+    if (spLayer && M() && M().hasLayer(spLayer)) rows += '<div class="jn-lg-row"><i style="background:#0ea5e9"></i><span>Jalan Prov. Jateng (Satu Peta)</span></div>';
+    el.innerHTML = rows ? "<b>Tol & Provinsi</b>" + rows : "";
+  }
+
+  function count() {
+    ORDER.forEach(function (k) {
+      var e = $("tlN_" + k); if (e) e.textContent = groups[k].getLayers().length + " ruas";
+    });
+  }
+
+  /* ---------- atribut & popup ---------- */
+  var NK = ["nama_ruas", "nm_ruas", "namaruas", "nama_jalan", "nama_tol", "nama_ruas_", "nama", "name", "ruas", "namrjl"];
+  function pickName(t) {
+    var keys = Object.keys(t || {}), low = {};
+    keys.forEach(function (k) { low[k.toLowerCase()] = k; });
+    for (var i = 0; i < NK.length; i++) { var v = t[low[NK[i]]]; if (v != null && String(v).trim()) return String(v).trim(); }
+    for (var j = 0; j < keys.length; j++) { var kk = keys[j]; if (/nama|^nm_|ruas|name/i.test(kk) && typeof t[kk] === "string" && t[kk].trim()) return t[kk].trim(); }
+    return "";
+  }
+  var SKIP = /^(objectid|fid|shape|globalid|gdb_|created|last_edited|st_length|st_area|id$)/i;
+
+  function popup(k, src, t) {
+    var c = CAT[k], nm = (src === "big" ? t.NAMRJL : pickName(t)) || t.name || t["name:id"] || t.ref || "(tanpa nama)";
+    var r = "<b>" + esc(nm) + '</b><div style="color:' + c.c + ';font-weight:700">' + c.n + "</div>";
+    var rows = [];
+    if (src === "big") {
+      var g = function (f) { var v = t[f]; return v == null ? "" : (LBL[f] && LBL[f][v]) || ""; };
+      rows = [["Status", g("STARJL")], ["Kondisi", g("KONRJL")], ["Fungsi", g("FGSRJL")], ["Lajur", g("JPARJL")], ["Pengelola", t.KLLRJL]];
+    } else if (src === "osm") {
+      rows = [["No/Ref", t.ref], ["Operator", t.operator], ["Jalur", t.lanes], ["Kec. maks", t.maxspeed], ["Permukaan", t.surface], ["Rencana buka", t.opening_date], ["Mulai", t.start_date]];
+    } else {
+      Object.keys(t).forEach(function (f) {
+        var v = t[f];
+        if (rows.length >= 10 || SKIP.test(f) || v == null || v === "" || typeof v === "object" || (typeof v === "string" && v.trim() === String(nm))) return;
+        rows.push([f.replace(/_/g, " "), typeof v === "number" ? Math.round(v * 1000) / 1000 : String(v).slice(0, 70)]);
+      });
+    }
+    rows.forEach(function (f) { if (f[1] !== "" && f[1] != null) r += "<div><span style='color:#9fb0c8'>" + esc(f[0]) + ":</span> " + esc(f[1]) + "</div>"; });
+    return r + '<span class="tl-src">' + (SRCN[src] || src) + "</span>";
+  }
+
+  var lastLine = 0; /* cadangan: penanda klik garis */
+  /* els: [{id, s:'bm'|'big'|'osm'|'imp', p:{props}, g:[[lat,lng],...]}] */
+  function draw(els, k) {
+    var c = CAT[k], n = 0;
+    els.forEach(function (e) {
+      var key = k + e.s + e.id; if (seen[key] || !e.g || e.g.length < 2) return; seen[key] = 1;
+      var t = e.p || {}, nm = (e.s === "big" ? t.NAMRJL : pickName(t)) || t.name || t.ref || "";
+      var osm = e.s === "osm", w = osm ? Math.max(2, c.w - 1) : c.w;
+      var pl = L.polyline(e.g, { color: c.c, weight: w, opacity: osm ? st.op * 0.75 : st.op, dashArray: c.d || null, lineCap: "round", lineJoin: "round", renderer: osm ? rendOsm : rend, pane: osm ? "pqJalanOsm" : "pqJalanPane" });
+      if (e.s === "imp") pl.__imp = 1;
+      if (osm) pl.__osm = 1;
+      pl.bindPopup(popup(k, e.s, t));
+      if (nm) pl.bindTooltip(esc(nm), { sticky: true, className: "tl-tip" });
+      pl.on("mouseover", function () { pl.setStyle({ weight: w + 3 }); }).on("mouseout", function () { pl.setStyle({ weight: w }); });
+      pl.on("click", function () { lastLine = Date.now(); });
+      groups[k].addLayer(pl); n++;
+    });
+    return n;
+  }
+
+  function rnd(a) { return Math.round(a * 1e5) / 1e5; }
+  function lines(geom) {
+    if (!geom) return [];
+    var parts = geom.type === "LineString" ? [geom.coordinates] : geom.type === "MultiLineString" ? geom.coordinates : [];
+    return parts.map(function (pt) { return pt.map(function (q) { return [rnd(q[1]), rnd(q[0])]; }); });
+  }
+  /* salt selalu dipakai sebagai awalan id agar id antar-layer/antar-sumber tidak bertabrakan */
+  function fromGeo(fc, src, salt, keep) {
+    var out = [];
+    (fc.features || []).forEach(function (f) {
+      var pr = f.properties || {};
+      if (keep && !keep(pr)) return;
+      var ps = lines(f.geometry), id0 = f.id != null ? f.id : (pr.OBJECTID != null ? pr.OBJECTID : pr.objectid);
+      ps.forEach(function (g, j) {
+        var id = salt + ":" + (id0 != null ? id0 : g[0][0] + "_" + g[0][1] + "_" + g.length) + "#" + j;
+        out.push({ id: id, s: src, p: pr, g: g });
+      });
+    });
+    return out;
+  }
+
+  /* ---------- jaringan ---------- */
+  async function getJSON(url, opt) {
+    var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 20000);
+    try {
+      var r = await fetch(url, Object.assign({ signal: ac.signal }, opt || {}));
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } finally { clearTimeout(to); }
+  }
+
+  /* ----- Bina Marga / BPJT (Kementerian PU): penemuan layer otomatis ----- */
+  function classify(s) {
+    s = String(s || "").toLowerCase();
+    if (/gerbang|gardu|rest.?area|simpang|interchange|junction|tarif|cctv|titik|point|label|buffer|batas|jembatan/.test(s)) return null;
+    if (/konstruksi|pembangunan|progres|progress|construction/.test(s)) return "kons";
+    if (/rencana|rencum|rujt|ppjt|usulan|proposed|plan\b/.test(s)) return "renc";
+    if (/operasi|operasional|beroperasi|existing|eksisting/.test(s)) return "tol";
+    if (/tol/.test(s)) return "tol";
+    return null;
+  }
+  async function bmFolder(f) {
+    var j = await getJSON(BM + "/" + f + "?f=json");
+    if (j.error) throw new Error(j.error.message || "folder " + f);
+    return j.services || [];
+  }
+  async function bmLayers(svc) {
+    var base = BM + "/" + svc.name + "/" + svc.type, j = await getJSON(base + "?f=json"), out = [];
+    if (j.error) throw new Error(j.error.message || svc.name);
+    var ls = (j.layers || []).filter(function (l) { return !l.subLayerIds; }).slice(0, 8);
+    for (var i = 0; i < ls.length; i++) {
+      var info = null;
+      try { info = await getJSON(base + "/" + ls[i].id + "?f=json"); } catch (e) {}
+      if (info && info.geometryType && info.geometryType !== "esriGeometryPolyline") continue;
+      out.push({ u: base + "/" + ls[i].id, n: ls[i].name || "", svc: svc.name, st: !!(info && info.fields && info.fields.some(function (f) { return /^(status|stat_ruas|status_ruas|status_tol|tahap)$/i.test(f.name); })) });
+    }
+    return out;
+  }
+  async function bmDisc0() {
+    try {
+      var c = JSON.parse(localStorage.getItem(DK) || "null");
+      if (c && c.ok && Date.now() - c.t < DTTL) return (disc = c);
+    } catch (e) {}
+    var d = { t: Date.now(), ok: 0, tol: [], kons: [], renc: [], prov: [] }, err = null, jobs = [];
+    try { (await bmFolder("Tol")).forEach(function (s) { if (/^(MapServer|FeatureServer)$/.test(s.type)) jobs.push([s, null]); }); } catch (e) { err = e; }
+    try {
+      (await bmFolder("Hosted")).forEach(function (s) {
+        if (/^(MapServer|FeatureServer)$/.test(s.type) && /jalan.?prov|prov.*jalan|jln.?prov/i.test(s.name)) jobs.push([s, "prov"]);
+      });
+    } catch (e) { err = err || e; }
+    if (!jobs.length) { /* daftar layanan yang diketahui ada di server Bina Marga */
+      jobs = [[{ name: "Tol/Jalan_Tol_Konstruksi", type: "MapServer" }, "kons"], [{ name: "Tol/rencana_umum_tol", type: "MapServer" }, "renc"], [{ name: "Hosted/Jalan_Provinsi_DIY", type: "FeatureServer" }, "prov"]];
+    }
+    for (var i = 0; i < jobs.length; i++) {
+      try {
+        var ls = await bmLayers(jobs[i][0]);
+        ls.forEach(function (l) { var k = jobs[i][1] || classify(l.svc + " " + l.n); if (k) d[k].push(l); });
+      } catch (e) { err = err || e; }
+    }
+    d.ok = d.tol.length + d.kons.length + d.renc.length + d.prov.length;
+    if (!d.ok) throw err || new Error("tidak ada layer ditemukan di server Bina Marga");
+    try { localStorage.setItem(DK, JSON.stringify(d)); } catch (e) {}
+    return (disc = d);
+  }
+  function bmDiscover(force) {
+    if (force) { disc = null; discP = null; discFail = null; try { localStorage.removeItem(DK); } catch (e) {} }
+    if (discFail && Date.now() - discFail.t < 60000) return Promise.reject(discFail.e);
+    if (discP) return discP;
+    discP = bmDisc0();
+    discP.catch(function (e) { discP = null; discFail = { t: Date.now(), e: e }; });
+    return discP;
+  }
+
+  async function getArc(l, k, bb) {
+    var out = [], off = 0, tag = l.u.split("/").slice(-3).join("/");
+    var keep = (k === "tol" && l.st) ? function (p) {
+      var s = ""; for (var f in p) if (/^(status|stat_ruas|status_ruas|status_tol|tahap)$/i.test(f) && typeof p[f] === "string") s += " " + p[f];
+      return !/konstruksi|pembangunan|sedang dibangun|rencana|akan dibangun|construction/i.test(s);
+    } : null;
+    for (var pg = 0; pg < 5; pg++) {
+      var o = {
+        where: "1=1", geometry: bb[1] + "," + bb[0] + "," + bb[3] + "," + bb[2], geometryType: "esriGeometryEnvelope",
+        inSR: "4326", outSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "*", returnGeometry: "true",
+        maxAllowableOffset: "0.00008", f: "geojson"
+      };
+      if (off) { o.resultOffset = String(off); o.resultRecordCount = "1000"; }
+      var j = await getJSON(l.u + "/query?" + new URLSearchParams(o).toString());
+      if (j.error) throw new Error(j.error.message || "ArcGIS error");
+      var n = (j.features || []).length;
+      out = out.concat(fromGeo(j, "bm", tag, keep));
+      var more = j.exceededTransferLimit || (j.properties && j.properties.exceededTransferLimit);
+      if (!more || !n) break;
+      off += n;
+    }
+    return out;
+  }
+
+  async function getBM(k, bb) {
+    var d = await bmDiscover(), ls = d[k] || [];
+    if (!ls.length) throw new Error("server Bina Marga tidak punya layer untuk kategori ini");
+    var rs = await Promise.allSettled(ls.map(function (l) { return getArc(l, k, bb); })), out = [], bad = 0, why = "";
+    rs.forEach(function (r) { if (r.status === "fulfilled") out = out.concat(r.value); else { bad++; why = explain(r.reason); } });
+    if (bad === rs.length) throw new Error(why);
+    return out;
+  }
+
+  /* ----- BIG ----- */
+  async function getBig(k, bb) {
+    var out = [], off = 0;
+    for (var pg = 0; pg < 5; pg++) {
+      var p = new URLSearchParams({
+        where: CAT[k].big, geometry: bb[1] + "," + bb[0] + "," + bb[3] + "," + bb[2], geometryType: "esriGeometryEnvelope",
+        inSR: "4326", outSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: BIG_F, returnGeometry: "true",
+        maxAllowableOffset: "0.0001", resultOffset: String(off), resultRecordCount: "1000", f: "geojson"
+      });
+      var j = await getJSON(BIG + "?" + p.toString());
+      if (j.error) throw new Error(j.error.message || "BIG error");
+      var n = (j.features || []).length;
+      out = out.concat(fromGeo(j, "big", "big", null));
+      var more = j.exceededTransferLimit || (j.properties && j.properties.exceededTransferLimit);
+      if (!more || !n) break;
+      off += n;
+    }
+    return out;
+  }
+
+  /* ----- OpenStreetMap ----- */
+  async function getOsm(k, bb) {
+    var q = "[out:json][timeout:25];way" + CAT[k].q + "(" + bb.join(",") + ");out tags geom;", err;
+    for (var i = 0; i < OVP.length; i++) {
+      try {
+        var j = await getJSON(OVP[i], { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+        return (j.elements || []).filter(function (e) { return e.geometry && e.geometry.length > 1; }).map(function (e) {
+          return { id: "osm:" + e.id, s: "osm", p: e.tags || {}, g: e.geometry.map(function (p) { return [rnd(p.lat), rnd(p.lon)]; }) };
+        });
+      } catch (e) { err = e; }
+    }
+    throw err;
+  }
+
+  function saveCache() {
+    for (var n = 0; n < 8; n++) {
+      try { localStorage.setItem(CK, JSON.stringify(cache)); return; } catch (er) {
+        var ks = Object.keys(cache).sort(function (a, b) { return cache[a].t - cache[b].t; });
+        if (!ks.length) return;
+        ks.slice(0, Math.max(1, Math.ceil(ks.length / 3))).forEach(function (kk) { delete cache[kk]; });
+      }
+    }
+  }
+
+  var FETCH = { bm: getBM, big: getBig, osm: getOsm };
+
+  /* satu kotak per kategori: coba sumber berurutan; turun ke berikutnya hanya bila sumber GAGAL */
+  async function loadCell(k, cx, cy) {
+    var id = k + ":" + cx + ":" + cy; if (cells[id]) return null; cells[id] = 1;
+    var c = cache[id], res = null;
+    if (c && Date.now() - c.t < TTL) { draw(c.e, k); res = { src: c.s, n: c.e.length }; }
+    else {
+      var s0 = cy * CELL, w0 = cx * CELL, bb = [s0, w0, s0 + CELL, w0 + CELL], errs = [];
+      var chain = CAT[k].chain, emptyOk = null;
+      for (var i = 0; i < chain.length && !res; i++) {
+        var src = chain[i];
+        try {
+          var els = await FETCH[src](k, bb);
+          stat(src, true);
+          /* layer provinsi Bina Marga yang terverifikasi hanya DIY: kosong di Jateng ≠ tidak ada jalan → lanjut ke sumber berikut */
+          if (!els.length && k === "prov" && i < chain.length - 1) { emptyOk = src; continue; }
+          draw(els, k); res = { src: src, n: els.length };
+          if (els.length < 1500) { cache[id] = { t: Date.now(), s: src, e: els }; saveCache(); }
+        } catch (e) { stat(src, false, explain(e)); errs.push(src + ": " + explain(e)); }
+      }
+      if (!res && emptyOk) res = { src: emptyOk, n: 0 };
+      if (!res) { delete cells[id]; throw new Error(errs.join(" | ")); }
+    }
+    /* pelengkap OSM (opsional) */
+    if (useOsm(k) && res.src !== "osm") {
+      var oid = "osm:" + id, oc = cache[oid];
+      try {
+        if (oc && Date.now() - oc.t < TTL) draw(oc.e, k);
+        else {
+          var s1 = cy * CELL, w1 = cx * CELL, oe = await getOsm(k, [s1, w1, s1 + CELL, w1 + CELL]);
+          stat("osm", true); draw(oe, k);
+          if (oe.length < 1500) { cache[oid] = { t: Date.now(), s: "osm", e: oe }; saveCache(); }
+        }
+      } catch (e) { stat("osm", false, explain(e)); }
+    }
+    return res;
+  }
+
+  function resetCells() { cells = {}; }
+  function clearOsm() {
+    ORDER.forEach(function (k) { groups[k].eachLayer(function (l) { if (l.__osm) groups[k].removeLayer(l); }); });
+    Object.keys(seen).forEach(function (key) { if (/^(tol|kons|renc|prov)osm/.test(key)) delete seen[key]; });
+    count();
+  }
+
+  async function fetchView() {
+    var m = M(); if (!m || !st.on) return;
+    var z = m.getZoom(), b = m.getBounds(), jobs = [], low = false;
+    ORDER.forEach(function (k) {
+      if (!st.show[k]) return;
+      if (z < CAT[k].z) { low = true; return; }
+      for (var x = Math.floor(b.getWest() / CELL); x <= Math.floor(b.getEast() / CELL); x++)
+        for (var y = Math.floor(b.getSouth() / CELL); y <= Math.floor(b.getNorth() / CELL); y++) {
+          if (jobs.length > 40) continue;
+          jobs.push([k, x, y]);
+        }
+    });
+    var s = $("tlSt"), fail = 0, used = {}, failMsg = "";
+    if (s) s.textContent = jobs.length ? "Memuat data…" : (low ? "Perbesar peta untuk menampilkan lapisan ini." : "");
+    for (var i = 0; i < jobs.length; i += 3) {
+      await Promise.all(jobs.slice(i, i + 3).map(function (j) {
+        return loadCell(j[0], j[1], j[2]).then(function (r) { if (r) used[r.src] = (used[r.src] || 0) + 1; }).catch(function (e) { fail++; failMsg = explain(e); });
+      }));
+      count();
+    }
+    count();
+    if (s && jobs.length) {
+      var parts = Object.keys(used).map(function (u) { return SRCN[u] + " (" + used[u] + " kotak)"; });
+      var msg = parts.length ? "Sumber: " + parts.join(", ") + "." : "Tidak ada data baru.";
+      if (used.osm && !used.bm) msg += " Data resmi Kementerian PU/BIG belum terjangkau; yang tampil dari OpenStreetMap sebagai cadangan.";
+      if (fail) msg += " " + fail + " kotak gagal dimuat (" + failMsg + "). Geser peta untuk mencoba lagi atau tekan “Uji koneksi sumber”.";
+      s.textContent = msg;
+    }
+  }
+
+  /* ---------- WMS Satu Peta / Geoportal Borobudur Jateng ---------- */
+  function spStatus(t) { var e = $("tlSpSt"); if (e) e.textContent = t || ""; }
+
+  function spSync(discover) {
+    var m = M(); if (!m) return;
+    if (spLayer) { m.removeLayer(spLayer); spLayer = null; }
+    if (!st.sp.on) { spStatus(""); legend(); return; }
+    if (!st.sp.layer) { if (discover) spDiscover(false); else spStatus("Isi nama layer, atau tekan “Cari layer otomatis”."); return; }
+    if (!m.getPane("pqJalanWms")) m.createPane("pqJalanWms").style.zIndex = 385;
+    spLayer = L.tileLayer.wms(SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Pemprov Jateng – Geoportal Borobudur (Palapa) · Dinas PU BM-CK" });
+    spLayer.on("tileerror", function () { stat("sp", false, "tile gagal: periksa nama layer atau koneksi"); spStatus("Sebagian tile gagal dimuat. Periksa nama layer atau koneksi."); });
+    spLayer.on("tileload", function () { stat("sp", true); });
+    spLayer.addTo(m); spStatus("Layer: " + st.sp.layer); legend();
+  }
+
+  var SP_NO = /apill|lampu|rambu|rppj|perlintasan|halte|jembatan|pju|penerangan|terminal|pelabuhan|kereta|\brel\b|bandara/i;
+  function spScore(x) {
+    var s = (x.name + " " + x.title).toLowerCase(), n = 0;
+    if (/jalan provinsi kewenangan|kewenangan.*prov.*jalan|jalan.*kewenangan.*prov/.test(s)) n += 10;
+    if (/jalan/.test(s)) n += 3;
+    if (/prov/.test(s)) n += 3;
+    if (/50000|50k/.test(s)) n += 1;
+    return n;
+  }
+  /* membaca GetCapabilities; mengembalikan jumlah layer jalan. Gagal bila server tidak mengizinkan CORS. */
+  async function spCaps() {
+    var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 20000), r;
+    try { r = await fetch(SP + "?service=WMS&request=GetCapabilities&version=1.3.0", { signal: ac.signal }); } finally { clearTimeout(to); }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var xml = new DOMParser().parseFromString(await r.text(), "text/xml"), all = [];
+    xml.querySelectorAll("Layer").forEach(function (l) {
+      var n = null, t = null;
+      for (var i = 0; i < l.children.length; i++) { var cn = l.children[i].localName; if (cn === "Name" && !n) n = l.children[i]; if (cn === "Title" && !t) t = l.children[i]; }
+      if (n) all.push({ name: n.textContent, title: t ? t.textContent : "" });
+    });
+    spNames = all.filter(function (x) { return /jalan/i.test(x.name + " " + x.title) && !SP_NO.test(x.name + " " + x.title); })
+      .sort(function (a, b) { return spScore(b) - spScore(a); });
+    var dl = $("tlSpList"); if (dl) dl.innerHTML = spNames.map(function (x) { return '<option value="' + esc(x.name) + '">' + esc(x.title) + "</option>"; }).join("");
+    stat("sp", true);
+    return spNames.length;
+  }
+
+  async function spDiscover() {
+    spStatus("Mencari layer di Geoportal Borobudur (Satu Peta Jateng)…");
+    try {
+      await spCaps();
+      var best = spNames[0];
+      if (!best) { spStatus("Tidak ada layer jalan ditemukan. Isi nama layer manual (lihat Geoportal → Jalan Provinsi Kewenangan Prov. Jateng)."); return; }
+      st.sp.layer = best.name; st.sp.on = true; $("tlSpLayer").value = best.name; $("tlSpOn").checked = true; save();
+      spSync(false);
+      spStatus("Dipakai: " + best.title + " (" + best.name + "). " + (spNames.length > 1 ? "Ada " + spNames.length + " kandidat — ketik/pilih untuk mengganti." : ""));
+    } catch (e) {
+      stat("sp", false, explain(e));
+      spStatus("Daftar layer tidak bisa dibaca dari browser (" + explain(e) + "). Isi nama layer manual: buka Geoportal Borobudur, pilih “Jalan Provinsi Kewenangan Provinsi Jawa Tengah Skala 1:50000”, salin nama layernya (mis. palapa:…), tempel di kolom di atas.");
+    }
+  }
+
+  /* ---------- uji koneksi ---------- */
+  async function testSources() {
+    var o = $("tlTestOut"), out = [];
+    function show() { o.innerHTML = out.join("<br>"); }
+    async function t(name, fn) {
+      out.push("… " + esc(name)); show();
+      var i = out.length - 1;
+      try { var m = await fn(); out[i] = "✓ <b>" + esc(name) + "</b>: " + esc(m); }
+      catch (e) { out[i] = "✗ <b>" + esc(name) + "</b>: " + esc(explain(e)); }
+      show();
+    }
+    o.textContent = "Menguji…";
+    await t("Bina Marga / BPJT (Kementerian PU)", async function () {
+      var d = await bmDiscover(true); stat("bm", true);
+      return "layer tol " + d.tol.length + ", konstruksi " + d.kons.length + ", rencana " + d.renc.length + ", provinsi " + d.prov.length;
+    });
+    await t("BIG Rupabumi", async function () {
+      var j = await getJSON(BIG + "?where=1%3D0&returnCountOnly=true&f=json");
+      if (j.error) throw new Error(j.error.message || "error"); stat("big", true); return "terjangkau";
+    });
+    await t("Satu Peta Jateng (GetCapabilities)", async function () { var n = await spCaps(); return n + " layer jalan terbaca"; });
+    resetCells(); fetchView();
+  }
+
+  /* ---------- impor GeoJSON ---------- */
+  function impStatus(t) { var e = $("tlImpSt"); if (e) e.textContent = t || ""; }
+
+  function addImported(cat, fc, persist) {
+    var els = fromGeo(fc, "imp", "i" + Date.now(), null);
+    var n = draw(els, cat);
+    if (persist) {
+      imported[cat] = (imported[cat] || []).concat(els.map(function (e) { return { id: e.id, s: "imp", p: e.p, g: e.g }; }));
+      try { localStorage.setItem(IK, JSON.stringify(imported)); return n; } catch (er) { return -n; }
+    }
+    return n;
+  }
+
+  function impFile(f) {
+    if (!f) return;
+    var cat = $("tlImpCat").value, rd = new FileReader();
+    rd.onload = function () {
+      try {
+        var j = JSON.parse(rd.result);
+        if (j.type !== "FeatureCollection" && j.type !== "Feature") throw new Error("bukan GeoJSON");
+        var fc = j.type === "Feature" ? { features: [j] } : j;
+        var n = addImported(cat, fc, true);
+        st.show[cat] = true; save(); sync(); count();
+        $("tlPanel").querySelector('input[data-k="' + cat + '"]').checked = true;
+        impStatus(n > 0 ? n + " ruas diimpor ke “" + CAT[cat].n + "” dan disimpan di perangkat." : Math.abs(n) + " ruas diimpor, tetapi terlalu besar untuk disimpan; hilang saat halaman ditutup.");
+        var bl = groups[cat].getBounds(); if (bl.isValid() && M()) M().fitBounds(bl, { maxZoom: 12 });
+      } catch (e) { impStatus("Gagal membaca file: " + e.message + ". Pastikan GeoJSON berisi garis (LineString) dalam koordinat WGS84."); }
+    };
+    rd.readAsText(f);
+  }
+
+  function clearImport() {
+    imported = {}; try { localStorage.removeItem(IK); } catch (e) {}
+    ORDER.forEach(function (k) {
+      groups[k].eachLayer(function (l) { if (l.__imp) groups[k].removeLayer(l); });
+    });
+    Object.keys(seen).forEach(function (key) { if (/^(tol|kons|renc|prov)imp/.test(key)) delete seen[key]; });
+    count();
+    impStatus("Impor dihapus. Muat ulang halaman untuk membersihkan sepenuhnya.");
+  }
+
+  function init() {
+    var m = M();
+    if (!m.getPane("pqJalanOsm")) { m.createPane("pqJalanOsm").style.zIndex = 388; }
+    if (!m.getPane("pqJalanPane")) { m.createPane("pqJalanPane").style.zIndex = 390; }
+    rend = L.canvas({ pane: "pqJalanPane", padding: 0.3 });
+    rendOsm = L.canvas({ pane: "pqJalanOsm", padding: 0.3 });
+    ORDER.forEach(function (k) { groups[k] = L.featureGroup(); });
+    build(); sync();
+    try { imported = JSON.parse(localStorage.getItem(IK) || "{}") || {}; } catch (e) { imported = {}; }
+    var ni = 0; Object.keys(imported).forEach(function (k) { if (CAT[k]) ni += draw(imported[k], k); });
+    if (ni) impStatus(ni + " ruas hasil impor dipulihkan.");
+    count(); spSync(false); fetchView();
+    m.on("moveend", function () { clearTimeout(timer); timer = setTimeout(fetchView, 600); });
+    window.__pqJalanDebug = { state: st, status: SS, discovery: function () { return disc; }, test: testSources };
+  }
+
+  var tries = 0, iv = setInterval(function () {
+    tries++;
+    if (window.L && M() && document.body) { clearInterval(iv); init(); }
+    else if (tries > 100) clearInterval(iv);
+  }, 300);
+})();

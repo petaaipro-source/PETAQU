@@ -1,6 +1,6 @@
 /* PETAQU — Folder melayang tunggal.
    Menyatukan semua tombol kecil yang tadinya berserakan menjadi SATU tombol folder:
-     • Lapisan jalan : Jalan Nasional, Patok KM, Kabupaten   (tombol aslinya disembunyikan, logikanya tetap dipakai)
+     • Lapisan jalan : Jalan Nasional, Patok KM, Kabupaten, Tol & Provinsi   (tombol aslinya disembunyikan, logikanya tetap dipakai)
      • Tampilan      : Transparansi area luar Jawa Tengah (◐)
      • Alat PETAQU   : semua item yang didaftarkan lewat PQ_DOCK (Peta offline, Apex, Cortex, dst.)
    Tidak ada logika lama yang diubah: folder hanya meneruskan klik ke tombol aslinya, sehingga
@@ -14,7 +14,8 @@
   var LAY = [
     ["jnBtn", "Jalan Nasional", "\uf018", "#22d3ee", "jnPanel"],
     ["pkBtn", "Patok KM", "\uf277", "#34d399", "pkPanel"],
-    ["kbBtn", "Kabupaten", "\uf279", "#c084fc", "kbPanel"]
+    ["kbBtn", "Kabupaten", "\uf279", "#c084fc", "kbPanel"],
+    ["tlBtn", "Tol & Jalan Provinsi", "\uf1b9", "#f59e0b", "tlPanel"]
   ];
 
   var CSS = [
