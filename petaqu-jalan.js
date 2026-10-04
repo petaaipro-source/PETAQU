@@ -565,7 +565,7 @@
     if (spLayer) { m.removeLayer(spLayer); spLayer = null; }
     if (!st.sp.on || !st.on) { spStatus(""); legend(); return; }
     if (!st.sp.layer) { if (discover) spDiscover(false); else spStatus("Isi nama layer, atau tekan “Cari layer otomatis”."); return; }
-    if (!m.getPane("pqJalanWms")) m.createPane("pqJalanWms").style.zIndex = 385;
+    mkPane(m, "pqJalanWms", 385);
     spLayer = L.tileLayer.wms(st.sp.ep || SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Pemprov Jateng – Geoportal Borobudur (Palapa) · Dinas PU BM-CK" });
     spLayer.on("tileerror", function () { stat("sp", false, "tile gagal: periksa nama layer atau koneksi"); spStatus("Sebagian tile gagal dimuat. Periksa nama layer atau koneksi."); });
     spLayer.on("tileload", function () { stat("sp", true); });
@@ -703,6 +703,15 @@
     impStatus("Impor dihapus. Muat ulang halaman untuk membersihkan sepenuhnya.");
   }
 
+  /* pane harus ada di kontainer yang sama dengan overlayPane (pada leaflet-rotate = rotatePane), agar ikut berputar
+     bersama peta dan tetap berada DI BAWAH popup/marker (yang berada di norotatePane). */
+  function mkPane(m, name, z, nopt) {
+    var pn = m.getPane(name);
+    if (!pn) { var ov = m.getPane("overlayPane"); pn = m.createPane(name, ov && ov.parentNode ? ov.parentNode : undefined); }
+    pn.style.zIndex = z; if (nopt) pn.style.pointerEvents = "none";
+    return pn;
+  }
+
   /* ---------- label di atas layer ----------
      Pada basemap Google Hybrid, nama tempat sudah "tertanam" di ubin dasar sehingga tertutup garis overlay.
      Solusi: ubin Google khusus label/jalan (lyrs=h, transparan, posisi identik) digambar di pane z=450,
@@ -713,7 +722,7 @@
     var base = ""; try { base = typeof currentBaseId !== "undefined" ? currentBaseId : ""; } catch (e) {}
     var want = st.lbl !== false && base === "google_hybrid";
     if (want && !lblLayer) {
-      if (!m.getPane("pqJalanLbl")) { var pn = m.createPane("pqJalanLbl"); pn.style.zIndex = 450; pn.style.pointerEvents = "none"; }
+      mkPane(m, "pqJalanLbl", 450, true);
       lblLayer = L.tileLayer("https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}", { pane: "pqJalanLbl", subdomains: ["mt0", "mt1", "mt2", "mt3"], maxNativeZoom: 20, maxZoom: 22, keepBuffer: 2, updateWhenIdle: true, interactive: false }).addTo(m);
     } else if (!want && lblLayer) { m.removeLayer(lblLayer); lblLayer = null; }
   }
@@ -721,8 +730,8 @@
   function init() {
     var m = M();
     if (st.sp.layer && SP_NO.test(st.sp.layer)) { st.sp.layer = ""; st.sp.ep = ""; st.sp.on = false; save(); } /* bersihkan pilihan lama yang salah (mis. titik rawan kecelakaan) */
-    if (!m.getPane("pqJalanOsm")) { m.createPane("pqJalanOsm").style.zIndex = 408; }
-    if (!m.getPane("pqJalanPane")) { m.createPane("pqJalanPane").style.zIndex = 410; }
+    mkPane(m, "pqJalanOsm", 408);
+    mkPane(m, "pqJalanPane", 410);
     rend = L.canvas({ pane: "pqJalanPane", padding: 0.3 });
     rendOsm = L.canvas({ pane: "pqJalanOsm", padding: 0.3 });
     ORDER.forEach(function (k) { groups[k] = L.featureGroup(); });
