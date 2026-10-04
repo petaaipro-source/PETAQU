@@ -51,7 +51,7 @@
     tol:  { n: "Jalan Tol (operasi)",  c: "#f59e0b", w: 4, z: 8,  d: "",    big: "TOLRJL=1 AND STARJL=1", chain: ["bm", "big", "osm"], q: '[highway~"^(motorway|motorway_link)$"]' },
     kons: { n: "Tol Dalam Konstruksi", c: "#f97316", w: 4, z: 8,  d: "9 6", big: "TOLRJL=1 AND STARJL=3", chain: ["bm", "big", "osm"], q: '[highway=construction][construction~"^(motorway|motorway_link|trunk)$"]' },
     renc: { n: "Rencana Tol",          c: "#a78bfa", w: 3, z: 8,  d: "3 8", big: "TOLRJL=1 AND STARJL=2", chain: ["bm", "big", "osm"], q: '[highway=proposed][proposed~"^(motorway|trunk)$"]' },
-    prov: { n: "Ruas Jalan Provinsi",  c: "#38bdf8", w: 3, z: 10, d: "",    big: "AUTRJL=2 AND (TOLRJL IS NULL OR TOLRJL<>1)", chain: ["bm", "big"], q: '[highway~"^(secondary|secondary_link)$"]' }
+    prov: { n: "Ruas Jalan Provinsi",  c: "#2f4bff", w: 3, z: 10, d: "",    big: "AUTRJL=2 AND (TOLRJL IS NULL OR TOLRJL<>1)", chain: ["bm", "big"], q: '[highway~"^(secondary|secondary_link)$"]' }
   };
   var ORDER = ["tol", "kons", "renc", "prov"];
 
@@ -84,6 +84,7 @@
       Object.assign(st, sv); st.show = Object.assign({}, DEF.show, sv.show); st.sp = Object.assign({}, DEF.sp, sv.sp);
     }
   } catch (e) {}
+  st.show.prov = false; st.osmProv = false; /* jalan provinsi hanya dari peta resmi Geoportal (WMS); garis vektor dinonaktifkan */
   var save = function () { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
 
   var spAll = [], rend, rendOsm, groups = {}, seen = {}, cells = {}, timer, cache = {}, imported = {}, spLayer = null, spNames = [];
@@ -159,15 +160,13 @@
       '<label class="tl-c"><input type="checkbox" id="tlSpOn"><span>Peta resmi <b>Jalan Provinsi Kewenangan Prov. Jateng</b> (Geoportal Borobudur · Dinas PU BM-CK)</span></label>' +
       '<input type="text" id="tlSpLayer" list="tlSpList" placeholder="Nama layer WMS (otomatis dicari)"><datalist id="tlSpList"></datalist>' +
       '<button class="tl-b" id="tlSpFind" type="button">Cari layer otomatis</button><div id="tlSpSt" style="font-size:11px;color:#9fb0c8"></div><div id="tlSpCand"></div>' +
-      row("prov") +
-      '<small>Garis “Ruas Jalan Provinsi” bisa diklik untuk info ruas (Bina Marga → BIG).</small>';
+      '<small>Label nama ruas diambil dari layer yang sama (zoom ≥ 11).</small>';
     h += '<div class="tl-h">Status sumber data</div><div id="tlSrc"></div>' +
       '<button class="tl-b" id="tlTest" type="button">Uji koneksi sumber</button><div id="tlTestOut"></div>';
     h += '<div class="tl-h">Sumber tambahan (belum tentu resmi)</div>' +
-      '<label class="tl-c"><input type="checkbox" id="tlOsmTol"><span>Lengkapi tol/konstruksi/rencana dengan OpenStreetMap (lebih baru; digambar tipis di bawah data resmi)</span></label>' +
-      '<label class="tl-c"><input type="checkbox" id="tlOsmProv"><span>Lengkapi jalan provinsi dengan OSM (perkiraan, bisa mencampur jalan kabupaten)</span></label>';
+      '<label class="tl-c"><input type="checkbox" id="tlOsmTol"><span>Lengkapi tol/konstruksi/rencana dengan OpenStreetMap (lebih baru; digambar tipis di bawah data resmi)</span></label>';
     h += '<div class="tl-h">Impor GeoJSON (BPJT / PUPR / Dinas PU)</div>' +
-      '<select id="tlImpCat"><option value="tol">Jalan Tol (operasi)</option><option value="kons">Tol Dalam Konstruksi</option><option value="renc">Rencana Tol</option><option value="prov">Jalan Provinsi</option></select>' +
+      '<select id="tlImpCat"><option value="tol">Jalan Tol (operasi)</option><option value="kons">Tol Dalam Konstruksi</option><option value="renc">Rencana Tol</option></select>' +
       '<input type="file" id="tlImpFile" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
       '<button class="tl-b" id="tlImpBtn" type="button">Pilih file GeoJSON…</button><button class="tl-b" id="tlImpClr" type="button">Hapus impor</button><div id="tlImpSt" style="font-size:11px;color:#9fb0c8"></div>';
     h += '<div class="tl-h">Opasitas</div><input type="range" id="tlOp" min="3" max="10" step="1">';
@@ -182,7 +181,7 @@
 
     p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
     $("tlNm").checked = st.nm !== false; $("tlLbl").checked = st.lbl !== false; $("tlToggle").checked = !!st.on; $("tlOp").value = Math.round(st.op * 10);
-    $("tlOsmTol").checked = !!st.osmTol; $("tlOsmProv").checked = !!st.osmProv;
+    $("tlOsmTol").checked = !!st.osmTol;
     $("tlSpOn").checked = !!st.sp.on; $("tlSpLayer").value = st.sp.layer || "";
     chips();
     b.onclick = function () { p.classList.toggle("open"); };
@@ -193,8 +192,8 @@
       if (t.id === "tlLbl") { st.lbl = t.checked; save(); lblSync(); return; }
       if (t.id === "tlToggle") { st.on = t.checked; save(); sync(); spSync(false); if (st.on) fetchView(); return; }
       if (k) { st.show[k] = t.checked; var was = st.on; st.on = true; $("tlToggle").checked = true; save(); sync(); if (!was) spSync(false); fetchView(); return; }
-      if (t.id === "tlOsmTol" || t.id === "tlOsmProv") {
-        st[t.id === "tlOsmTol" ? "osmTol" : "osmProv"] = t.checked; save();
+      if (t.id === "tlOsmTol") {
+        st.osmTol = t.checked; save();
         if (!t.checked) clearOsm();
         resetCells(); fetchView(); return;
       }
@@ -247,11 +246,8 @@
     }
     var tol = ORDER.filter(function (k) { return k !== "prov" && st.on && st.show[k]; }).map(row).join("");
     var jt = "";
-    if (st.on && st.show.prov) jt += row("prov").replace(CAT.prov.n, "Ruas Jalan Provinsi Jateng (vektor)");
-    if (st.on && spLayer && M() && M().hasLayer(spLayer)) {
-      jt += '<div class="jn-lg-row"><i style="background:#2f4bff"></i><span>Jalan Provinsi Kewenangan Prov. Jateng</span></div>';
-    }
-    el.innerHTML = (tol ? "<b>Jalan Tol</b>" + tol : "") + (jt ? '<b class="tl-lh">Jalan Provinsi Jawa Tengah</b>' + jt : "");
+    if (st.on && spLayer && M() && M().hasLayer(spLayer)) jt = '<div class="jn-lg-row"><i style="background:' + CAT.prov.c + '"></i><span>Jalan Provinsi Jawa Tengah</span></div>';
+    el.innerHTML = (tol ? "<b>Jalan Tol</b>" + tol : "") + (jt ? '<b class="tl-lh">Jalan Provinsi</b>' + jt : "");
   }
 
   function count() {
