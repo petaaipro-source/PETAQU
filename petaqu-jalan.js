@@ -123,6 +123,7 @@
     "#tlPanel{position:fixed;left:var(--pq-fl,364px);top:calc(var(--pq-ft,70px) + 52px);z-index:1260;width:min(340px,calc(100vw - 20px));max-height:calc(100dvh - var(--pq-ft,70px) - 80px);overflow:auto;display:none;box-sizing:border-box;padding:12px;border-radius:16px;border:1px solid rgba(245,158,11,.35);background:#0a0e17f5;color:#dbe7f3;font:13px/1.4 system-ui,sans-serif;box-shadow:0 14px 40px #0008;backdrop-filter:blur(10px)}" +
     "#tlPanel.open{display:block}#tlPanel h3{margin:0 0 2px;font-size:14px}#tlPanel small{color:#9fb0c8}" +
     ".tl-x{position:absolute;top:8px;right:10px;border:0;background:none;color:#8fa6bd;font-size:20px;cursor:pointer}" +
+    ".tl-hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}.tl-hd .tl-x{position:static;line-height:1;padding:0 2px}.tl-hd .jn-sw{margin-top:2px}" +
     ".tl-r{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;cursor:pointer}.tl-r:hover{background:#ffffff0d}" +
     ".tl-r input{accent-color:var(--c)}.tl-sw{width:30px;height:0;border-top:4px var(--ds,solid) var(--c);border-radius:2px;flex:none}" +
     ".tl-r b{flex:1;font-weight:600}.tl-r em{font-style:normal;font-size:11px;color:#9fb0c8}" +
@@ -142,8 +143,10 @@
     var s = document.createElement("style"); s.textContent = CSS; document.head.appendChild(s);
     var b = document.createElement("button"); b.id = "tlBtn"; b.type = "button"; document.body.appendChild(b);
     var p = document.createElement("div"); p.id = "tlPanel"; p.setAttribute("role", "dialog");
-    var h = '<button class="tl-x" id="tlClose" aria-label="Tutup">×</button><h3>Tol & Jalan Provinsi</h3>' +
-      "<small>Sumber resmi: Kementerian PU (Bina Marga/BPJT) · Dinas PU BM-CK & Geoportal Jateng · BIG</small>";
+    var h = '<div class="tl-hd"><div style="flex:1"><h3>Tol & Jalan Provinsi</h3>' +
+      "<small>Sumber resmi: Kementerian PU (Bina Marga/BPJT) · Dinas PU BM-CK & Geoportal Jateng · BIG</small></div>" +
+      '<label class="jn-sw" style="--a:#f59e0b;--b:#d97706" title="Tampilkan / sembunyikan"><input type="checkbox" id="tlToggle"><span></span></label>' +
+      '<button class="tl-x" id="tlClose" aria-label="Tutup">×</button></div>';
 
     function row(k) {
       var c = CAT[k];
@@ -174,7 +177,7 @@
     p.innerHTML = h; document.body.appendChild(p);
 
     p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
-    $("tlOp").value = Math.round(st.op * 10);
+    $("tlToggle").checked = !!st.on; $("tlOp").value = Math.round(st.op * 10);
     $("tlOsmTol").checked = !!st.osmTol; $("tlOsmProv").checked = !!st.osmProv;
     $("tlSpOn").checked = !!st.sp.on; $("tlSpLayer").value = st.sp.layer || "";
     chips();
@@ -182,7 +185,8 @@
     $("tlClose").onclick = function () { p.classList.remove("open"); };
     p.addEventListener("change", function (e) {
       var t = e.target, k = t.dataset.k;
-      if (k) { st.show[k] = t.checked; st.on = true; save(); sync(); fetchView(); return; }
+      if (t.id === "tlToggle") { st.on = t.checked; save(); sync(); spSync(false); if (st.on) fetchView(); return; }
+      if (k) { st.show[k] = t.checked; var was = st.on; st.on = true; $("tlToggle").checked = true; save(); sync(); if (!was) spSync(false); fetchView(); return; }
       if (t.id === "tlOsmTol" || t.id === "tlOsmProv") {
         st[t.id === "tlOsmTol" ? "osmTol" : "osmProv"] = t.checked; save();
         if (!t.checked) clearOsm();
@@ -557,7 +561,7 @@
   function spSync(discover) {
     var m = M(); if (!m) return;
     if (spLayer) { m.removeLayer(spLayer); spLayer = null; }
-    if (!st.sp.on) { spStatus(""); legend(); return; }
+    if (!st.sp.on || !st.on) { spStatus(""); legend(); return; }
     if (!st.sp.layer) { if (discover) spDiscover(false); else spStatus("Isi nama layer, atau tekan “Cari layer otomatis”."); return; }
     if (!m.getPane("pqJalanWms")) m.createPane("pqJalanWms").style.zIndex = 385;
     spLayer = L.tileLayer.wms(st.sp.ep || SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Pemprov Jateng – Geoportal Borobudur (Palapa) · Dinas PU BM-CK" });
