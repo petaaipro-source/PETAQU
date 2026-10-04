@@ -124,6 +124,7 @@
     "#tlPanel.open{display:block}#tlPanel h3{margin:0 0 2px;font-size:14px}#tlPanel small{color:#9fb0c8}" +
     ".tl-x{position:absolute;top:8px;right:10px;border:0;background:none;color:#8fa6bd;font-size:20px;cursor:pointer}" +
     ".tl-lab{pointer-events:none!important}.tl-lab span{position:absolute;left:0;top:0;white-space:nowrap;font:700 11px/1 system-ui,sans-serif;color:#fff;letter-spacing:.2px;text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000,0 -1px 2px #000;transform-origin:50% 50%}" +
+    "#tlLegend{margin-top:6px}#tlLegend b{display:block;margin-top:6px;font-size:10px;letter-spacing:.6px;text-transform:uppercase}#tlLegend .jn-lg-row{display:flex;align-items:center;gap:8px;margin-top:5px;white-space:nowrap;color:#d7e5f3;font-size:11.5px;font-weight:600}#tlLegend .jn-lg-row i{width:22px;height:4px;border-radius:3px;flex:none;display:block}#tlLegend .tl-lgimg{display:block;max-width:100%;margin-top:4px}" +
     ".tl-hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}.tl-hd .tl-x{position:static;line-height:1;padding:0 2px}.tl-hd .jn-sw{margin-top:2px}" +
     ".tl-r{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;cursor:pointer}.tl-r:hover{background:#ffffff0d}" +
     ".tl-r input{accent-color:var(--c)}.tl-sw{width:30px;height:0;border-top:4px var(--ds,solid) var(--c);border-radius:2px;flex:none}" +
@@ -170,7 +171,7 @@
       '<input type="file" id="tlImpFile" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
       '<button class="tl-b" id="tlImpBtn" type="button">Pilih file GeoJSON…</button><button class="tl-b" id="tlImpClr" type="button">Hapus impor</button><div id="tlImpSt" style="font-size:11px;color:#9fb0c8"></div>';
     h += '<div class="tl-h">Opasitas</div><input type="range" id="tlOp" min="3" max="10" step="1">';
-    h += '<label class="tl-c" style="margin-top:8px"><input type="checkbox" id="tlNm"><span>Label nama ruas pada garis (zoom ≥ 12; berlaku untuk garis vektor, bukan gambar WMS Geoportal)</span></label>';
+    h += '<label class="tl-c" style="margin-top:8px"><input type="checkbox" id="tlNm"><span>Label nama ruas pada garis (zoom ≥ 11; juga untuk layer WMS Geoportal lewat WFS)</span></label>';
     h += '<label class="tl-c"><input type="checkbox" id="tlLbl"><span>Label nama tempat di atas semua layer (hanya basemap Google Hybrid)</span></label>';
     h += '<div class="tl-h">Lompat ke koridor tol</div>';
     PROYEK.forEach(function (x, i) { h += '<button class="tl-p" data-i="' + i + '">' + esc(x[0]) + "</button>"; });
@@ -188,7 +189,7 @@
     $("tlClose").onclick = function () { p.classList.remove("open"); };
     p.addEventListener("change", function (e) {
       var t = e.target, k = t.dataset.k;
-      if (t.id === "tlNm") { st.nm = t.checked; save(); lblNames(); return; }
+      if (t.id === "tlNm") { st.nm = t.checked; save(); lblNames(); spWfs(); return; }
       if (t.id === "tlLbl") { st.lbl = t.checked; save(); lblSync(); return; }
       if (t.id === "tlToggle") { st.on = t.checked; save(); sync(); spSync(false); if (st.on) fetchView(); return; }
       if (k) { st.show[k] = t.checked; var was = st.on; st.on = true; $("tlToggle").checked = true; save(); sync(); if (!was) spSync(false); fetchView(); return; }
@@ -240,12 +241,20 @@
   function legend() {
     var g = $("legend"); if (!g) return;
     var el = $("tlLegend"); if (!el) { el = document.createElement("div"); el.id = "tlLegend"; g.appendChild(el); }
-    var rows = ORDER.filter(function (k) { return st.on && st.show[k]; }).map(function (k) {
+    function row(k) {
       var c = CAT[k];
       return '<div class="jn-lg-row"><i style="background:' + (c.d ? "repeating-linear-gradient(90deg," + c.c + " 0 4px,transparent 4px 7px)" : c.c) + '"></i><span>' + c.n + "</span></div>";
-    }).join("");
-    if (spLayer && M() && M().hasLayer(spLayer)) rows += '<div class="jn-lg-row"><i style="background:#0ea5e9"></i><span>Jalan Prov. Jateng (Satu Peta)</span></div>';
-    el.innerHTML = rows ? "<b>Tol & Provinsi</b>" + rows : "";
+    }
+    var tol = ORDER.filter(function (k) { return k !== "prov" && st.on && st.show[k]; }).map(row).join("");
+    var jt = "";
+    if (st.on && st.show.prov) jt += row("prov").replace(CAT.prov.n, "Ruas Jalan Provinsi Jateng (vektor)");
+    if (st.on && spLayer && M() && M().hasLayer(spLayer)) {
+      var u = (st.sp.ep || SP) + "?service=WMS&version=1.1.0&request=GetLegendGraphic&format=image%2Fpng&layer=" + encodeURIComponent(st.sp.layer) +
+        "&legend_options=fontAntiAliasing%3Atrue%3BfontColor%3A0xd7e5f3%3BfontSize%3A10%3Bdpi%3A110";
+      jt += '<div class="jn-lg-row"><i style="background:#2f4bff"></i><span>Jalan Provinsi Kewenangan Prov. Jateng</span></div>' +
+        '<img class="tl-lgimg" alt="" loading="lazy" src="' + esc(u) + '" onload="var p=this.previousElementSibling;if(p)p.style.display=\'none\'" onerror="this.style.display=\'none\'">';
+    }
+    el.innerHTML = (tol ? "<b>Jalan Tol</b>" + tol : "") + (jt ? '<b class="tl-lh">Jalan Provinsi Jawa Tengah</b>' + jt : "");
   }
 
   function count() {
@@ -568,6 +577,7 @@
 
   function spSync(discover) {
     var m = M(); if (!m) return;
+    spFeat = {}; spWfsKey = ""; lblNames();
     if (spLayer) { m.removeLayer(spLayer); spLayer = null; }
     if (!st.sp.on || !st.on) { spStatus(""); legend(); return; }
     if (!st.sp.layer) { if (discover) spDiscover(false); else spStatus("Isi nama layer, atau tekan “Cari layer otomatis”."); return; }
@@ -575,7 +585,7 @@
     spLayer = L.tileLayer.wms(st.sp.ep || SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Pemprov Jateng – Geoportal Borobudur (Palapa) · Dinas PU BM-CK" });
     spLayer.on("tileerror", function () { stat("sp", false, "tile gagal: periksa nama layer atau koneksi"); spStatus("Sebagian tile gagal dimuat. Periksa nama layer atau koneksi."); });
     spLayer.on("tileload", function () { stat("sp", true); });
-    spLayer.addTo(m); spStatus("Layer: " + st.sp.layer); legend();
+    spLayer.addTo(m); spStatus("Layer: " + st.sp.layer); legend(); spWfs();
   }
 
   var SP_NO = /apill|lampu|rambu|rppj|perlintasan|halte|jembatan|pju|penerangan|terminal|pelabuhan|kereta|\brel\b|bandara|kecelakaan|rawan|\bdkr\b|dkr_|lalu.?lintas|lalin|volume|kondisi.?(?:jalan)?.?rusak/i;
@@ -718,36 +728,70 @@
     var m = M(); if (!m) return;
     if (!nmGroup) nmGroup = L.layerGroup().addTo(m);
     nmGroup.clearLayers();
-    if (!st.on || st.nm === false || m.getZoom() < 12) return;
+    if (!st.on || st.nm === false || m.getZoom() < 11) return;
     var sz = m.getSize(), placed = [], byName = {}, made = 0;
-    function flat(a, o) { (a || []).forEach(function (x) { if (Array.isArray(x)) flat(x, o); else o.push(x); }); return o; }
+    function flat(a, o) { (a || []).forEach(function (x) { if (Array.isArray(x) && typeof x[0] !== "number") flat(x, o); else o.push(x); }); return o; }
+    function tryLabel(nm, ll) {
+      if (made >= 120 || !nm || ll.length < 2) return;
+      var step = Math.max(1, Math.ceil(ll.length / 40)), pts = [], i;
+      for (i = 0; i < ll.length; i += step) pts.push(m.latLngToContainerPoint(ll[i]));
+      pts.push(m.latLngToContainerPoint(ll[ll.length - 1]));
+      var len = 0, cum = [0];
+      for (i = 1; i < pts.length; i++) { len += pts[i].distanceTo(pts[i - 1]); cum.push(len); }
+      var w = nm.length * 6.4 + 8, h = 15;
+      if (len < w * 0.9) return;
+      var half = len / 2, j = 1; while (j < pts.length - 1 && cum[j] < half) j++;
+      var a = pts[Math.max(0, j - 1)], c = pts[Math.min(pts.length - 1, j)];
+      var f = (half - cum[j - 1]) / ((cum[j] - cum[j - 1]) || 1), cx = a.x + (c.x - a.x) * f, cy = a.y + (c.y - a.y) * f;
+      if (cx < 10 || cy < 10 || cx > sz.x - 10 || cy > sz.y - 10) return;
+      var ang = Math.atan2(c.y - a.y, c.x - a.x) * 180 / Math.PI; if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
+      var rc = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], bad = false;
+      placed.forEach(function (q) { if (!(rc[2] < q[0] || rc[0] > q[2] || rc[3] < q[1] || rc[1] > q[3])) bad = true; });
+      (byName[nm] = byName[nm] || []).forEach(function (q) { if (Math.abs(q[0] - cx) + Math.abs(q[1] - cy) < 320) bad = true; });
+      if (bad) return;
+      placed.push(rc); byName[nm].push([cx, cy]); made++;
+      L.marker(m.containerPointToLatLng([cx, cy]), { interactive: false, keyboard: false, zIndexOffset: -500,
+        icon: L.divIcon({ className: "tl-lab", iconSize: [0, 0], html: '<span style="transform:translate(-50%,-50%) rotate(' + ang.toFixed(1) + 'deg)">' + esc(nm) + "</span>" }) }).addTo(nmGroup);
+    }
+    var vb = m.getBounds();
     ORDER.forEach(function (k) {
       if (!st.show[k] || !groups[k] || !m.hasLayer(groups[k])) return;
       groups[k].eachLayer(function (pl) {
-        if (made >= 90 || !pl.__nm) return;
-        var b = pl.getBounds && pl.getBounds(); if (!b || !m.getBounds().intersects(b)) return;
-        var ll = flat(pl.getLatLngs(), []); if (ll.length < 2) return;
-        var step = Math.max(1, Math.ceil(ll.length / 40)), pts = [], i;
-        for (i = 0; i < ll.length; i += step) pts.push(m.latLngToContainerPoint(ll[i]));
-        pts.push(m.latLngToContainerPoint(ll[ll.length - 1]));
-        var len = 0, cum = [0];
-        for (i = 1; i < pts.length; i++) { len += pts[i].distanceTo(pts[i - 1]); cum.push(len); }
-        var nm = pl.__nm, w = nm.length * 6.4 + 8, h = 15;
-        if (len < w * 0.9) return;
-        var half = len / 2, j = 1; while (j < pts.length - 1 && cum[j] < half) j++;
-        var a = pts[Math.max(0, j - 1)], c = pts[Math.min(pts.length - 1, j)];
-        var f = (half - cum[j - 1]) / ((cum[j] - cum[j - 1]) || 1), cx = a.x + (c.x - a.x) * f, cy = a.y + (c.y - a.y) * f;
-        if (cx < 10 || cy < 10 || cx > sz.x - 10 || cy > sz.y - 10) return;
-        var ang = Math.atan2(c.y - a.y, c.x - a.x) * 180 / Math.PI; if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
-        var rc = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], bad = false;
-        placed.forEach(function (q) { if (!(rc[2] < q[0] || rc[0] > q[2] || rc[3] < q[1] || rc[1] > q[3])) bad = true; });
-        (byName[nm] = byName[nm] || []).forEach(function (q) { if (Math.abs(q[0] - cx) + Math.abs(q[1] - cy) < 320) bad = true; });
-        if (bad) return;
-        placed.push(rc); byName[nm].push([cx, cy]); made++;
-        L.marker(m.containerPointToLatLng([cx, cy]), { interactive: false, keyboard: false, zIndexOffset: -500,
-          icon: L.divIcon({ className: "tl-lab", iconSize: [0, 0], html: '<span style="transform:translate(-50%,-50%) rotate(' + ang.toFixed(1) + 'deg)">' + esc(nm) + "</span>" }) }).addTo(nmGroup);
+        if (!pl.__nm) return;
+        var b = pl.getBounds && pl.getBounds(); if (!b || !vb.intersects(b)) return;
+        tryLabel(pl.__nm, flat(pl.getLatLngs(), []));
       });
     });
+    /* garis WMS Geoportal: nama diambil lewat WFS (layer yang sama) */
+    if (st.sp.on && st.sp.layer) Object.keys(spFeat).forEach(function (id) { var e = spFeat[id]; tryLabel(e.nm, e.g); });
+  }
+
+  /* ---------- nama ruas untuk layer WMS Geoportal (via WFS dari layer yang sama) ---------- */
+  var spFeat = {}, spWfsKey = "", spWfsBusy = false;
+  async function spWfs() {
+    var m = M();
+    if (!m || !st.on || !st.sp.on || !st.sp.layer || st.nm === false || m.getZoom() < 11 || spWfsBusy) return;
+    var b = m.getBounds().pad(0.15), key = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(function (v) { return v.toFixed(2); }).join(",");
+    if (key === spWfsKey) return;
+    spWfsKey = key; spWfsBusy = true;
+    try {
+      var base = (st.sp.ep || SP).replace(/\/wms\/?$/i, "/wfs");
+      var url = base + "?service=WFS&version=1.0.0&request=GetFeature&typeName=" + encodeURIComponent(st.sp.layer) + "&outputFormat=application%2Fjson&srsName=EPSG%3A4326&maxFeatures=600&bbox=" +
+        [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(rnd).join(",") + ",EPSG%3A4326";
+      var fc = await getJSON(url), els = fromGeo(fc, "sp", "sp", null), n = 0, noName = 0;
+      els.forEach(function (e) {
+        if (spFeat[e.id]) return;
+        var nm = pickName(e.p); if (!nm) { noName++; return; }
+        spFeat[e.id] = { nm: nm, g: e.g }; n++;
+      });
+      var ks = Object.keys(spFeat); if (ks.length > 3000) ks.slice(0, ks.length - 3000).forEach(function (kx) { delete spFeat[kx]; });
+      stat("sp", true);
+      spStatus("Layer: " + st.sp.layer + " · label ruas: " + ks.length + (els.length && !ks.length ? " (atribut nama tidak ditemukan pada " + noName + " garis)" : ""));
+      lblNames();
+    } catch (e) {
+      spWfsKey = "";
+      spStatus("Layer: " + st.sp.layer + " · label ruas gagal (WFS: " + explain(e) + ")");
+    } finally { spWfsBusy = false; }
   }
 
   /* pane harus ada di kontainer yang sama dengan overlayPane (pada leaflet-rotate = rotatePane), agar ikut berputar
@@ -788,7 +832,7 @@
     if (ni) impStatus(ni + " ruas hasil impor dipulihkan.");
     count(); spSync(false); fetchView(); lblSync(); setInterval(lblSync, 800);
     m.on("moveend zoomend", lblNames);
-    m.on("moveend", function () { clearTimeout(timer); timer = setTimeout(fetchView, 600); });
+    m.on("moveend", function () { clearTimeout(timer); timer = setTimeout(function () { fetchView(); spWfs(); }, 600); });
     window.__pqJalanDebug = { state: st, status: SS, discovery: function () { return disc; }, test: testSources };
   }
 
