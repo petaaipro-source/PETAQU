@@ -90,7 +90,11 @@
   var disc = null, discP = null, discFail = null, SS = {}, chipT = 0;
   try { cache = JSON.parse(localStorage.getItem(CK) || "{}"); } catch (e) {}
 
-  function M() { return window.map && window.map.addLayer ? window.map : null; }
+  /* index.html mendeklarasikan `const map` (bukan window.map), jadi ambil lewat lingkup global */
+  function M() {
+    try { if (typeof map !== "undefined" && map && map.addLayer) return map; } catch (e) {}
+    return window.map && window.map.addLayer ? window.map : null;
+  }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   var useOsm = function (k) { return k === "prov" ? st.osmProv : st.osmTol; };
   function explain(e) {
