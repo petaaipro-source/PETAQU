@@ -124,7 +124,7 @@
     "#tlPanel.open{display:block}#tlPanel h3{margin:0 0 2px;font-size:14px}#tlPanel small{color:#9fb0c8}" +
     ".tl-x{position:absolute;top:8px;right:10px;border:0;background:none;color:#8fa6bd;font-size:20px;cursor:pointer}" +
     ".tl-lab{pointer-events:none!important}.tl-lab span{position:absolute;left:0;top:0;white-space:nowrap;font:700 11px/1 system-ui,sans-serif;color:#fff;letter-spacing:.2px;text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000,0 -1px 2px #000;transform-origin:50% 50%}" +
-    "#tlLegend{margin-top:6px}#tlLegend b{display:block;margin-top:6px;font-size:10px;letter-spacing:.6px;text-transform:uppercase}#tlLegend .jn-lg-row{display:flex;align-items:center;gap:8px;margin-top:5px;white-space:nowrap;color:#d7e5f3;font-size:11.5px;font-weight:600}#tlLegend .jn-lg-row i{width:22px;height:4px;border-radius:3px;flex:none;display:block}#tlLegend .tl-lgimg{display:block;max-width:100%;margin-top:4px}" +
+    "#tlLegend{margin-top:6px}#tlLegend b{display:block;margin-top:6px;font-size:10px;letter-spacing:.6px;text-transform:uppercase}#tlLegend .jn-lg-row{display:flex;align-items:center;gap:8px;margin-top:5px;white-space:nowrap;color:#d7e5f3;font-size:11.5px;font-weight:600}#tlLegend .jn-lg-row i{width:22px;height:4px;border-radius:3px;flex:none;display:block}" +
     ".tl-hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}.tl-hd .tl-x{position:static;line-height:1;padding:0 2px}.tl-hd .jn-sw{margin-top:2px}" +
     ".tl-r{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;cursor:pointer}.tl-r:hover{background:#ffffff0d}" +
     ".tl-r input{accent-color:var(--c)}.tl-sw{width:30px;height:0;border-top:4px var(--ds,solid) var(--c);border-radius:2px;flex:none}" +
@@ -249,10 +249,7 @@
     var jt = "";
     if (st.on && st.show.prov) jt += row("prov").replace(CAT.prov.n, "Ruas Jalan Provinsi Jateng (vektor)");
     if (st.on && spLayer && M() && M().hasLayer(spLayer)) {
-      var u = (st.sp.ep || SP) + "?service=WMS&version=1.1.0&request=GetLegendGraphic&format=image%2Fpng&layer=" + encodeURIComponent(st.sp.layer) +
-        "&legend_options=fontAntiAliasing%3Atrue%3BfontColor%3A0xd7e5f3%3BfontSize%3A10%3Bdpi%3A110";
-      jt += '<div class="jn-lg-row"><i style="background:#2f4bff"></i><span>Jalan Provinsi Kewenangan Prov. Jateng</span></div>' +
-        '<img class="tl-lgimg" alt="" loading="lazy" src="' + esc(u) + '" onload="var p=this.previousElementSibling;if(p)p.style.display=\'none\'" onerror="this.style.display=\'none\'">';
+      jt += '<div class="jn-lg-row"><i style="background:#2f4bff"></i><span>Jalan Provinsi Kewenangan Prov. Jateng</span></div>';
     }
     el.innerHTML = (tol ? "<b>Jalan Tol</b>" + tol : "") + (jt ? '<b class="tl-lh">Jalan Provinsi Jawa Tengah</b>' + jt : "");
   }
