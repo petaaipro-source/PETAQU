@@ -26,7 +26,7 @@
   var OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
   var BM = "https://gisportal.binamarga.pu.go.id/arcgis/rest/services";
   var BIG = "https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/547/query";
-  var SP = "https://satupeta.jatengprov.go.id/geoserver/palapa/wms", SPG = "https://satupeta.jatengprov.go.id/geoserver/wms";
+  var SP = "https://satupeta.jatengprov.go.id/geoserver/palapa/wms";
   var BIG_F = "NAMRJL,KONRJL,FGSRJL,KLSRJL,JPARJL,STARJL,KLLRJL,TOLRJL,AUTRJL";
 
   var SRCN = {
@@ -73,7 +73,7 @@
     JPARJL: { 1: "1 lajur", 2: "2 lajur", 3: "3 lajur" }
   };
 
-  var DEF = { on: true, show: { tol: true, kons: true, renc: true, prov: false }, op: 0.9, osmTol: false, osmProv: false, sp: { on: false, layer: "", ep: "" } };
+  var DEF = { on: true, show: { tol: true, kons: true, renc: true, prov: false }, op: 0.9, osmTol: false, osmProv: false, sp: { on: false, layer: "" } };
   var st = JSON.parse(JSON.stringify(DEF));
   try {
     var sv = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -86,15 +86,11 @@
   } catch (e) {}
   var save = function () { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
 
-  var spAll = [], rend, rendOsm, groups = {}, seen = {}, cells = {}, timer, cache = {}, imported = {}, spLayer = null, spNames = [];
+  var rend, rendOsm, groups = {}, seen = {}, cells = {}, timer, cache = {}, imported = {}, spLayer = null, spNames = [];
   var disc = null, discP = null, discFail = null, SS = {}, chipT = 0;
   try { cache = JSON.parse(localStorage.getItem(CK) || "{}"); } catch (e) {}
 
-  /* index.html mendeklarasikan `const map` (bukan window.map), jadi ambil lewat lingkup global */
-  function M() {
-    try { if (typeof map !== "undefined" && map && map.addLayer) return map; } catch (e) {}
-    return window.map && window.map.addLayer ? window.map : null;
-  }
+  function M() { return window.map && window.map.addLayer ? window.map : null; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   var useOsm = function (k) { return k === "prov" ? st.osmProv : st.osmTol; };
   function explain(e) {
@@ -153,7 +149,7 @@
     h += '<div class="tl-h">Jalan provinsi Jawa Tengah</div>' +
       '<label class="tl-c"><input type="checkbox" id="tlSpOn"><span>Peta resmi <b>Jalan Provinsi Kewenangan Prov. Jateng</b> (Geoportal Borobudur · Dinas PU BM-CK)</span></label>' +
       '<input type="text" id="tlSpLayer" list="tlSpList" placeholder="Nama layer WMS (otomatis dicari)"><datalist id="tlSpList"></datalist>' +
-      '<button class="tl-b" id="tlSpFind" type="button">Cari layer otomatis</button><div id="tlSpSt" style="font-size:11px;color:#9fb0c8"></div><div id="tlSpCand"></div>' +
+      '<button class="tl-b" id="tlSpFind" type="button">Cari layer otomatis</button><div id="tlSpSt" style="font-size:11px;color:#9fb0c8"></div>' +
       row("prov") +
       '<small>Garis “Ruas Jalan Provinsi” bisa diklik untuk info ruas (Bina Marga → BIG).</small>';
     h += '<div class="tl-h">Status sumber data</div><div id="tlSrc"></div>' +
@@ -189,12 +185,7 @@
         resetCells(); fetchView(); return;
       }
       if (t.id === "tlSpOn") { st.sp.on = t.checked; save(); spSync(true); return; }
-      if (t.id === "tlSpLayer") {
-        st.sp.layer = t.value.trim();
-        var hit = spAll.filter(function (x) { return x.name === st.sp.layer; })[0];
-        st.sp.ep = hit && hit.ep !== SP ? hit.ep : (/^[^:]+:/.test(st.sp.layer) && !/^palapa:/i.test(st.sp.layer) ? SPG : "");
-        save(); spSync(true); return;
-      }
+      if (t.id === "tlSpLayer") { st.sp.layer = t.value.trim(); save(); spSync(true); return; }
       if (t.id === "tlImpFile") { impFile(t.files && t.files[0]); t.value = ""; }
     });
     $("tlOp").oninput = function () { st.op = this.value / 10; save(); each(function (l) { l.setStyle && l.setStyle({ opacity: st.op }); }); if (spLayer) spLayer.setOpacity(st.op); };
@@ -203,8 +194,6 @@
     $("tlImpBtn").onclick = function () { $("tlImpFile").click(); };
     $("tlImpClr").onclick = function () { clearImport(); };
     p.addEventListener("click", function (e) {
-      var sq = e.target.closest("[data-sp]");
-      if (sq) { var xx = spNames[+sq.dataset.sp]; if (xx) spPick(xx); return; }
       var q = e.target.closest(".tl-p"); if (!q || q.dataset.i == null) return;
       var x = PROYEK[+q.dataset.i], m = M(); if (!x || !m) return;
       st.show.tol = st.show.kons = st.show.renc = true; p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
@@ -296,19 +285,10 @@
   }
 
   function rnd(a) { return Math.round(a * 1e5) / 1e5; }
-  /* sebagian server ArcGIS mengabaikan outSR dan mengirim meter (Web Mercator): deteksi & ubah ke derajat */
-  function ll(q) {
-    var x = q[0], y = q[1];
-    if (Math.abs(x) > 360 || Math.abs(y) > 90) {
-      var R = 6378137;
-      return [rnd((2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI), rnd(x / R * 180 / Math.PI)];
-    }
-    return [rnd(y), rnd(x)];
-  }
   function lines(geom) {
     if (!geom) return [];
     var parts = geom.type === "LineString" ? [geom.coordinates] : geom.type === "MultiLineString" ? geom.coordinates : [];
-    return parts.map(function (pt) { return pt.map(ll); });
+    return parts.map(function (pt) { return pt.map(function (q) { return [rnd(q[1]), rnd(q[0])]; }); });
   }
   /* salt selalu dipakai sebagai awalan id agar id antar-layer/antar-sumber tidak bertabrakan */
   function fromGeo(fc, src, salt, keep) {
@@ -374,10 +354,9 @@
         if (/^(MapServer|FeatureServer)$/.test(s.type) && /jalan.?prov|prov.*jalan|jln.?prov/i.test(s.name)) jobs.push([s, "prov"]);
       });
     } catch (e) { err = err || e; }
-    /* layanan yang terverifikasi ada di server Bina Marga: selalu disertakan bila belum terdaftar */
-    [[{ name: "Tol/Jalan_Tol_Konstruksi", type: "MapServer" }, "kons"], [{ name: "Tol/rencana_umum_tol", type: "MapServer" }, "renc"], [{ name: "Hosted/Jalan_Provinsi_DIY", type: "FeatureServer" }, "prov"]].forEach(function (kn) {
-      if (!jobs.some(function (j) { return j[0].name === kn[0].name; })) jobs.push(kn);
-    });
+    if (!jobs.length) { /* daftar layanan yang diketahui ada di server Bina Marga */
+      jobs = [[{ name: "Tol/Jalan_Tol_Konstruksi", type: "MapServer" }, "kons"], [{ name: "Tol/rencana_umum_tol", type: "MapServer" }, "renc"], [{ name: "Hosted/Jalan_Provinsi_DIY", type: "FeatureServer" }, "prov"]];
+    }
     for (var i = 0; i < jobs.length; i++) {
       try {
         var ls = await bmLayers(jobs[i][0]);
@@ -560,62 +539,37 @@
     if (!st.sp.on) { spStatus(""); legend(); return; }
     if (!st.sp.layer) { if (discover) spDiscover(false); else spStatus("Isi nama layer, atau tekan “Cari layer otomatis”."); return; }
     if (!m.getPane("pqJalanWms")) m.createPane("pqJalanWms").style.zIndex = 385;
-    spLayer = L.tileLayer.wms(st.sp.ep || SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Pemprov Jateng – Geoportal Borobudur (Palapa) · Dinas PU BM-CK" });
+    spLayer = L.tileLayer.wms(SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Pemprov Jateng – Geoportal Borobudur (Palapa) · Dinas PU BM-CK" });
     spLayer.on("tileerror", function () { stat("sp", false, "tile gagal: periksa nama layer atau koneksi"); spStatus("Sebagian tile gagal dimuat. Periksa nama layer atau koneksi."); });
     spLayer.on("tileload", function () { stat("sp", true); });
     spLayer.addTo(m); spStatus("Layer: " + st.sp.layer); legend();
   }
 
-  var SP_NO = /apill|lampu|rambu|rppj|perlintasan|halte|jembatan|pju|penerangan|terminal|pelabuhan|kereta|\brel\b|bandara|kecelakaan|rawan|\bdkr\b|dkr_|lalu.?lintas|lalin|volume|kondisi.?(?:jalan)?.?rusak/i;
+  var SP_NO = /apill|lampu|rambu|rppj|perlintasan|halte|jembatan|pju|penerangan|terminal|pelabuhan|kereta|\brel\b|bandara/i;
   function spScore(x) {
     var s = (x.name + " " + x.title).toLowerCase(), n = 0;
     if (/jalan provinsi kewenangan|kewenangan.*prov.*jalan|jalan.*kewenangan.*prov/.test(s)) n += 10;
-    if (/jalan|\bjln\b|jln_/.test(s)) n += 3;
+    if (/jalan/.test(s)) n += 3;
     if (/prov/.test(s)) n += 3;
-    if (/_ln_|\bln\b|garis|line/.test(s)) n += 2;
-    if (/_pt_|_ar_/.test(s)) n -= 5;
     if (/50000|50k/.test(s)) n += 1;
     return n;
   }
-  function spParse(txt, ep) {
-    var xml = new DOMParser().parseFromString(txt, "text/xml"), all = [];
+  /* membaca GetCapabilities; mengembalikan jumlah layer jalan. Gagal bila server tidak mengizinkan CORS. */
+  async function spCaps() {
+    var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 20000), r;
+    try { r = await fetch(SP + "?service=WMS&request=GetCapabilities&version=1.3.0", { signal: ac.signal }); } finally { clearTimeout(to); }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var xml = new DOMParser().parseFromString(await r.text(), "text/xml"), all = [];
     xml.querySelectorAll("Layer").forEach(function (l) {
       var n = null, t = null;
       for (var i = 0; i < l.children.length; i++) { var cn = l.children[i].localName; if (cn === "Name" && !n) n = l.children[i]; if (cn === "Title" && !t) t = l.children[i]; }
-      if (n) all.push({ name: n.textContent, title: t ? t.textContent : "", ep: ep });
+      if (n) all.push({ name: n.textContent, title: t ? t.textContent : "" });
     });
-    return all;
-  }
-  async function spFetchCaps(ep) {
-    var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 20000), r;
-    try { r = await fetch(ep + "?service=WMS&request=GetCapabilities&version=1.3.0", { signal: ac.signal }); } finally { clearTimeout(to); }
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return spParse(await r.text(), ep);
-  }
-  /* membaca GetCapabilities dari endpoint workspace "palapa" dan endpoint global; gagal bila CORS diblokir */
-  async function spCaps() {
-    var all = [], err = null;
-    var rs = await Promise.allSettled([spFetchCaps(SP), spFetchCaps(SPG)]);
-    rs.forEach(function (r) { if (r.status === "fulfilled") all = all.concat(r.value); else err = err || r.reason; });
-    if (!all.length) throw err || new Error("daftar layer kosong");
-    var seenN = {}; spAll = all.filter(function (x) { var k = x.name.replace(/^[^:]+:/, ""); if (seenN[k]) return false; seenN[k] = 1; return true; });
-    spNames = spAll.filter(function (x) { return /jalan|\bjln|ruas/i.test(x.name + " " + x.title) && !SP_NO.test(x.name + " " + x.title); })
+    spNames = all.filter(function (x) { return /jalan/i.test(x.name + " " + x.title) && !SP_NO.test(x.name + " " + x.title); })
       .sort(function (a, b) { return spScore(b) - spScore(a); });
-    var dl = $("tlSpList"); if (dl) dl.innerHTML = spAll.map(function (x) { return '<option value="' + esc(x.name) + '">' + esc(x.title) + "</option>"; }).join("");
-    spCand();
+    var dl = $("tlSpList"); if (dl) dl.innerHTML = spNames.map(function (x) { return '<option value="' + esc(x.name) + '">' + esc(x.title) + "</option>"; }).join("");
     stat("sp", true);
     return spNames.length;
-  }
-  function spCand() {
-    var el = $("tlSpCand"); if (!el) return;
-    el.innerHTML = spNames.slice(0, 8).map(function (x, i) {
-      return '<button class="tl-p" type="button" data-sp="' + i + '" title="' + esc(x.name) + '">' + esc(x.title || x.name) + "</button>";
-    }).join("");
-  }
-  function spPick(x) {
-    st.sp.layer = x.name; st.sp.ep = x.ep === SP ? "" : x.ep; st.sp.on = true;
-    $("tlSpLayer").value = x.name; $("tlSpOn").checked = true; save(); spSync(false);
-    spStatus("Dipakai: " + (x.title || x.name) + " (" + x.name + ").");
   }
 
   async function spDiscover() {
@@ -623,9 +577,10 @@
     try {
       await spCaps();
       var best = spNames[0];
-      if (!best) { spStatus("Dari " + spAll.length + " layer, tidak ada yang cocok sebagai ruas jalan provinsi. Ketik kata kunci (mis. “jalan”) di kolom nama layer untuk menelusuri semua layer, atau tempel nama layer dari Geoportal."); return; }
-      spPick(best);
-      spStatus("Dipakai: " + (best.title || best.name) + " (" + best.name + "). " + (spNames.length > 1 ? "Kandidat lain ada di bawah — klik untuk mengganti." : ""));
+      if (!best) { spStatus("Tidak ada layer jalan ditemukan. Isi nama layer manual (lihat Geoportal → Jalan Provinsi Kewenangan Prov. Jateng)."); return; }
+      st.sp.layer = best.name; st.sp.on = true; $("tlSpLayer").value = best.name; $("tlSpOn").checked = true; save();
+      spSync(false);
+      spStatus("Dipakai: " + best.title + " (" + best.name + "). " + (spNames.length > 1 ? "Ada " + spNames.length + " kandidat — ketik/pilih untuk mengganti." : ""));
     } catch (e) {
       stat("sp", false, explain(e));
       spStatus("Daftar layer tidak bisa dibaca dari browser (" + explain(e) + "). Isi nama layer manual: buka Geoportal Borobudur, pilih “Jalan Provinsi Kewenangan Provinsi Jawa Tengah Skala 1:50000”, salin nama layernya (mis. palapa:…), tempel di kolom di atas.");
@@ -699,9 +654,8 @@
 
   function init() {
     var m = M();
-    if (st.sp.layer && SP_NO.test(st.sp.layer)) { st.sp.layer = ""; st.sp.ep = ""; st.sp.on = false; save(); } /* bersihkan pilihan lama yang salah (mis. titik rawan kecelakaan) */
-    if (!m.getPane("pqJalanOsm")) { m.createPane("pqJalanOsm").style.zIndex = 408; }
-    if (!m.getPane("pqJalanPane")) { m.createPane("pqJalanPane").style.zIndex = 410; }
+    if (!m.getPane("pqJalanOsm")) { m.createPane("pqJalanOsm").style.zIndex = 388; }
+    if (!m.getPane("pqJalanPane")) { m.createPane("pqJalanPane").style.zIndex = 390; }
     rend = L.canvas({ pane: "pqJalanPane", padding: 0.3 });
     rendOsm = L.canvas({ pane: "pqJalanOsm", padding: 0.3 });
     ORDER.forEach(function (k) { groups[k] = L.featureGroup(); });

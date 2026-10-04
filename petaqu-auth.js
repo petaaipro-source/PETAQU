@@ -1,7 +1,7 @@
-/* PETAQU - Login OTP email + Google + Username/Password (Supabase Auth). Sekali verifikasi, sesi tetap aktif sampai tombol Keluar ditekan. */
+/* PETAQU - Login OTP email (Supabase Auth). Sekali verifikasi, sesi tetap aktif sampai tombol Keluar ditekan. */
 (function(){"use strict";
 const CFG={url:"https://fhulmqwuzswxrqjcioww.supabase.co",anon:"sb_publishable_VkN9kEL6V9WZf-GwHtDfIw_TB2FcS3L"};  // Supabase > Project Settings > API
-const DOM="petaqu.my.id",SK="pq_cloud_session",KEY="peta_auth_ok",$=id=>document.getElementById(id);
+const SK="pq_cloud_session",KEY="peta_auth_ok",$=id=>document.getElementById(id);
 const siap=()=>!/ISI_/.test(CFG.url+CFG.anon);
 if(siap())window.PETAQU_CFG=CFG;   // sekaligus mengaktifkan sinkron awan (petaqu-cloud.js) dengan sesi yang sama
 const post=(p,b,tok)=>fetch(CFG.url+p,{method:"POST",headers:Object.assign({apikey:CFG.anon,"Content-Type":"application/json"},tok?{Authorization:"Bearer "+tok}:{}),body:JSON.stringify(b||{})});
@@ -65,31 +65,6 @@ window.PQ_AUTH_INIT=function(){
       typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
     }catch{pesan(navigator.onLine?"Kode salah atau sudah kedaluwarsa":"Tidak ada koneksi internet");otp.value="";otp.focus()}finally{btn.disabled=false}
   }
-
-  // --- Login Username + Password (username dipetakan ke email internal username@petaqu.my.id di Supabase) ---
-  const tE=$("tabEmail"),tU=$("tabUser"),pwF=$("loginPwForm"),pwU=$("loginPwUser"),pwP=$("loginPwPass"),pwB=$("loginPwBtn"),alt=$("loginAlt"),gbtn=$("loginGoogle");
-  function mode(u){
-    form.style.display=u?"none":"";pwF.style.display=u?"":"none";alt.style.display=gbtn.style.display=u?"none":"";
-    tU.style.background=u?"var(--cyan)":"transparent";tU.style.color=u?"#04121a":"var(--text-dim)";
-    tE.style.background=u?"transparent":"var(--cyan)";tE.style.color=u?"var(--text-dim)":"#04121a";
-    $("loginError").classList.remove("show");(u?pwU:em).focus();
-  }
-  tE.addEventListener("click",()=>mode(0));tU.addEventListener("click",()=>mode(1));
-  pwF.addEventListener("submit",async e=>{
-    e.preventDefault();
-    if(!siap())return pesan("Konfigurasi Supabase belum diisi (petaqu-auth.js)");
-    const u=pwU.value.trim().toLowerCase(),pw=pwP.value;
-    if(!u||!pw)return pesan("Isi username dan password");
-    const email=u.includes("@")?u:u+"@"+DOM;
-    pwB.disabled=true;
-    try{
-      const r=await post("/auth/v1/token?grant_type=password",{email,password:pw});
-      if(r.status===429)return pesan("Terlalu banyak percobaan, tunggu sebentar lalu coba lagi");
-      if(!r.ok)throw 0;
-      simpan(await r.json(),email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();pwP.value="";
-      typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
-    }catch{pesan(navigator.onLine?"Username atau password salah":"Tidak ada koneksi internet");pwP.value="";pwP.focus()}finally{pwB.disabled=false}
-  });
   form.addEventListener("submit",e=>{e.preventDefault();tahap===1?kirim():masuk()});
   rs.addEventListener("click",kirim);
   otp.addEventListener("input",()=>{otp.value=otp.value.replace(/\D/g,"").slice(0,8)});
@@ -97,7 +72,7 @@ window.PQ_AUTH_INIT=function(){
 };
 
 window.logoutUser=function(){
-  if(!confirm("Keluar dari aplikasi? Kamu perlu login lagi untuk masuk."))return;
+  if(!confirm("Keluar dari aplikasi? Kamu perlu meminta kode OTP lagi untuk masuk."))return;
   const s=getS(),fin=()=>{hapus();location.reload()};
   s?post("/auth/v1/logout?scope=local",{},s.access_token).then(fin,fin):fin();   // local = hanya perangkat ini
 };
