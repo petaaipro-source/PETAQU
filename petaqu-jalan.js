@@ -928,6 +928,19 @@
     window.__pqJalanDebug = { state: st, status: SS, discovery: function () { return disc; }, test: testSources };
   }
 
+  /* API warna adaptif (dipakai petaqu-warna.js): ubah CAT[k].c lalu panggil recolor() */
+  window.PQ_JALAN = {
+    CAT: CAT,
+    recolor: function () {
+      ORDER.forEach(function (k) { if (groups[k]) groups[k].eachLayer(function (pl) { pl.setStyle({ color: CAT[k].c }); }); });
+      try { legend(); } catch (e) {}
+      document.querySelectorAll(".tl-r input[data-k]").forEach(function (inp) {
+        var k = inp.getAttribute("data-k");
+        if (CAT[k] && inp.parentNode) inp.parentNode.style.setProperty("--c", CAT[k].c);
+      });
+    }
+  };
+
   var tries = 0, iv = setInterval(function () {
     tries++;
     if (window.L && M() && document.body) { clearInterval(iv); init(); }
