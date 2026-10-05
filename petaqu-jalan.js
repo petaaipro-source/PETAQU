@@ -218,7 +218,7 @@
       }
       if (t.id === "tlImpFile") { impFile(t.files && t.files[0]); t.value = ""; }
     });
-    $("tlOp").oninput = function () { st.op = this.value / 10; save(); each(function (l) { l.setStyle && l.setStyle({ opacity: st.op }); }); if (spLayer) spLayer.setOpacity(st.op); };
+    $("tlOp").oninput = function () { st.op = this.value / 10; save(); each(function (l) { l.setStyle && l.setStyle({ opacity: opOf(l) }); }); if (spLayer) spLayer.setOpacity(st.op); };
     $("tlSpFind").onclick = function () { spDiscover(true); };
     $("tlTest").onclick = function () { testSources(); };
     $("tlImpBtn").onclick = function () { $("tlImpFile").click(); };
@@ -273,7 +273,7 @@
   function count() {
     lblNames();
     ORDER.forEach(function (k) {
-      var e = $("tlN_" + k); if (e) e.textContent = groups[k].getLayers().length + " ruas";
+      var e = $("tlN_" + k); if (e) e.textContent = groups[k].getLayers().filter(function (l) { return !l.__sub; }).length + " ruas";
     });
   }
 
@@ -308,6 +308,64 @@
     return r + '<span class="tl-src">' + (SRCN[src] || src) + "</span>";
   }
 
+  /* ---------- bagian tol di LUAR Jawa Tengah ikut "Transparansi luar Jateng" ----------
+     Peta dasar di luar Jateng dipudarkan oleh modul penutup (kunci petaqu_jateng_mask_v4: on, tp).
+     Garis tol dipotong di batas Jateng; potongan di luar memakai opasitas = opasitas tol x tp penutup
+     (penutup mati => tp diabaikan, garis tampil penuh). Cincin batas dibaca dari window.__pqJtS. */
+  var JK = "petaqu_jateng_mask_v4", jtBox = null;
+  function jtRings() {
+    var S = window.__pqJtS; if (!S || !S.length) return null;
+    if (!jtBox) {
+      var b = [90, 180, -90, -180];
+      S.forEach(function (r) { r.forEach(function (q) { if (q[0] < b[0]) b[0] = q[0]; if (q[1] < b[1]) b[1] = q[1]; if (q[0] > b[2]) b[2] = q[0]; if (q[1] > b[3]) b[3] = q[1]; }); });
+      jtBox = b;
+    }
+    return S;
+  }
+  function inRing(y, x, r) {
+    var c = false;
+    for (var i = 0, j = r.length - 1; i < r.length; j = i++) {
+      var yi = r[i][0], xi = r[i][1], yj = r[j][0], xj = r[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  }
+  function inJateng(q, S) {
+    var b = jtBox;
+    if (q[0] < b[0] || q[0] > b[2] || q[1] < b[1] || q[1] > b[3]) return false;
+    for (var i = 0; i < S.length; i++) if (inRing(q[0], q[1], S[i])) return true;
+    return false;
+  }
+  /* pecah garis menjadi potongan {g, out}; tanpa data batas => satu potongan "dalam" */
+  function splitJt(g) {
+    var S = jtRings(); if (!S) return [{ g: g, out: false }];
+    var parts = [], cur = null, prev = null;
+    for (var i = 0; i < g.length; i++) {
+      var out = !inJateng(g[i], S);
+      if (!cur || cur.out !== out) {
+        cur = { g: prev && cur ? [prev] : [], out: out };
+        parts.push(cur);
+      }
+      cur.g.push(g[i]); prev = g[i];
+    }
+    return parts.filter(function (p) { return p.g.length >= 2; });
+  }
+  function outVis() {
+    try {
+      var o = JSON.parse(localStorage.getItem(JK) || "null");
+      if (!o || o.on === false) return 1;
+      var tp = isFinite(o.tp) ? Math.min(1, Math.max(0, +o.tp)) : 0.3;
+      return tp;
+    } catch (e) { return 1; }
+  }
+  function opOf(l) { return (l.__osm ? st.op * 0.75 : st.op) * (l.__out ? outVis() : 1); }
+  var outSig = "";
+  function outSync() {
+    var sig = String(outVis()) + "|" + st.op;
+    if (sig === outSig) return; outSig = sig;
+    each(function (l) { if (l.__out && l.setStyle) l.setStyle({ opacity: opOf(l) }); });
+  }
+
   var lastLine = 0; /* cadangan: penanda klik garis */
   /* els: [{id, s:'bm'|'big'|'osm'|'imp', p:{props}, g:[[lat,lng],...]}] */
   function draw(els, k) {
@@ -316,15 +374,21 @@
       var key = k + e.s + e.id; if (seen[key] || !e.g || e.g.length < 2) return; seen[key] = 1;
       var t = e.p || {}, nm = (e.s === "big" ? t.NAMRJL : pickName(t)) || t.name || t.ref || "";
       var osm = e.s === "osm", w = osm ? Math.max(2, c.w - 1) : c.w;
-      var pl = L.polyline(e.g, { color: c.c, weight: w, opacity: osm ? st.op * 0.75 : st.op, dashArray: c.d || null, lineCap: "round", lineJoin: "round", renderer: osm ? rendOsm : rend, pane: osm ? "pqJalanOsm" : "pqJalanPane" });
-      if (e.s === "imp") pl.__imp = 1;
-      if (nm) pl.__nm = String(nm);
-      if (osm) pl.__osm = 1;
-      pl.bindPopup(popup(k, e.s, t));
-      if (nm) pl.bindTooltip(esc(nm), { sticky: true, className: "tl-tip" });
-      pl.on("mouseover", function () { pl.setStyle({ weight: w + 3 }); }).on("mouseout", function () { pl.setStyle({ weight: w }); });
-      pl.on("click", function () { lastLine = Date.now(); });
-      groups[k].addLayer(pl); n++;
+      splitJt(e.g).forEach(function (part, pi) {
+        var pl = L.polyline(part.g, { color: c.c, weight: w, opacity: 1, dashArray: c.d || null, lineCap: "round", lineJoin: "round", renderer: osm ? rendOsm : rend, pane: osm ? "pqJalanOsm" : "pqJalanPane" });
+        if (e.s === "imp") pl.__imp = 1;
+        if (pi === 0 && nm) pl.__nm = String(nm);
+        if (pi > 0) pl.__sub = 1;
+        if (osm) pl.__osm = 1;
+        if (part.out) pl.__out = 1;
+        pl.setStyle({ opacity: opOf(pl) });
+        pl.bindPopup(popup(k, e.s, t));
+        if (nm) pl.bindTooltip(esc(nm), { sticky: true, className: "tl-tip" });
+        pl.on("mouseover", function () { pl.setStyle({ weight: w + 3 }); }).on("mouseout", function () { pl.setStyle({ weight: w }); });
+        pl.on("click", function () { lastLine = Date.now(); });
+        groups[k].addLayer(pl);
+      });
+      n++;
     });
     return n;
   }
@@ -843,7 +907,7 @@
     try { imported = JSON.parse(localStorage.getItem(IK) || "{}") || {}; } catch (e) { imported = {}; }
     var ni = 0; Object.keys(imported).forEach(function (k) { if (CAT[k]) ni += draw(imported[k], k); });
     if (ni) impStatus(ni + " ruas hasil impor dipulihkan.");
-    count(); spSync(false); fetchView(); lblSync(); setInterval(lblSync, 800);
+    count(); spSync(false); fetchView(); lblSync(); setInterval(lblSync, 800); setInterval(outSync, 500);
     m.on("moveend zoomend", lblNames);
     m.on("moveend", function () { clearTimeout(timer); timer = setTimeout(function () { fetchView(); spWfs(); }, 600); });
     window.__pqJalanDebug = { state: st, status: SS, discovery: function () { return disc; }, test: testSources };
