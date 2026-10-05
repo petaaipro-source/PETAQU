@@ -19,6 +19,15 @@ alter table profiles add constraint profiles_role_check check (role in ('admin',
 drop policy if exists "baca ruas" on roads;
 create policy "baca ruas" on roads for select using (my_role() in ('admin','surveyor','viewer'));
 
+-- pendaftar baru lewat Google (self-signup) otomatis berperan 'trial'; akun buatan admin tetap 'viewer'
+create or replace function new_user() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into profiles(id, role)
+  values (new.id, case when coalesce(new.raw_app_meta_data->>'provider', '') = 'google' then 'trial' else 'viewer' end)
+  on conflict (id) do nothing;
+  return new;
+end $$;
+
 -- fungsi lama (Gmail diketik manual) dihapus agar tidak bisa disalahgunakan
 drop function if exists claim_trial(text, text, text);
 

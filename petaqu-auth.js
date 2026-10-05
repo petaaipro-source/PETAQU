@@ -28,7 +28,11 @@ window.PQ_AUTH_INIT=function(){
     history.replaceState(null,"",location.pathname+location.search);
     (async()=>{try{
       const r=await fetch(CFG.url+"/auth/v1/user",{headers:{apikey:CFG.anon,Authorization:"Bearer "+t}});if(!r.ok)throw 0;
-      const u=await r.json();simpan({access_token:t,refresh_token:rt,expires_in:ex,user:u},u.email);
+      const u=await r.json();
+      // pendaftar Google baru (peran 'trial' / tanpa profil) BUKAN pengguna resmi -> tolak, jangan beri sesi
+      const pr=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(u.id),{headers:{apikey:CFG.anon,Authorization:"Bearer "+t}}).catch(()=>null);
+      if(pr&&pr.ok){const rw=await pr.json();if(!rw[0]||rw[0].role==="trial"){post("/auth/v1/logout?scope=local",{},t).catch(()=>{});pesan("Akun Google ini belum terdaftar. Hubungi admin.");return}}
+      simpan({access_token:t,refresh_token:rt,expires_in:ex,user:u},u.email);
       scr.classList.add("hide");tutupPanel();typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
     }catch{pesan("Login Google gagal, coba lagi")}})();
   }else if(galatUrl){

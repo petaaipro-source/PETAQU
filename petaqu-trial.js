@@ -113,7 +113,10 @@
       body: JSON.stringify(body)
     });
     if (r.status === 404) throw { code: "nosql" };
-    if (!r.ok) throw { code: "http" };
+    if (!r.ok) {
+      var tx = ""; try { tx = (await r.text()).slice(0, 160); } catch (e) { /* abaikan */ }
+      throw { code: "http", status: r.status, msg: tx };
+    }
     return r.json();
   }
   function signOut(tok) {   /* token Google hanya dipakai sekali; jangan simpan sesi apa pun */
@@ -231,7 +234,7 @@
   /* ---------- Gmail dipilih lewat Google ---------- */
   function keGoogle() {
     var c = window.PETAQU_CFG;
-    if (usedBefore()) { lockButton(); return formMsg("Uji coba sudah digunakan di perangkat ini dan tidak dapat diulang."); }
+    if (usedBefore()) { lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
     if (!c) return formMsg("Login Google belum dikonfigurasi.");
     if (navigator.onLine === false) return formMsg("Butuh koneksi internet untuk memilih akun Google.");
     deviceId();
@@ -241,7 +244,9 @@
   async function selesaiGoogle(o) {
     formMsg("Memverifikasi akun Google...", true);
     if (!o.tok) {
-      return formMsg(/signup|not allowed|database error/i.test(o.err || "") ? "Uji coba lewat Google belum diaktifkan. Hubungi admin." : "Login Google dibatalkan atau gagal, coba lagi.");
+      return formMsg(/signup|not allowed|database error/i.test(o.err || "")
+        ? "Pendaftaran akun baru belum diizinkan di Supabase (Authentication > Sign In / Providers > Allow new users to sign up). [" + String(o.err).slice(0, 90) + "]"
+        : "Login Google dibatalkan atau gagal: " + String(o.err || "tanpa keterangan").slice(0, 120));
     }
     var c = window.PETAQU_CFG, tok = o.tok, email = null;
     try {
@@ -250,7 +255,7 @@
       email = normGmail((await r.json()).email);
     } catch (e) { signOut(tok); return formMsg("Verifikasi Google gagal, coba lagi."); }
     if (!email) { signOut(tok); return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba."); }
-    if (usedBefore()) { signOut(tok); lockButton(); return formMsg("Uji coba sudah digunakan di perangkat ini dan tidak dapat diulang."); }
+    if (usedBefore()) { signOut(tok); lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
     var did = deviceId();
     try {
       var d = await rpc("claim_trial_g", { p_device: did, p_fp: await fingerprint() }, tok);
@@ -258,7 +263,8 @@
       if (!d || !d.ok) {
         if (d && d.reason === "expired") { save({ did: did, email: email, end: 0, used: DUR, done: true }); lockButton("Uji coba telah berakhir"); return formMsg("Uji coba perangkat ini sudah berakhir."); }
         if (d && d.reason === "bad_email") return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba.");
-        return formMsg("Uji coba gratis sudah pernah digunakan oleh Gmail atau perangkat ini dan tidak dapat diulang.");
+        if (d && d.reason === "used") return formMsg("Uji coba gratis sudah pernah digunakan oleh Gmail atau perangkat ini dan tidak dapat diulang.");
+        return formMsg("Server menolak klaim uji coba (alasan: " + ((d && d.reason) || "tidak diketahui") + ").");
       }
       begin({ did: did, email: email, end: Date.now() + d.remaining * 1000, used: DUR - d.remaining * 1000, done: false }, "Uji coba gratis dimulai: " + Math.round(d.remaining / 60) + " menit");
     } catch (e) {
@@ -266,7 +272,9 @@
       if (e && e.code === "nosql") {   /* SQL belum dipasang: Gmail tetap terverifikasi, batas per perangkat */
         return begin({ did: did, email: email, end: Date.now() + DUR, used: 0, done: false, local: true });
       }
-      formMsg(navigator.onLine === false ? "Tidak ada koneksi internet." : "Server tidak dapat dihubungi, coba lagi.");
+      formMsg(navigator.onLine === false ? "Tidak ada koneksi internet."
+        : e && e.status ? "Server menolak (kode " + e.status + "): " + (e.msg || "tanpa keterangan")
+        : "Server tidak dapat dihubungi, coba lagi.");
     }
   }
 
