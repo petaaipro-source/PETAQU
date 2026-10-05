@@ -350,13 +350,28 @@
     }
     return parts.filter(function (p) { return p.g.length >= 2; });
   }
+  var jtMask = null, jtMaskT = 0;
+  function jtMaskLayer() {
+    var m = M(); if (!m) return null;
+    if (jtMask && jtMask.options && jtMask.options.pane === "jatengMaskPane") return jtMask;
+    if (Date.now() - jtMaskT < 1500) return null; /* jangan memindai semua layer terlalu sering */
+    jtMaskT = Date.now();
+    m.eachLayer(function (l) { if (l.options && l.options.pane === "jatengMaskPane" && l.setStyle) jtMask = l; });
+    return jtMask;
+  }
+  /* 1 = tampil penuh; <1 = pudar. Sumber utama: layer penutup yang sedang tampil di peta (nilai sebenarnya);
+     cadangan: pengaturan tersimpan, dengan bawaan modul penutup (aktif, transparansi 30%) bila belum pernah diubah. */
   function outVis() {
-    try {
-      var o = JSON.parse(localStorage.getItem(JK) || "null");
-      if (!o || o.on === false) return 1;
-      var tp = isFinite(o.tp) ? Math.min(1, Math.max(0, +o.tp)) : 0.3;
-      return tp;
-    } catch (e) { return 1; }
+    var m = M(), l = jtMaskLayer();
+    if (l && m) {
+      if (!m.hasLayer(l)) return 1;
+      var fo = l.options.fillOpacity;
+      return isFinite(fo) ? Math.min(1, Math.max(0, 1 - fo)) : 1;
+    }
+    var o = null;
+    try { o = JSON.parse(localStorage.getItem(JK) || "null"); } catch (e) {}
+    if (o && o.on === false) return 1;
+    return o && isFinite(o.tp) ? Math.min(1, Math.max(0, +o.tp)) : 0.3;
   }
   function opOf(l) { return (l.__osm ? st.op * 0.75 : st.op) * (l.__out ? outVis() : 1); }
   var outSig = "";
