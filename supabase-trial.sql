@@ -1,21 +1,43 @@
--- Uji coba gratis 10 menit: 1 Gmail ATAU 1 perangkat, tidak dapat diulang.
--- Jalankan SEKALI di Supabase > SQL Editor. Tidak mengubah tabel/kebijakan yang sudah ada.
+-- Uji coba gratis 10 menit: 1 Gmail (diverifikasi lewat Google) ATAU 1 perangkat, tidak dapat diulang.
+-- Jalankan SEKALI di Supabase > SQL Editor. Aman dijalankan ulang.
+-- SYARAT: Authentication > Sign In / Providers > aktifkan "Allow new users to sign up" (Google sudah aktif).
+--         Pendaftar uji coba otomatis diberi peran 'trial' sehingga TIDAK bisa membaca data ruas di awan.
+
 create table if not exists trial_claims (
   id bigserial primary key,
   email text not null unique,          -- Gmail ternormalisasi (titik & +alias dibuang)
-  device_id text not null unique,      -- ID acak per perangkat/browser
-  fp text not null,                    -- sidik perangkat (cadangan bila penyimpanan browser dihapus)
+  device_id text not null unique,
+  fp text not null,
   started_at timestamptz not null default now()
 );
 create index if not exists trial_claims_fp_idx on trial_claims (fp);
-alter table trial_claims enable row level security;   -- tanpa policy: tidak bisa dibaca/ditulis langsung lewat API
+alter table trial_claims enable row level security;   -- tanpa policy: tak bisa diakses langsung lewat API
 
-create or replace function claim_trial(p_email text, p_device text, p_fp text)
+-- peran baru 'trial' + data ruas hanya untuk admin/surveyor/viewer
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check check (role in ('admin','surveyor','viewer','trial'));
+drop policy if exists "baca ruas" on roads;
+create policy "baca ruas" on roads for select using (my_role() in ('admin','surveyor','viewer'));
+
+-- fungsi lama (Gmail diketik manual) dihapus agar tidak bisa disalahgunakan
+drop function if exists claim_trial(text, text, text);
+
+create or replace function claim_trial_g(p_device text, p_fp text)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare e text; r trial_claims; rem int;
+declare j jsonb := auth.jwt(); uid uuid := auth.uid(); e text; r trial_claims; rem int;
 begin
-  e := lower(trim(coalesce(p_email, '')));
-  if e !~ '^[a-z0-9._+-]+@(gmail|googlemail)\.com$' then return jsonb_build_object('ok', false, 'reason', 'bad_email'); end if;
+  if uid is null then return jsonb_build_object('ok', false, 'reason', 'no_auth'); end if;
+
+  -- pendaftar baru (<10 menit) diturunkan ke peran 'trial'; pengguna lama tidak disentuh
+  update profiles set role = 'trial'
+   where id = uid and role = 'viewer'
+     and exists (select 1 from auth.users u where u.id = uid and u.created_at > now() - interval '10 minutes');
+
+  e := lower(coalesce(j->>'email', ''));
+  if coalesce(j->'app_metadata'->>'provider', '') <> 'google'
+     or e !~ '^[a-z0-9._+-]+@(gmail|googlemail)\.com$' then
+    return jsonb_build_object('ok', false, 'reason', 'bad_email');
+  end if;
   e := replace(split_part(split_part(e, '@', 1), '+', 1), '.', '');
   if length(e) < 6 then return jsonb_build_object('ok', false, 'reason', 'bad_email'); end if;
   e := e || '@gmail.com';
@@ -23,15 +45,13 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'bad_device');
   end if;
 
-  -- perangkat yang sama: lanjutkan sisa waktu (mis. halaman dimuat ulang) atau tolak bila sudah habis
   select * into r from trial_claims where device_id = p_device;
-  if found then
+  if found then   -- perangkat sama: lanjutkan sisa waktu atau tolak bila habis
     rem := greatest(0, 600 - floor(extract(epoch from (now() - r.started_at)))::int);
     if rem <= 0 then return jsonb_build_object('ok', false, 'reason', 'expired'); end if;
     return jsonb_build_object('ok', true, 'remaining', rem);
   end if;
 
-  -- Gmail atau sidik perangkat sudah pernah dipakai -> tolak
   if exists (select 1 from trial_claims where email = e or fp = p_fp) then
     return jsonb_build_object('ok', false, 'reason', 'used');
   end if;
@@ -52,7 +72,7 @@ begin
   return jsonb_build_object('ok', rem > 0, 'remaining', rem, 'reason', case when rem > 0 then 'active' else 'expired' end);
 end $$;
 
-revoke all on function claim_trial(text, text, text) from public;
+revoke all on function claim_trial_g(text, text) from public;
 revoke all on function trial_status(text) from public;
-grant execute on function claim_trial(text, text, text) to anon, authenticated;
+grant execute on function claim_trial_g(text, text) to authenticated;
 grant execute on function trial_status(text) to anon, authenticated;
