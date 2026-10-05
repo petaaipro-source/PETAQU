@@ -289,6 +289,22 @@
     $("pqTrialGo").addEventListener("click", keGoogle);
     g.addEventListener("click", function () { lsDel(FLAG); }, true);   /* login Google biasa tidak boleh dianggap uji coba */
     if (usedBefore()) lockButton();
+
+    /* kolom Email/OTP disembunyikan (index.html). Akses: Google (terverifikasi) atau Username untuk akun admin */
+    if (!$("pqLoginAlt")) {
+      var a = document.createElement("div");
+      a.id = "pqLoginAlt";
+      a.innerHTML = '<button type="button" id="pqLoginAltBtn">Masuk dengan username</button>';
+      w.parentNode.insertBefore(a, w.nextSibling);
+      var u = false, ab = $("pqLoginAltBtn");
+      ab.addEventListener("click", function () {
+        u = !u;
+        var t = $(u ? "tabUser" : "tabEmail");
+        if (t) t.click();
+        w.style.display = u ? "none" : "";
+        ab.textContent = u ? "\u2190 Kembali, masuk dengan Google" : "Masuk dengan username";
+      });
+    }
   }
 
   async function start() {
