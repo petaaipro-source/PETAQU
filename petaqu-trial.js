@@ -8,6 +8,8 @@
        agar tetap berlaku saat offline / jam diubah. Setiap 60 dtk dicocokkan lagi ke server bila online.
      • Habis waktu -> layar login muncul lagi; tombol uji coba terkunci selamanya untuk Gmail/perangkat itu.
      • Login resmi (OTP / Google / username) tidak terpengaruh dan otomatis menghentikan uji coba.
+   • TANPA SQL: bila supabase-trial.sql belum dipasang, otomatis memakai MODE PERANGKAT (Gmail opsional). Penanda mulai disimpan di
+     localStorage + cookie + IndexedDB + Cache Storage; selama salah satunya bertahan, uji coba tidak bisa diulang.
    Hemat kuota: hanya 1 panggilan saat mulai + 1 panggilan kecil per menit (RPC ringan, tanpa tabel dibaca langsung). */
 (function () {
   "use strict";
@@ -29,7 +31,42 @@
   function ckSet(k, v) { try { document.cookie = k + "=" + encodeURIComponent(v) + ";max-age=63072000;path=/;SameSite=Lax"; } catch (e) { /* abaikan */ } }
   function rec() { try { return JSON.parse(lsGet(K)); } catch (e) { return null; } }
   function save(r) { lsSet(K, JSON.stringify(r)); if (r.done) ckSet("pq_trd", "1"); }
-  function usedBefore() { var r = rec(); return !!((r && r.done) || ckGet("pq_trd") === "1"); }
+  function usedBefore() { var r = rec(); return !!((r && r.done) || ckGet("pq_trd") === "1" || +lsGet("pq_tstart") || +ckGet("pq_tstart")); }
+
+  /* ---------- penanda "sudah mulai" di 4 tempat berbeda (tahan terhadap hapus sebagian data) ---------- */
+  function idbOpen() {
+    return new Promise(function (res, rej) {
+      try {
+        var q = indexedDB.open("pq_trial_db", 1);
+        q.onupgradeneeded = function () { q.result.createObjectStore("k"); };
+        q.onsuccess = function () { res(q.result); };
+        q.onerror = function () { rej(); };
+      } catch (e) { rej(); }
+    });
+  }
+  async function idbGet() {
+    try {
+      var db = await idbOpen();
+      return await new Promise(function (res) { var g = db.transaction("k").objectStore("k").get("start"); g.onsuccess = function () { res(g.result); }; g.onerror = function () { res(null); }; });
+    } catch (e) { return null; }
+  }
+  async function idbSet(v) { try { var db = await idbOpen(); db.transaction("k", "readwrite").objectStore("k").put(v, "start"); } catch (e) { /* abaikan */ } }
+  async function cacheGet() { try { var c = await caches.open("pq-trial"); var r = await c.match("/__pq_trial_start"); return r ? +(await r.text()) : null; } catch (e) { return null; } }
+  async function cacheSet(v) { try { var c = await caches.open("pq-trial"); await c.put("/__pq_trial_start", new Response(String(v))); } catch (e) { /* abaikan */ } }
+  async function setMark(ms) {
+    lsSet("pq_tstart", String(ms)); ckSet("pq_tstart", String(ms));
+    await Promise.all([idbSet(ms), cacheSet(ms)]);
+  }
+  async function recover() {   /* bila catatan utama hilang tapi penanda masih ada -> pulihkan, uji coba tetap terhitung terpakai */
+    var c = [+lsGet("pq_tstart"), +ckGet("pq_tstart"), await idbGet(), await cacheGet()].filter(function (n) { return n > 1e12 && n <= Date.now() + 864e5; });
+    if (!c.length) return;
+    var m = Math.min.apply(null, c);
+    setMark(m);
+    if (!rec()) {
+      var end = m + DUR;
+      save({ did: deviceId(), email: "", end: end, used: Math.max(0, Math.min(DUR, Date.now() - m)), done: Date.now() >= end, local: true });
+    }
+  }
 
   function deviceId() {
     var v = lsGet("pq_did") || ckGet("pq_did");
@@ -155,7 +192,7 @@
     T("Uji coba gratis berakhir", true);
   }
   async function verify(r) {   /* cocokkan dengan jam server bila online */
-    if (navigator.onLine === false) return;
+    if (r.local || navigator.onLine === false) return;
     try {
       var d = await rpc("trial_status", { p_device: r.did });
       if (d && d.reason === "expired") return finish(r);
@@ -184,14 +221,44 @@
   }
 
   /* ---------- mulai uji coba ---------- */
+  var srv = null;   /* null = belum tahu, true = server siap (SQL terpasang), false = mode perangkat (tanpa SQL) */
+  async function probe() {
+    if (srv !== null) return srv;
+    try { await rpc("trial_status", { p_device: deviceId() }); srv = true; }
+    catch (e) { srv = (e && (e.code === "nosql" || e.code === "nocfg")) ? false : null; }
+    return srv;
+  }
+  function modeUI() {
+    var l = document.querySelector('label[for="pqTrialMail"]'), n = $("pqTrialNote");
+    if (srv === false) {
+      if (l) l.textContent = "Gmail (opsional)";
+      if (n) n.textContent = "Gratis 10 menit di perangkat ini. Tidak dapat diulang di perangkat yang sama.";
+    }
+  }
+  async function startLocal(email) {
+    var t = Date.now(), r = { did: deviceId(), email: email || "", end: t + DUR, used: 0, done: false, local: true };
+    save(r);
+    await setMark(t);
+    formMsg("");
+    hideLogin();
+    run(r);
+    T("Uji coba gratis dimulai: 10 menit");
+  }
   async function mulai() {
     var go = $("pqTrialGo"), inp = $("pqTrialMail");
-    if (usedBefore()) { lockButton(); return; }
-    var email = normGmail(inp.value);
-    if (!email) return formMsg("Masukkan alamat Gmail yang valid (nama@gmail.com).");
-    if (navigator.onLine === false) return formMsg("Butuh koneksi internet untuk memulai uji coba.");
+    if (usedBefore()) { lockButton(); return formMsg("Uji coba sudah digunakan di perangkat ini dan tidak dapat diulang."); }
+    var raw = inp.value.trim(), email = normGmail(raw);
     go.disabled = true; formMsg("Memeriksa kelayakan...", true);
     try {
+      if (srv === null) await probe();
+      modeUI();
+      if (srv === false) {                         /* MODE PERANGKAT (tanpa SQL) */
+        if (raw && !email) return formMsg("Gmail tidak valid. Kosongkan kolom ini atau isi nama@gmail.com.");
+        return await startLocal(email);
+      }
+      /* MODE SERVER (SQL terpasang): Gmail wajib */
+      if (!email) return formMsg("Masukkan alamat Gmail yang valid (nama@gmail.com).");
+      if (navigator.onLine === false) return formMsg("Butuh koneksi internet untuk memulai uji coba.");
       var did = deviceId();
       var d = await rpc("claim_trial", { p_email: email, p_device: did, p_fp: await fingerprint() });
       if (!d || !d.ok) {
@@ -201,13 +268,13 @@
       }
       var r = { did: did, email: email, end: Date.now() + d.remaining * 1000, used: DUR - d.remaining * 1000, done: false };
       save(r);
+      await setMark(r.end - DUR);
       formMsg("");
       hideLogin();
       run(r);
       T("Uji coba gratis dimulai: " + Math.round(d.remaining / 60) + " menit");
     } catch (e) {
-      formMsg(e && e.code === "nosql" ? "Fitur uji coba belum diaktifkan di server (jalankan supabase-trial.sql)."
-        : navigator.onLine === false ? "Tidak ada koneksi internet." : "Server tidak dapat dihubungi, coba lagi.");
+      formMsg(navigator.onLine === false ? "Tidak ada koneksi internet." : "Server tidak dapat dihubungi, coba lagi.");
     } finally { go.disabled = false; }
   }
 
@@ -224,21 +291,22 @@
       '<div class="login-field"><label for="pqTrialMail">Gmail untuk uji coba</label><div class="login-input-wrap"><i class="fa-brands fa-google"></i> <input type="email" id="pqTrialMail" placeholder="nama@gmail.com" autocomplete="email" autocapitalize="none" spellcheck="false"></div></div>' +
       '<button type="button" class="login-btn" id="pqTrialGo"><i class="fa-solid fa-play"></i> <span>Mulai uji coba</span></button>' +
       '<div id="pqTrialMsg" style="display:none;margin-top:8px;font-size:12px;line-height:1.45"></div>' +
-      '<p style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.5">Gratis 10 menit untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Butuh internet saat memulai.</p>' +
+      '<p id="pqTrialNote" style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.5">Gratis 10 menit untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Butuh internet saat memulai.</p>' +
       '</div>';
     g.parentNode.insertBefore(w, g.nextSibling);
     $("pqTrialBtn").addEventListener("click", function () {
       var f = $("pqTrialForm");
       f.style.display = f.style.display === "none" ? "" : "none";
-      if (f.style.display === "") $("pqTrialMail").focus();
+      if (f.style.display === "") { $("pqTrialMail").focus(); probe().then(modeUI); }
     });
     $("pqTrialGo").addEventListener("click", mulai);
     $("pqTrialMail").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); mulai(); } });
     if (usedBefore()) lockButton();
   }
 
-  function start() {
+  async function start() {
     if (lsGet(AUTHK) === "1") return;      /* sudah login resmi */
+    await recover();
     inject();
     var r = rec();
     if (r && !r.done) {
