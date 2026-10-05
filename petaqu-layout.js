@@ -124,7 +124,7 @@
     var shown = legendShown();
 
     /* ukuran legenda penuh (diukur hanya saat tidak diciutkan) */
-    if (shown && !legend.classList.contains("pq-lg-mini")) {
+    if (shown && !legend.classList.contains("pq-lg-mini") && !legend.classList.contains("pq-lg-min")) {
       var r0 = legend.getBoundingClientRect();
       fullH = r0.height;
       gapB = Math.max(0, vh - r0.bottom);
