@@ -1,4 +1,5 @@
 -- Uji coba gratis 10 menit: 1 Gmail (diverifikasi lewat Google) ATAU 1 perangkat, tidak dapat diulang.
+-- Setelah klaim, akun uji coba DIKUNCI (banned) -> tidak bisa login lagi sampai admin membayar/meng-upgrade (lihat supabase-trial-bersih.sql).
 -- Jalankan SEKALI di Supabase > SQL Editor. Aman dijalankan ulang.
 -- SYARAT: Authentication > Sign In / Providers > aktifkan "Allow new users to sign up" (Google sudah aktif).
 --         Pendaftar uji coba otomatis diberi peran 'trial' sehingga TIDAK bisa membaca data ruas di awan.
@@ -31,15 +32,23 @@ end $$;
 -- fungsi lama (Gmail diketik manual) dihapus agar tidak bisa disalahgunakan
 drop function if exists claim_trial(text, text, text);
 
-create or replace function claim_trial_g(p_device text, p_fp text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare j jsonb := auth.jwt(); uid uuid := auth.uid(); e text; r trial_claims; rem int;
+-- akun uji coba dikunci (ban) di Supabase begitu klaim diproses: tidak bisa lagi login lewat OTP / Google / refresh token.
+-- Hanya akun ber-peran 'trial' yang disentuh; admin/surveyor/viewer tidak pernah dikunci.
+create or replace function kunci_trial(p_uid uuid) returns void
+language plpgsql security definer set search_path = public as $$
 begin
-  if uid is null then return jsonb_build_object('ok', false, 'reason', 'no_auth'); end if;
+  update auth.users set banned_until = now() + interval '100 years'
+   where id = p_uid and exists (select 1 from profiles where id = p_uid and role = 'trial');
+end $$;
 
+create or replace function claim_trial_inner(uid uuid, j jsonb, p_device text, p_fp text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare e text; r trial_claims; rem int;
+begin
   -- pendaftar baru (<10 menit) diturunkan ke peran 'trial'; pengguna lama tidak disentuh
   update profiles set role = 'trial'
    where id = uid and role = 'viewer'
+     and coalesce(j->'app_metadata'->>'provider', '') = 'google'   -- akun buatan admin (email/password) tidak ikut diturunkan
      and exists (select 1 from auth.users u where u.id = uid and u.created_at > now() - interval '10 minutes');
 
   e := lower(coalesce(j->>'email', ''));
@@ -71,6 +80,16 @@ exception when unique_violation then
   return jsonb_build_object('ok', false, 'reason', 'used');
 end $$;
 
+create or replace function claim_trial_g(p_device text, p_fp text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); res jsonb;
+begin
+  if uid is null then return jsonb_build_object('ok', false, 'reason', 'no_auth'); end if;
+  res := claim_trial_inner(uid, auth.jwt(), p_device, p_fp);
+  perform kunci_trial(uid);          -- apa pun hasilnya, akun uji coba tidak boleh punya akses login
+  return res;
+end $$;
+
 create or replace function trial_status(p_device text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare r trial_claims; rem int;
@@ -81,6 +100,8 @@ begin
   return jsonb_build_object('ok', rem > 0, 'remaining', rem, 'reason', case when rem > 0 then 'active' else 'expired' end);
 end $$;
 
+revoke all on function kunci_trial(uuid) from public, anon, authenticated;
+revoke all on function claim_trial_inner(uuid, jsonb, text, text) from public, anon, authenticated;
 revoke all on function claim_trial_g(text, text) from public;
 revoke all on function trial_status(text) from public;
 grant execute on function claim_trial_g(text, text) to authenticated;

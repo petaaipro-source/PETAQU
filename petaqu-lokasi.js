@@ -45,7 +45,7 @@
   }
 
   /* ---------- state ---------- */
-  var S = { jenis: { amp: true, bp: true, quarry: true }, offProv: [], offKab: [], q: "", open: false, sec: { prov: true, kab: true } };
+  var S = { jenis: { amp: false, bp: false, quarry: false }, offProv: [], offKab: [], q: "", open: false, sec: { prov: true, kab: true } };
   try { var sv = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); if (sv) { for (var k in sv) if (k in S) S[k] = sv[k]; } } catch (e) {}
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {} }
 

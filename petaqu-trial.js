@@ -244,7 +244,7 @@
   async function selesaiGoogle(o) {
     formMsg("Memverifikasi akun Google...", true);
     if (!o.tok) {
-      return formMsg(/signup|not allowed|database error/i.test(o.err || "")
+      return formMsg(/banned/i.test(o.err || "") ? "Uji coba gratis untuk akun ini sudah berakhir. Hubungi admin untuk berlangganan." : /signup|not allowed|database error/i.test(o.err || "")
         ? "Pendaftaran akun baru belum diizinkan di Supabase (Authentication > Sign In / Providers > Allow new users to sign up). [" + String(o.err).slice(0, 90) + "]"
         : "Login Google dibatalkan atau gagal: " + String(o.err || "tanpa keterangan").slice(0, 120));
     }

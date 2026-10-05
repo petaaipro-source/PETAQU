@@ -73,7 +73,7 @@
     JPARJL: { 1: "1 lajur", 2: "2 lajur", 3: "3 lajur" }
   };
 
-  var DEF = { on: true, show: { tol: true, kons: true, renc: true, prov: false }, op: 0.9, osmTol: false, osmProv: false, lbl: true, nm: true, sp: { on: false, layer: "", ep: "" } };
+  var DEF = { on: false, show: { tol: true, kons: false, renc: false, prov: false }, op: 0.9, osmTol: false, osmProv: false, lbl: false, nm: true, sp: { on: false, layer: "", ep: "" } };
   var st = JSON.parse(JSON.stringify(DEF));
   try {
     var sv = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -360,7 +360,7 @@
     return jtMask;
   }
   /* 1 = tampil penuh; <1 = pudar. Sumber utama: layer penutup yang sedang tampil di peta (nilai sebenarnya);
-     cadangan: pengaturan tersimpan, dengan bawaan modul penutup (aktif, transparansi 30%) bila belum pernah diubah. */
+     cadangan: pengaturan tersimpan, dengan bawaan modul penutup (aktif, transparansi 75%) bila belum pernah diubah. */
   function outVis() {
     var m = M(), l = jtMaskLayer();
     if (l && m) {
@@ -371,7 +371,7 @@
     var o = null;
     try { o = JSON.parse(localStorage.getItem(JK) || "null"); } catch (e) {}
     if (o && o.on === false) return 1;
-    return o && isFinite(o.tp) ? Math.min(1, Math.max(0, +o.tp)) : 0.3;
+    return o && isFinite(o.tp) ? Math.min(1, Math.max(0, +o.tp)) : 0.75;
   }
   function opOf(l) { return (l.__osm ? st.op * 0.75 : st.op) * (l.__out ? outVis() : 1); }
   var outSig = "";

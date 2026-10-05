@@ -8,11 +8,32 @@ const post=(p,b,tok)=>fetch(CFG.url+p,{method:"POST",headers:Object.assign({apik
 const getS=()=>{try{return JSON.parse(localStorage.getItem(SK))}catch{return null}};
 const hapus=()=>{localStorage.removeItem(SK);localStorage.removeItem(KEY)};
 function simpan(d,email){localStorage.setItem(SK,JSON.stringify({access_token:d.access_token,refresh_token:d.refresh_token,uid:d.user&&d.user.id,email:email||(d.user&&d.user.email),exp:Date.now()+(d.expires_in||3600)*1e3}));localStorage.setItem(KEY,"1")}
-async function segarkan(){   // perpanjang token otomatis; offline = tetap masuk
+async function perpanjang(){   // perpanjang token otomatis; offline = tetap masuk
   const s=getS();if(!s||!s.refresh_token||(s.exp&&s.exp-Date.now()>3e5))return;
   try{const r=await post("/auth/v1/token?grant_type=refresh_token",{refresh_token:s.refresh_token});
     if(r.ok)simpan(await r.json(),s.email);else if(r.status===400||r.status===401||r.status===403){hapus();location.reload()}}catch{}
 }
+async function validasi(){   // sesi palsu / dicabut / akun uji coba -> keluar. Offline atau server error = dibiarkan
+  const s=getS();if(!s||!s.access_token||navigator.onLine===false)return;
+  try{
+    const H={apikey:CFG.anon,Authorization:"Bearer "+s.access_token};
+    const u=await fetch(CFG.url+"/auth/v1/user",{headers:H});
+    if(u.status===401||u.status===403||u.status===404){hapus();location.reload();return}
+    if(!u.ok)return;
+    const id=(await u.json()).id;
+    const r=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(id),{headers:H});
+    if(!r.ok)return;const w=await r.json();
+    if(w[0]&&w[0].role==="trial"){hapus();location.reload()}
+  }catch{}
+}
+async function segarkan(){await perpanjang();await validasi()}
+const PERAN_OK=["admin","surveyor","viewer"];
+async function peranOk(tok,uid){   // true hanya bila profil ada & bukan 'trial'. Gagal cek apa pun = DITOLAK (fail-closed)
+  try{if(!tok||!uid)return false;
+    const r=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(uid),{headers:{apikey:CFG.anon,Authorization:"Bearer "+tok}});
+    if(!r.ok)return false;const w=await r.json();return !!w[0]&&PERAN_OK.includes(w[0].role)}catch{return false}
+}
+const tolak=tok=>{post("/auth/v1/logout?scope=local",{},tok).catch(()=>{})};
 const tutupPanel=()=>{try{typeof toggleSidebarCollapse==="function"?toggleSidebarCollapse(true):document.body.classList.add("sidebar-collapsed");typeof toggleSidebar==="function"&&toggleSidebar(false)}catch{}};   // panel samping selalu tertutup saat masuk; buka lewat tombol panel
 const fit=()=>setTimeout(()=>{window.map&&(map.invalidateSize({pan:!1}),fitAllBounds())},50);
 function pesan(m,ok){const e=$("loginError"),c=$("loginCard");e.querySelector("span").textContent=m;e.style.color=ok?"var(--cyan)":"";e.classList.add("show");if(!ok){c.classList.remove("shake");c.offsetWidth;c.classList.add("shake")}}
@@ -30,14 +51,13 @@ window.PQ_AUTH_INIT=function(){
       const r=await fetch(CFG.url+"/auth/v1/user",{headers:{apikey:CFG.anon,Authorization:"Bearer "+t}});if(!r.ok)throw 0;
       const u=await r.json();
       // pendaftar Google baru (peran 'trial' / tanpa profil) BUKAN pengguna resmi -> tolak, jangan beri sesi
-      const pr=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(u.id),{headers:{apikey:CFG.anon,Authorization:"Bearer "+t}}).catch(()=>null);
-      if(pr&&pr.ok){const rw=await pr.json();if(!rw[0]||rw[0].role==="trial"){post("/auth/v1/logout?scope=local",{},t).catch(()=>{});pesan("Akun Google ini belum terdaftar. Hubungi admin.");return}}
+      if(!await peranOk(t,u.id)){tolak(t);pesan("Akun ini belum terdaftar atau masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.");return}
       simpan({access_token:t,refresh_token:rt,expires_in:ex,user:u},u.email);
       scr.classList.add("hide");tutupPanel();typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
     }catch{pesan("Login Google gagal, coba lagi")}})();
   }else if(galatUrl){
     history.replaceState(null,"",location.pathname);
-    pesan(/signup|not allowed|database error/i.test(galatUrl)?"Akun Google ini belum terdaftar. Hubungi admin.":"Login Google gagal, coba lagi");
+    pesan(/banned/i.test(galatUrl)?"Masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.":/signup|not allowed|database error/i.test(galatUrl)?"Akun Google ini belum terdaftar. Hubungi admin.":"Login Google gagal, coba lagi");
   }
   $("loginGoogle").addEventListener("click",()=>{
     if(!siap())return pesan("Konfigurasi Supabase belum diisi (petaqu-auth.js)");
@@ -65,7 +85,8 @@ window.PQ_AUTH_INIT=function(){
     btn.disabled=true;
     try{
       const r=await post("/auth/v1/verify",{type:"email",email,token});if(!r.ok)throw 0;
-      simpan(await r.json(),email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();otp.value="";
+      const d=await r.json();if(!await peranOk(d.access_token,d.user&&d.user.id)){tolak(d.access_token);otp.value="";return pesan("Akun ini belum terdaftar atau masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.")}
+      simpan(d,email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();otp.value="";
       typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
     }catch{pesan(navigator.onLine?"Kode salah atau sudah kedaluwarsa":"Tidak ada koneksi internet");otp.value="";otp.focus()}finally{btn.disabled=false}
   }
@@ -90,7 +111,8 @@ window.PQ_AUTH_INIT=function(){
       const r=await post("/auth/v1/token?grant_type=password",{email,password:pw});
       if(r.status===429)return pesan("Terlalu banyak percobaan, tunggu sebentar lalu coba lagi");
       if(!r.ok)throw 0;
-      simpan(await r.json(),email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();pwP.value="";
+      const d=await r.json();if(!await peranOk(d.access_token,d.user&&d.user.id)){tolak(d.access_token);pwP.value="";return pesan("Akun ini belum terdaftar atau masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.")}
+      simpan(d,email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();pwP.value="";
       typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
     }catch{pesan(navigator.onLine?"Username atau password salah":"Tidak ada koneksi internet");pwP.value="";pwP.focus()}finally{pwB.disabled=false}
   });
