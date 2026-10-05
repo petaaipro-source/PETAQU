@@ -49,9 +49,9 @@
   /* kategori. chain = urutan sumber; big = filter SQL layer BIG; q = filter Overpass; z = zoom minimum */
   var CAT = {
     tol:  { n: "Jalan Tol (operasi)",  c: "#f59e0b", w: 4, z: 8,  d: "",    big: "TOLRJL=1 AND STARJL=1", chain: ["bm", "big", "osm"], q: '[highway~"^(motorway|motorway_link)$"]' },
-    kons: { n: "Tol Dalam Konstruksi", c: "#f97316", w: 4, z: 8,  d: "9 6", big: "TOLRJL=1 AND STARJL=3", chain: ["bm", "big", "osm"], q: '[highway=construction][construction~"^(motorway|motorway_link|trunk)$"]' },
+    kons: { n: "Tol Dalam Konstruksi", c: "#ef4444", w: 4, z: 8,  d: "9 6", big: "TOLRJL=1 AND STARJL=3", chain: ["bm", "big", "osm"], q: '[highway=construction][construction~"^(motorway|motorway_link|trunk)$"]' },
     renc: { n: "Rencana Tol",          c: "#a78bfa", w: 3, z: 8,  d: "3 8", big: "TOLRJL=1 AND STARJL=2", chain: ["bm", "big", "osm"], q: '[highway=proposed][proposed~"^(motorway|trunk)$"]' },
-    prov: { n: "Ruas Jalan Provinsi",  c: "#2f4bff", w: 3, z: 10, d: "",    big: "AUTRJL=2 AND (TOLRJL IS NULL OR TOLRJL<>1)", chain: ["bm", "big"], q: '[highway~"^(secondary|secondary_link)$"]' }
+    prov: { n: "Ruas Jalan Provinsi",  c: "#3b82f6", w: 3, z: 10, d: "",    big: "AUTRJL=2 AND (TOLRJL IS NULL OR TOLRJL<>1)", chain: ["bm", "big"], q: '[highway~"^(secondary|secondary_link)$"]' }
   };
   var ORDER = ["tol", "kons", "renc", "prov"];
 
@@ -126,6 +126,18 @@
     ".tl-x{position:absolute;top:8px;right:10px;border:0;background:none;color:#8fa6bd;font-size:20px;cursor:pointer}" +
     ".tl-lab{pointer-events:none!important}.tl-lab span{position:absolute;left:0;top:0;white-space:nowrap;font:700 11px/1 system-ui,sans-serif;color:#fff;letter-spacing:.2px;text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000,0 -1px 2px #000;transform-origin:50% 50%}" +
     "#tlLegend{margin-top:6px}#tlLegend b{display:block;margin-top:6px;font-size:10px;letter-spacing:.6px;text-transform:uppercase}#tlLegend .jn-lg-row{display:flex;align-items:center;gap:8px;margin-top:5px;white-space:nowrap;color:#d7e5f3;font-size:11.5px;font-weight:600}#tlLegend .jn-lg-row i{width:22px;height:4px;border-radius:3px;flex:none;display:block}" +
+    "html body #legend{min-width:236px;padding:11px 14px 12px;line-height:1.35}" +
+    "html body #legend>b{font-size:11px;letter-spacing:.9px;color:#e6edf5;margin-bottom:7px}" +
+    "html body #legend #legendContent .lg-row{display:flex;align-items:center;gap:10px;margin-top:5px;color:#c4d3e3;font-size:11.5px}" +
+    "html body #legend .lg-dot{width:10px;height:10px;margin:0 10px;border-radius:50%;background:#fff;border:2px solid #0b1220;box-shadow:0 0 0 1.5px #94a3b8;flex:none;display:block}" +
+    "html body #legend .lg-ln{width:30px;height:0;margin:0;border-top:3px solid #94a3b8;border-radius:3px;flex:none;display:block}" +
+    "html body #legend #tlLegend,html body #legend #jnLegend{margin-top:9px;padding-top:8px;border-top:1px solid rgba(148,178,204,.22)}" +
+    "html body #legend #tlLegend:empty,html body #legend #jnLegend:empty{display:none}" +
+    "html body #legend #tlLegend b,html body #legend #jnLegend b{display:block;margin:9px 0 0;font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:#8fa6bd}" +
+    "html body #legend #tlLegend b:first-child,html body #legend #jnLegend b:first-child{margin-top:0}" +
+    "html body #legend .jn-lg-row{gap:10px;margin-top:6px;font-size:11.5px;font-weight:600;color:#e2ecf6}" +
+    "html body #legend .jn-lg-row i{width:30px;height:5px;border-radius:4px}" +
+    ".lg-sw{flex:none;width:30px;height:8px;display:block;line-height:0}.lg-sw svg{display:block;filter:drop-shadow(0 0 3px rgba(0,0,0,.6))}" +
     ".tl-hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}.tl-hd .tl-x{position:static;line-height:1;padding:0 2px}.tl-hd .jn-sw{margin-top:2px}" +
     ".tl-r{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;cursor:pointer}.tl-r:hover{background:#ffffff0d}" +
     ".tl-r input{accent-color:var(--c)}.tl-sw{width:30px;height:0;border-top:4px var(--ds,solid) var(--c);border-radius:2px;flex:none}" +
@@ -237,16 +249,24 @@
     legend();
   }
 
+  /* Palet garis PETAQU (semua unik, tidak boleh ada yang sama):
+       Tol operasi #f59e0b (amber, solid) · Tol konstruksi #ef4444 (merah, putus-putus) · Rencana tol #a78bfa (ungu, titik-titik)
+       Provinsi #3b82f6 (biru) · Lintas Utara #22d3ee (cyan) · Lintas Tengah #a3e635 (lime) · Lintas Selatan #f472b6 (pink) */
+  var LGD = { kons: "7 4", renc: "1 5" };
+  function swatch(c, dash) {
+    return '<span class="lg-sw"><svg width="30" height="8" viewBox="0 0 30 8" aria-hidden="true"><line x1="3" y1="4" x2="27" y2="4" stroke="' + c +
+      '" stroke-width="4" stroke-linecap="round"' + (dash ? ' stroke-dasharray="' + dash + '"' : "") + "/></svg></span>";
+  }
   function legend() {
     var g = $("legend"); if (!g) return;
     var el = $("tlLegend"); if (!el) { el = document.createElement("div"); el.id = "tlLegend"; g.appendChild(el); }
     function row(k) {
       var c = CAT[k];
-      return '<div class="jn-lg-row"><i style="background:' + (c.d ? "repeating-linear-gradient(90deg," + c.c + " 0 4px,transparent 4px 7px)" : c.c) + '"></i><span>' + c.n + "</span></div>";
+      return '<div class="jn-lg-row">' + swatch(c.c, c.d ? LGD[k] : "") + "<span>" + c.n + "</span></div>";
     }
     var tol = ORDER.filter(function (k) { return k !== "prov" && st.on && st.show[k]; }).map(row).join("");
     var jt = "";
-    if (st.on && spLayer && M() && M().hasLayer(spLayer)) jt = '<div class="jn-lg-row"><i style="background:' + CAT.prov.c + '"></i><span>Jalan Provinsi Jawa Tengah</span></div>';
+    if (st.on && spLayer && M() && M().hasLayer(spLayer)) jt = '<div class="jn-lg-row">' + swatch(CAT.prov.c, "") + "<span>Jalan Provinsi Jawa Tengah</span></div>";
     el.innerHTML = (tol ? "<b>Jalan Tol</b>" + tol : "") + (jt ? '<b class="tl-lh">Jalan Provinsi</b>' + jt : "");
   }
 
