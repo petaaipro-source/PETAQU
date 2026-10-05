@@ -2,7 +2,7 @@
 -- Setelah klaim, akun uji coba DIKUNCI (banned) -> tidak bisa login lagi sampai admin membayar/meng-upgrade (lihat supabase-trial-bersih.sql).
 -- Jalankan SEKALI di Supabase > SQL Editor. Aman dijalankan ulang.
 -- SYARAT: Authentication > Sign In / Providers > aktifkan "Allow new users to sign up" (Google sudah aktif).
---         Pendaftar uji coba otomatis diberi peran 'trial' sehingga TIDAK bisa membaca data ruas di awan.
+--         Pendaftar baru otomatis 'pending' (uji coba -> 'trial'): TIDAK bisa membaca data ruas di awan sampai admin menyetujui.
 
 create table if not exists trial_claims (
   id bigserial primary key,
@@ -16,18 +16,19 @@ alter table trial_claims enable row level security;   -- tanpa policy: tak bisa 
 
 -- peran baru 'trial' + data ruas hanya untuk admin/surveyor/viewer
 alter table profiles drop constraint if exists profiles_role_check;
-alter table profiles add constraint profiles_role_check check (role in ('admin','surveyor','viewer','trial'));
+alter table profiles add constraint profiles_role_check check (role in ('admin','surveyor','viewer','trial','pending','blocked'));
+alter table profiles alter column role set default 'pending';   -- profil tanpa peran eksplisit = menunggu persetujuan admin
 drop policy if exists "baca ruas" on roads;
 create policy "baca ruas" on roads for select using (my_role() in ('admin','surveyor','viewer'));
 
--- pendaftar baru lewat Google (self-signup) otomatis berperan 'trial'; akun buatan admin tetap 'viewer'
+-- SEMUA pendaftar baru (Google, email, apa pun) berperan 'pending' = BELUM punya akses. Admin harus menyetujui (supabase-akses-admin.sql).
 create or replace function new_user() returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into profiles(id, role)
-  values (new.id, case when coalesce(new.raw_app_meta_data->>'provider', '') = 'google' then 'trial' else 'viewer' end)
-  on conflict (id) do nothing;
+  insert into profiles(id, role) values (new.id, 'pending') on conflict (id) do nothing;
   return new;
 end $$;
+drop trigger if exists on_signup on auth.users;
+create trigger on_signup after insert on auth.users for each row execute function new_user();
 
 -- fungsi lama (Gmail diketik manual) dihapus agar tidak bisa disalahgunakan
 drop function if exists claim_trial(text, text, text);
@@ -45,10 +46,9 @@ create or replace function claim_trial_inner(uid uuid, j jsonb, p_device text, p
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare e text; r trial_claims; rem int;
 begin
-  -- pendaftar baru (<10 menit) diturunkan ke peran 'trial'; pengguna lama tidak disentuh
+  -- pendaftar baru (<10 menit) yang masih 'pending' ditandai 'trial'; pengguna yang sudah disetujui admin tidak pernah disentuh
   update profiles set role = 'trial'
-   where id = uid and role = 'viewer'
-     and coalesce(j->'app_metadata'->>'provider', '') = 'google'   -- akun buatan admin (email/password) tidak ikut diturunkan
+   where id = uid and role = 'pending'
      and exists (select 1 from auth.users u where u.id = uid and u.created_at > now() - interval '10 minutes');
 
   e := lower(coalesce(j->>'email', ''));

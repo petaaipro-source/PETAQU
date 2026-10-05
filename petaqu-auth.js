@@ -13,7 +13,7 @@ async function perpanjang(){   // perpanjang token otomatis; offline = tetap mas
   try{const r=await post("/auth/v1/token?grant_type=refresh_token",{refresh_token:s.refresh_token});
     if(r.ok)simpan(await r.json(),s.email);else if(r.status===400||r.status===401||r.status===403){hapus();location.reload()}}catch{}
 }
-async function validasi(){   // sesi palsu / dicabut / akun uji coba -> keluar. Offline atau server error = dibiarkan
+async function validasi(){   // sesi palsu / dicabut / akun belum disetujui admin -> keluar. Offline atau server error = dibiarkan
   const s=getS();if(!s||!s.access_token||navigator.onLine===false)return;
   try{
     const H={apikey:CFG.anon,Authorization:"Bearer "+s.access_token};
@@ -23,15 +23,33 @@ async function validasi(){   // sesi palsu / dicabut / akun uji coba -> keluar. 
     const id=(await u.json()).id;
     const r=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(id),{headers:H});
     if(!r.ok)return;const w=await r.json();
-    if(w[0]&&w[0].role==="trial"){hapus();location.reload()}
+    if(!w[0]||!PERAN_OK.includes(w[0].role)){hapus();location.reload()}   // izin dicabut / belum disetujui / profil hilang -> keluar
   }catch{}
 }
 async function segarkan(){await perpanjang();await validasi()}
+let _tmSeg=0;
+function mulaiSegarkan(){   // izin dicabut admin berlaku <=2 menit, atau seketika saat tab dibuka kembali
+  window.dispatchEvent(new Event("pq-login"));   // petaqu-admin.js: tampilkan panel persetujuan bila yang masuk admin
+  if(_tmSeg)return;_tmSeg=setInterval(segarkan,12e4);
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&localStorage.getItem(KEY)==="1")segarkan()});
+}
 const PERAN_OK=["admin","surveyor","viewer"];
-async function peranOk(tok,uid){   // true hanya bila profil ada & bukan 'trial'. Gagal cek apa pun = DITOLAK (fail-closed)
-  try{if(!tok||!uid)return false;
+async function peranNama(tok,uid){   // nama peran dari server; null bila profil tidak ada / gagal cek
+  try{if(!tok||!uid)return null;
     const r=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(uid),{headers:{apikey:CFG.anon,Authorization:"Bearer "+tok}});
-    if(!r.ok)return false;const w=await r.json();return !!w[0]&&PERAN_OK.includes(w[0].role)}catch{return false}
+    if(!r.ok)return null;const w=await r.json();return w[0]?w[0].role:null}catch{return null}
+}
+const peranOk=async(tok,uid)=>PERAN_OK.includes(await peranNama(tok,uid));   // true hanya untuk admin/surveyor/viewer. Gagal cek apa pun = DITOLAK (fail-closed)
+const PESAN_TOLAK={
+  pending:"Akun kamu sudah terdaftar tetapi MASIH MENUNGGU PERSETUJUAN ADMIN. Kamu bisa masuk setelah admin mengizinkan.",
+  trial:"Masa uji coba gratis telah berakhir. Hubungi admin untuk akses penuh.",
+  blocked:"Akun ini diblokir oleh admin. Hubungi admin.",
+  none:"Akun ini belum terdaftar. Hubungi admin untuk mendapatkan akses."};
+const pesanTolak=r=>PESAN_TOLAK[r]||PESAN_TOLAK.none;
+async function periksaMasuk(tok,uid){   // {ok} bila diizinkan; bila tidak, sesi dibuang & pesan sesuai status akun
+  const r=await peranNama(tok,uid);
+  if(PERAN_OK.includes(r))return{ok:true,role:r};
+  tolak(tok);return{ok:false,pesan:pesanTolak(r)};
 }
 const tolak=tok=>{post("/auth/v1/logout?scope=local",{},tok).catch(()=>{})};
 const tutupPanel=()=>{try{typeof toggleSidebarCollapse==="function"?toggleSidebarCollapse(true):document.body.classList.add("sidebar-collapsed");typeof toggleSidebar==="function"&&toggleSidebar(false)}catch{}};   // panel samping selalu tertutup saat masuk; buka lewat tombol panel
@@ -51,20 +69,20 @@ window.PQ_AUTH_INIT=function(){
       const r=await fetch(CFG.url+"/auth/v1/user",{headers:{apikey:CFG.anon,Authorization:"Bearer "+t}});if(!r.ok)throw 0;
       const u=await r.json();
       // pendaftar Google baru (peran 'trial' / tanpa profil) BUKAN pengguna resmi -> tolak, jangan beri sesi
-      if(!await peranOk(t,u.id)){tolak(t);pesan("Akun ini belum terdaftar atau masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.");return}
+      const iz=await periksaMasuk(t,u.id);if(!iz.ok){pesan(iz.pesan);return}
       simpan({access_token:t,refresh_token:rt,expires_in:ex,user:u},u.email);
-      scr.classList.add("hide");tutupPanel();typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
+      scr.classList.add("hide");tutupPanel();typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();mulaiSegarkan();
     }catch{pesan("Login Google gagal, coba lagi")}})();
   }else if(galatUrl){
     history.replaceState(null,"",location.pathname);
-    pesan(/banned/i.test(galatUrl)?"Masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.":/signup|not allowed|database error/i.test(galatUrl)?"Akun Google ini belum terdaftar. Hubungi admin.":"Login Google gagal, coba lagi");
+    pesan(/banned/i.test(galatUrl)?"Akun ini sedang dikunci (uji coba gratis berakhir / belum disetujui admin). Hubungi admin untuk akses penuh.":/signup|not allowed|database error/i.test(galatUrl)?"Akun Google ini belum terdaftar. Hubungi admin.":"Login Google gagal, coba lagi");
   }
   $("loginGoogle").addEventListener("click",()=>{
     if(!siap())return pesan("Konfigurasi Supabase belum diisi (petaqu-auth.js)");
     location.href=CFG.url+"/auth/v1/authorize?provider=google&redirect_to="+encodeURIComponent(location.origin+location.pathname);
   });
   if(localStorage.getItem(KEY)==="1"&&!getS())localStorage.removeItem(KEY);   // sesi login lama tanpa token -> kunci
-  if(localStorage.getItem(KEY)==="1"){scr.classList.add("hide");tutupPanel();typeof resetWsIdleTimer==="function"&&resetWsIdleTimer();fit();segarkan();setInterval(segarkan,6e5)}
+  if(localStorage.getItem(KEY)==="1"){scr.classList.add("hide");tutupPanel();typeof resetWsIdleTimer==="function"&&resetWsIdleTimer();fit();segarkan();mulaiSegarkan()}
   const label=(t,ic)=>{btn.querySelector("span").textContent=t;btn.querySelector("i").className="fa-solid "+ic};
   function hitung(){clearInterval(tm);cd=60;rs.disabled=true;rs.textContent="Kirim ulang (60 dtk)";
     tm=setInterval(()=>{cd--;rs.textContent=cd>0?"Kirim ulang ("+cd+" dtk)":"Kirim ulang kode";if(cd<=0){clearInterval(tm);rs.disabled=false}},1e3)}
@@ -85,9 +103,9 @@ window.PQ_AUTH_INIT=function(){
     btn.disabled=true;
     try{
       const r=await post("/auth/v1/verify",{type:"email",email,token});if(!r.ok)throw 0;
-      const d=await r.json();if(!await peranOk(d.access_token,d.user&&d.user.id)){tolak(d.access_token);otp.value="";return pesan("Akun ini belum terdaftar atau masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.")}
+      const d=await r.json();const iz=await periksaMasuk(d.access_token,d.user&&d.user.id);if(!iz.ok){otp.value="";return pesan(iz.pesan)}
       simpan(d,email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();otp.value="";
-      typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
+      typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();mulaiSegarkan();
     }catch{pesan(navigator.onLine?"Kode salah atau sudah kedaluwarsa":"Tidak ada koneksi internet");otp.value="";otp.focus()}finally{btn.disabled=false}
   }
 
@@ -111,9 +129,9 @@ window.PQ_AUTH_INIT=function(){
       const r=await post("/auth/v1/token?grant_type=password",{email,password:pw});
       if(r.status===429)return pesan("Terlalu banyak percobaan, tunggu sebentar lalu coba lagi");
       if(!r.ok)throw 0;
-      const d=await r.json();if(!await peranOk(d.access_token,d.user&&d.user.id)){tolak(d.access_token);pwP.value="";return pesan("Akun ini belum terdaftar atau masa uji coba gratis telah berakhir. Hubungi admin untuk berlangganan.")}
+      const d=await r.json();const iz=await periksaMasuk(d.access_token,d.user&&d.user.id);if(!iz.ok){pwP.value="";return pesan(iz.pesan)}
       simpan(d,email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();pwP.value="";
-      typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();setInterval(segarkan,6e5);
+      typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();mulaiSegarkan();
     }catch{pesan(navigator.onLine?"Username atau password salah":"Tidak ada koneksi internet");pwP.value="";pwP.focus()}finally{pwB.disabled=false}
   });
   form.addEventListener("submit",e=>{e.preventDefault();tahap===1?kirim():masuk()});
