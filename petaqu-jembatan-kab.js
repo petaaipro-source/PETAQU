@@ -30,7 +30,7 @@
   function norm(s) { return String(s || "").toLowerCase().replace(/kabupaten|kab\.?|kota|\(.*?\)/g, "").replace(/[^a-z]/g, ""); }
 
   var K = [], bridges = [], byK = [], outside = [], ready = false;
-  var map_, gPoly, gLab, gBr, polys = [], labs = [], marks = [], sel = -1, detail = -1;
+  var rend, map_, gPoly, gLab, gBr, polys = [], labs = [], marks = [], sel = -1, detail = -1;
 
   /* ---------- data ---------- */
   function loadK() {
@@ -132,7 +132,11 @@
       "\n#jbBtn{display:none}#jbPanel .jb-b{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;cursor:pointer}#jbPanel .jb-b:hover{background:#ffffff0f}" +
       "#jbPanel .jb-b>i{width:4px;align-self:stretch;border-radius:3px;flex:none}#jbPanel .jb-b b{font-size:12.5px;font-weight:600}#jbPanel .jb-b small{display:block;color:#9fb0c8;font-size:11px}" +
       ".jb-dot{width:100%;height:100%}.jb-tip{background:#0a0e17f2;border:1px solid #c084fc88;color:#fff;border-radius:8px;padding:2px 7px;font:600 10.5px system-ui;box-shadow:0 4px 12px #0008}.jb-tip:before{display:none}" +
-      ".jb-pop b{display:block;font-size:13px;margin-bottom:3px}.jb-pop span{display:block;font-size:12px;color:#334155}" +
+      ".jb-tip{background:#0a0e17f5!important;border:1px solid #c084fc!important;color:#fff!important;border-radius:7px;padding:2px 7px;font:700 11px system-ui,sans-serif;text-shadow:0 1px 2px #000;box-shadow:0 3px 10px #0009;white-space:nowrap}.jb-tip:before{display:none!important}" +
+      ".jb-pop{min-width:220px;color:#e6f1fb}.jb-pop .jb-t{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #ffffff22}.jb-pop .jb-t b{font-size:14px;color:#fff;line-height:1.25}" +
+      ".jb-pop .jb-bd{font-size:10px;font-weight:700;color:#c084fc;background:#c084fc22;border:1px solid #c084fc66;border-radius:99px;padding:2px 7px;white-space:nowrap}.jb-pop .jb-r{display:flex;justify-content:space-between;gap:14px;font-size:12.5px;padding:1.5px 0;color:#9fb0c8}.jb-pop .jb-r b{color:#fff;font-weight:600;text-align:right}" +
+      ".jb-pop .jb-ac{display:flex;gap:6px;margin-top:9px}.jb-pop .jb-ac button,.jb-pop .jb-ac a{flex:1;text-align:center;text-decoration:none;cursor:pointer;font:600 12px system-ui,sans-serif;color:#fff;background:#7c3aed;border:0;border-radius:8px;padding:7px 8px}.jb-pop .jb-ac a{background:#ffffff1a;border:1px solid #ffffff33}" +
+      ".leaflet-popup-content-wrapper:has(.jb-pop){background:#0f1522f2;border:1px solid #c084fc66;color:#e6f1fb}.leaflet-popup-content-wrapper:has(.jb-pop) + .leaflet-popup-tip,.leaflet-popup:has(.jb-pop) .leaflet-popup-tip{background:#0f1522}.leaflet-popup:has(.jb-pop) .leaflet-popup-close-button{color:#fff}" +
       "html body #jbPanel.open{display:flex}";
     document.head.appendChild(el);
   }
@@ -188,7 +192,7 @@
 
   function openK(i) {
     detail = i; sel = i; apply(true);
-    var M = MAP(); if (M && polys[i]) { try { M.fitBounds(polys[i].getBounds(), { padding: [30, 30] }); } catch (e) {} }
+    var M = MAP(); if (M) { try { var pts = byK[i].filter(function (b) { return isFinite(b.lat); }).map(function (b) { return [b.lat, b.lng]; }); if (pts.length > 1) M.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); else if (polys[i]) M.fitBounds(polys[i].getBounds(), { padding: [30, 30] }); } catch (e) {} }
   }
 
   function goBridge(bi) {
@@ -261,8 +265,18 @@
   function popup(b) {
     var rows = [["No. Jembatan", b.nomor], ["Ruas", b.ruas], ["Panjang", b.panjang ? fmt(b.panjang) + " m" : ""], ["Lebar", b.lebar ? fmt(b.lebar) + " m" : ""],
       ["Tipe", b.tipe], ["Tahun", b.tahun], ["Kabupaten", b._k > -1 ? label(K[b._k]) : (b.kabupaten || "")], ["STA", b.sta]];
-    return '<div class="jb-pop"><b>' + esc(b.nama || "(tanpa nama)") + "</b>" + rows.filter(function (r) { return r[1] !== "" && r[1] != null; })
-      .map(function (r) { return "<span>" + r[0] + ": <b style=\"display:inline;font-size:12px\">" + esc(r[1]) + "</b></span>"; }).join("") + "</div>";
+    var gm = "https://www.google.com/maps/search/?api=1&query=" + b.lat + "," + b.lng;
+    return '<div class="jb-pop"><div class="jb-t"><b>' + esc(b.nama || "(tanpa nama)") + '</b><span class="jb-bd">Jembatan</span></div>' +
+      rows.filter(function (r) { return r[1] !== "" && r[1] != null; }).map(function (r) { return '<div class="jb-r"><span>' + r[0] + '</span><b>' + esc(r[1]) + "</b></div>"; }).join("") +
+      '<div class="jb-ac"><button type="button" data-sv="' + bridges.indexOf(b) + '">Street View</button><a href="' + gm + '" target="_blank" rel="noopener">Google Maps</a></div></div>';
+  }
+  function openSV(bi) {
+    var b = bridges[bi]; if (!b) return;
+    try {
+      if (b.id && typeof JEMBATAN_DB !== "undefined" && JEMBATAN_DB.some(function (x) { return x.id === b.id; }) && window.openStreetViewForJembatan) { window.openStreetViewForJembatan(b.id); return; }
+      if (window.openStreetViewForGeoResult) { MAP().closePopup(); window.openStreetViewForGeoResult(+b.lat, +b.lng, b.nama || "Jembatan"); return; }
+    } catch (e) {}
+    window.open("https://www.google.com/maps?q=&layer=c&cbll=" + b.lat + "," + b.lng, "_blank", "noopener");
   }
   function initMap() {
     map_ = MAP();
@@ -270,7 +284,7 @@
     if (!map_.getPane("jbKabPane")) map_.createPane("jbKabPane").style.zIndex = 262;
     if (!map_.getPane("jbLabPane")) { var lp = map_.createPane("jbLabPane"); lp.style.zIndex = 641; lp.style.pointerEvents = "none"; }
     if (!map_.getPane("jbBrPane")) map_.createPane("jbBrPane").style.zIndex = 660;
-    gPoly = L.featureGroup(); gLab = L.layerGroup(); gBr = L.layerGroup();
+    rend = L.canvas({ padding: 0.4, pane: "jbBrPane" }); gPoly = L.featureGroup(); gLab = L.layerGroup(); gBr = L.layerGroup();
     K.forEach(function (k, i) {
       var pg = L.polygon(k.p, Object.assign({ pane: "jbKabPane", fillColor: color(i) }, polyStyle(i)));
       pg.bindTooltip("<b>" + esc(label(k)) + "</b><span>" + fmt(cnt(i), 0) + " jembatan · " + fmt(len(i)) + " m</span>", { sticky: true, className: "kb-tip", direction: "top", opacity: 1 });
@@ -281,11 +295,12 @@
     });
     bridges.forEach(function (b, bi) {
       if (!isFinite(b.lat) || !isFinite(b.lng) || b._k < 0) return;
-      var m = L.circleMarker([b.lat, b.lng], { pane: "jbBrPane", radius: 5, weight: 1.5, color: "#fff", fillColor: color(b._k), fillOpacity: 0.95 });
-      m.bindPopup(popup(b), { maxWidth: 260 });
+      var m = L.circleMarker([b.lat, b.lng], { pane: "jbBrPane", renderer: rend, radius: 6, weight: 1.5, color: "#fff", fillColor: color(b._k), fillOpacity: 0.95 });
+      m.bindPopup(function () { return popup(b); }, { maxWidth: 280, autoPanPadding: [20, 60] });
       m._b = b; marks[bi] = m;
     });
-    map_.on("zoomend moveend", brLabels);
+    map_.getContainer().addEventListener("click", function (e) { var t = e.target.closest && e.target.closest("[data-sv]"); if (t) openSV(+t.dataset.sv); });
+    var tm; map_.on("zoomend moveend", function () { clearTimeout(tm); tm = setTimeout(brLabels, 120); });
     map_.on("zoomend", function () {
       var z = map_.getZoom(), c = map_.getContainer();
       c.classList.toggle("jbz7", z < 7);
@@ -295,16 +310,17 @@
   }
   function brLabels() {
     if (!map_ || !st.on) return;
-    var z = map_.getZoom(), show = (st.nm || st.pj) && z >= 14;
+    var z = map_.getZoom(), show = (st.nm || st.pj) && z >= 13, bd = map_.getBounds().pad(0.1), n = 0;
     marks.forEach(function (m) {
       if (!m) return;
       var has = m.getTooltip && m.getTooltip();
-      if (show && m._on) {
-        var t = (st.nm ? (m._b.nama || "") : "") + (st.pj && m._b.panjang ? (st.nm ? " · " : "") + fmt(m._b.panjang) + " m" : "");
-        if (!t) { if (has) m.unbindTooltip(); return; }
-        if (has) m.setTooltipContent(esc(t));
-        else m.bindTooltip(esc(t), { permanent: true, direction: "right", offset: [6, 0], className: "jb-tip", opacity: 1 });
-      } else if (has) m.unbindTooltip();
+      var ok = show && m._on && bd.contains(m.getLatLng()) && n < 80;
+      if (!ok) { if (has) m.unbindTooltip(); return; }
+      var t = (st.nm ? (m._b.nama || "") : "") + (st.pj && m._b.panjang ? (st.nm ? " · " : "") + fmt(m._b.panjang) + " m" : "");
+      if (!t) { if (has) m.unbindTooltip(); return; }
+      n++;
+      if (has) m.setTooltipContent(esc(t));
+      else m.bindTooltip(esc(t), { permanent: true, direction: "right", offset: [8, 0], className: "jb-tip", opacity: 1 });
     });
   }
 
