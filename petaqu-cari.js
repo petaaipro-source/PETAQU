@@ -39,7 +39,7 @@
 
   /* ---------- CSS ---------- */
   var css = "\
-#pqCari{position:absolute;top:12px;left:14px;right:128px;max-width:430px;z-index:860;font-family:var(--mono,Inter,system-ui,sans-serif)}\
+#pqCari{position:absolute;top:13px;left:66px;right:128px;max-width:430px;z-index:860;font-family:var(--mono,Inter,system-ui,sans-serif)}\
 #pqCari .bar{display:flex;align-items:center;gap:6px;background:rgba(15,21,33,.96);border:1px solid var(--line,#1e2938);border-radius:24px;padding:0 6px 0 14px;height:46px;box-shadow:0 8px 26px rgba(0,0,0,.45);backdrop-filter:blur(8px)}\
 #pqCari .bar:focus-within{border-color:var(--cyan,#22d3ee);box-shadow:0 8px 26px rgba(0,0,0,.5),0 0 0 3px rgba(34,211,238,.15)}\
 #pqCari input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text,#e6edf5);font-size:14px;font-weight:500;font-family:inherit;padding:0}\
@@ -69,7 +69,8 @@
 .pq-cari-pop button:hover,.pq-cari-pop a:hover{border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}\
 body.full-map-mode #pqCari{opacity:0;pointer-events:none}\
 body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#loginScreen:not(.hide)) #pqCari{display:none}\
-@media(max-width:860px){#pqCari{left:10px;right:122px;top:12px}#pqCari .bar{height:44px}#pqCari input{font-size:16px}}";
+@media(min-width:861px){body:not(.sidebar-collapsed):not(.full-map-mode) #pqCari{left:80px}}\
+@media(max-width:860px){#pqCari{left:64px;right:112px;top:13px}#pqCari .bar{height:44px}#pqCari input{font-size:16px}}";
 
   /* ---------- UI ---------- */
   var root, inp, dd;
