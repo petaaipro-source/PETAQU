@@ -15,13 +15,12 @@
     ["jnBtn", "Jalan Nasional", "\uf018", "#22d3ee", "jnPanel"],
     ["pkBtn", "Patok KM", "\uf277", "#34d399", "pkPanel"],
     ["kbBtn", "Kabupaten", "\uf279", "#c084fc", "kbPanel"],
-    ["jbBtn", "Jembatan per Kabupaten", "\ue4c8", "#f472b6", "jbPanel"],
     ["tlBtn", "Tol & Jalan Provinsi", "\uf1b9", "#f59e0b", "tlPanel"]
   ];
 
   var CSS = [
     /* tombol lama disembunyikan; tetap ada di DOM supaya logikanya jalan */
-    "html body #jnBtn,html body #pkBtn,html body #kbBtn,html body #jbBtn,html body #pqDock,html body #jtFloat .jt-fb{display:none!important}",
+    "html body #jnBtn,html body #pkBtn,html body #kbBtn,html body #pqDock,html body #jtFloat .jt-fb{display:none!important}",
     /* posisi folder mengikuti sidebar (sama seperti tombol lapisan sebelumnya) */
     ":root{--pq-fl:10px;--pq-ft:66px}",
     "@media(min-width:861px){:root{--pq-fl:364px;--pq-ft:70px}body.sidebar-collapsed,body.full-map-mode{--pq-fl:34px}}",

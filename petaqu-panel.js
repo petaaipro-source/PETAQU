@@ -12,7 +12,7 @@
   window.__pqPanel = 1;
 
   var KEY = "petaqu_panel_ui_v1";
-  var IDS = ["jnPanel", "pkPanel", "kbPanel", "jbPanel"];
+  var IDS = ["jnPanel", "pkPanel", "kbPanel"];
   var st = {};
   try { st = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { st = {}; }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }

@@ -1,14 +1,19 @@
-/* PETAQU — Uji coba gratis 10 menit, TANPA Supabase / server / login.
-   Murni di perangkat: satu klik langsung mulai. 1 perangkat/browser hanya boleh sekali.
-   Penanda disimpan berlapis (localStorage + cookie + IndexedDB + Cache Storage) agar tidak mudah diulang.
-   Catatan: karena tanpa server, pembatasan bisa dilewati dengan membersihkan seluruh data browser / mode penyamaran. */
+/* PETAQU — Uji coba gratis 10 menit (Gmail WAJIB dipilih lewat Google, tidak bisa diketik).
+   Aturan: 1 akun Gmail ATAU 1 perangkat hanya boleh sekali, tidak dapat diulang.
+   Alur:
+     1. Tombol "Coba Gratis 10 Menit" -> "Lanjut dengan Google" -> pilih akun Gmail di layar Google (terverifikasi).
+     2. Saat kembali ke aplikasi, token Google dipakai SEKALI untuk klaim uji coba ke Supabase (RPC claim_trial_g,
+        email dibaca server dari token, bukan dari input), lalu langsung keluar. Tidak ada sesi login/akses penuh.
+     3. Waktu dihitung jam SERVER (supabase-trial.sql). Di perangkat: localStorage + cookie + IndexedDB + Cache Storage.
+     4. Habis waktu -> layar login muncul lagi; tombol terkunci selamanya untuk Gmail/perangkat itu.
+   Bila SQL belum dipasang: tetap memakai Gmail terverifikasi Google, tetapi pembatasan hanya per perangkat (tanpa server). */
 (function () {
   "use strict";
   if (window.__pqTrial) return;
   window.__pqTrial = 1;
 
   var DUR = 600000;                     /* 10 menit */
-  var K = "pq_trial", AUTHK = "peta_auth_ok";
+  var K = "pq_trial", AUTHK = "peta_auth_ok", FLAG = "pq_trial_oauth";
   var $ = function (id) { return document.getElementById(id); };
   var iv = 0, last = 0, ticks = 0, badge = null;
 
@@ -63,6 +68,74 @@
     lsSet("pq_did", v); ckSet("pq_did", v);
     return v;
   }
+  function weakHash(s) {
+    var h1 = 5381, h2 = 52711, i, c;
+    for (i = 0; i < s.length; i++) { c = s.charCodeAt(i); h1 = ((h1 << 5) + h1) ^ c; h2 = ((h2 << 5) + h2 + c) | 0; }
+    var x = (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+    return (x + x + x).slice(0, 32);
+  }
+  async function fingerprint() {
+    var p = [navigator.userAgent, navigator.language, navigator.platform, screen.width + "x" + screen.height + "x" + screen.colorDepth,
+      window.devicePixelRatio, (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone, navigator.hardwareConcurrency || 0,
+      navigator.deviceMemory || 0, navigator.maxTouchPoints || 0];
+    try {
+      var c = document.createElement("canvas"); c.width = 200; c.height = 40;
+      var x = c.getContext("2d"); x.textBaseline = "top"; x.font = "14px Arial";
+      x.fillStyle = "#f60"; x.fillRect(10, 5, 80, 20); x.fillStyle = "#069"; x.fillText("PETAQU fp 1.0", 4, 12);
+      p.push(c.toDataURL().slice(-120));
+      var g = document.createElement("canvas").getContext("webgl");
+      var e = g && g.getExtension("WEBGL_debug_renderer_info");
+      if (e) p.push(g.getParameter(e.UNMASKED_RENDERER_WEBGL));
+    } catch (e) { /* abaikan */ }
+    var s = p.join("|");
+    try {
+      if (crypto.subtle) {
+        var d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+        return Array.prototype.map.call(new Uint8Array(d), function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+      }
+    } catch (e) { /* pakai cadangan */ }
+    return weakHash(s);
+  }
+  function normGmail(e) {
+    var m = /^([a-z0-9._+-]+)@(gmail|googlemail)\.com$/.exec((e || "").trim().toLowerCase());
+    if (!m) return null;
+    var l = m[1].split("+")[0].replace(/\./g, "");
+    return l.length >= 6 ? l + "@gmail.com" : null;
+  }
+
+  /* ---------- server ---------- */
+  async function rpc(fn, body, tok) {
+    var c = window.PETAQU_CFG;
+    if (!c) throw { code: "nocfg" };
+    var r = await fetch(c.url + "/rest/v1/rpc/" + fn, {
+      method: "POST",
+      headers: { apikey: c.anon, Authorization: "Bearer " + (tok || c.anon), "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (r.status === 404) throw { code: "nosql" };
+    if (!r.ok) {
+      var tx = ""; try { tx = (await r.text()).slice(0, 160); } catch (e) { /* abaikan */ }
+      throw { code: "http", status: r.status, msg: tx };
+    }
+    return r.json();
+  }
+  function signOut(tok) {   /* token Google hanya dipakai sekali; jangan simpan sesi apa pun */
+    var c = window.PETAQU_CFG;
+    if (!c || !tok) return;
+    try { fetch(c.url + "/auth/v1/logout?scope=local", { method: "POST", headers: { apikey: c.anon, Authorization: "Bearer " + tok } }).catch(function () { }); } catch (e) { /* abaikan */ }
+  }
+
+  /* ---------- tangkap hasil login Google SEBELUM modul login biasa membacanya ---------- */
+  var oauth = (function () {
+    var pend = +lsGet(FLAG);
+    if (!pend) return null;
+    var h = new URLSearchParams(location.hash.slice(1)), q = new URLSearchParams(location.search);
+    var tok = h.get("access_token"), err = h.get("error_description") || q.get("error_description");
+    if (Date.now() - pend > 6e5 || (!tok && !err)) { lsDel(FLAG); return null; }   /* kedaluwarsa / dibatalkan */
+    lsDel(FLAG);
+    try { history.replaceState(null, "", location.pathname); } catch (e) { /* abaikan */ }
+    return { tok: tok, err: err };
+  })();
 
   /* ---------- tampilan ---------- */
   function T(m, e) { try { toast(m, !!e); } catch (x) { /* abaikan */ } }
@@ -124,6 +197,14 @@
     lockButton("Uji coba telah berakhir");
     T("Uji coba gratis berakhir", true);
   }
+  async function verify(r) {
+    if (r.local || navigator.onLine === false) return;
+    try {
+      var d = await rpc("trial_status", { p_device: r.did });
+      if (d && d.reason === "expired") return finish(r);
+      if (d && d.ok && typeof d.remaining === "number") { r.end = Math.min(r.end, Date.now() + d.remaining * 1000); save(r); }
+    } catch (e) { /* offline / server bermasalah: lanjut hitungan lokal */ }
+  }
   function run(r) {
     stop();
     showBadge();
@@ -136,6 +217,7 @@
       setBadge(rem);
       if (rem <= 0) return finish(r);
       if (++ticks % 5 === 0) save(r);
+      if (ticks % 60 === 0) verify(r);
     };
     iv = setInterval(tick, 1000);
     tick();
@@ -149,11 +231,51 @@
     T(msg || "Uji coba gratis dimulai: 10 menit");
   }
 
-  /* ---------- mulai uji coba (lokal) ---------- */
-  function mulai() {
-    if (usedBefore()) { lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba dan tidak dapat diulang."); }
+  /* ---------- Gmail dipilih lewat Google ---------- */
+  function keGoogle() {
+    var c = window.PETAQU_CFG;
+    if (usedBefore()) { lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
+    if (!c) return formMsg("Login Google belum dikonfigurasi.");
+    if (navigator.onLine === false) return formMsg("Butuh koneksi internet untuk memilih akun Google.");
+    deviceId();
+    lsSet(FLAG, String(Date.now()));
+    location.href = c.url + "/auth/v1/authorize?provider=google&prompt=select_account&redirect_to=" + encodeURIComponent(location.origin + location.pathname);
+  }
+  async function selesaiGoogle(o) {
+    formMsg("Memverifikasi akun Google...", true);
+    if (!o.tok) {
+      return formMsg(/banned/i.test(o.err || "") ? "Uji coba gratis untuk akun ini sudah berakhir. Hubungi admin untuk berlangganan." : /signup|not allowed|database error/i.test(o.err || "")
+        ? "Pendaftaran akun baru belum diizinkan di Supabase (Authentication > Sign In / Providers > Allow new users to sign up). [" + String(o.err).slice(0, 90) + "]"
+        : "Login Google dibatalkan atau gagal: " + String(o.err || "tanpa keterangan").slice(0, 120));
+    }
+    var c = window.PETAQU_CFG, tok = o.tok, email = null;
+    try {
+      var r = await fetch(c.url + "/auth/v1/user", { headers: { apikey: c.anon, Authorization: "Bearer " + tok } });
+      if (!r.ok) throw 0;
+      email = normGmail((await r.json()).email);
+    } catch (e) { signOut(tok); return formMsg("Verifikasi Google gagal, coba lagi."); }
+    if (!email) { signOut(tok); return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba."); }
+    if (usedBefore()) { signOut(tok); lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
     var did = deviceId();
-    begin({ did: did, email: "", end: Date.now() + DUR, used: 0, done: false, local: true }, "Uji coba gratis dimulai: 10 menit");
+    try {
+      var d = await rpc("claim_trial_g", { p_device: did, p_fp: await fingerprint() }, tok);
+      signOut(tok);
+      if (!d || !d.ok) {
+        if (d && d.reason === "expired") { save({ did: did, email: email, end: 0, used: DUR, done: true }); lockButton("Uji coba telah berakhir"); return formMsg("Uji coba perangkat ini sudah berakhir."); }
+        if (d && d.reason === "bad_email") return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba.");
+        if (d && d.reason === "used") return formMsg("Uji coba gratis sudah pernah digunakan oleh Gmail atau perangkat ini dan tidak dapat diulang.");
+        return formMsg("Server menolak klaim uji coba (alasan: " + ((d && d.reason) || "tidak diketahui") + ").");
+      }
+      begin({ did: did, email: email, end: Date.now() + d.remaining * 1000, used: DUR - d.remaining * 1000, done: false }, "Uji coba gratis dimulai: " + Math.round(d.remaining / 60) + " menit");
+    } catch (e) {
+      signOut(tok);
+      if (e && e.code === "nosql") {   /* SQL belum dipasang: Gmail tetap terverifikasi, batas per perangkat */
+        return begin({ did: did, email: email, end: Date.now() + DUR, used: 0, done: false, local: true });
+      }
+      formMsg(navigator.onLine === false ? "Tidak ada koneksi internet."
+        : e && e.status ? "Server menolak (kode " + e.status + "): " + (e.msg || "tanpa keterangan")
+        : "Server tidak dapat dihubungi, coba lagi.");
+    }
   }
 
   /* ---------- tombol di layar login ---------- */
@@ -165,12 +287,15 @@
     w.style.marginTop = "12px";
     w.innerHTML =
       '<button type="button" id="pqTrialBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px;border-radius:9px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-size:14px;font-weight:700;cursor:pointer"><i class="fa-solid fa-gift"></i><span>Coba Gratis 10 Menit</span></button>' +
-      '<div id="pqTrialForm" style="margin-top:8px">' +
-      '<div id="pqTrialMsg" style="display:none;font-size:12px;line-height:1.5"></div>' +
-      '<p style="font-size:11px;color:var(--text-dim);margin:6px 0 0;line-height:1.5">Gratis 10 menit, tanpa login. Hanya sekali per perangkat.</p>' +
+      '<div id="pqTrialForm" style="display:none;margin-top:10px">' +
+      '<button type="button" class="login-btn" id="pqTrialGo"><i class="fa-brands fa-google"></i> <span>Pilih Gmail dengan Google</span></button>' +
+      '<div id="pqTrialMsg" style="display:none;margin-top:8px;font-size:12px;line-height:1.5"></div>' +
+      '<p style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.5">Gratis 10 menit untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Gmail dipilih lewat Google, tidak bisa diketik.</p>' +
       '</div>';
     g.parentNode.insertBefore(w, g.nextSibling);
-    $("pqTrialBtn").addEventListener("click", mulai);
+    $("pqTrialBtn").addEventListener("click", function () { var f = $("pqTrialForm"); f.style.display = f.style.display === "none" ? "" : "none"; });
+    $("pqTrialGo").addEventListener("click", keGoogle);
+    g.addEventListener("click", function () { lsDel(FLAG); }, true);   /* login Google biasa tidak boleh dianggap uji coba */
     if (usedBefore()) lockButton();
 
     /* kolom Email/OTP disembunyikan (index.html). Akses: Google (terverifikasi) atau Username untuk akun admin */
@@ -195,10 +320,12 @@
     await recover();
     inject();
     var r = rec();
+    if (oauth) { await selesaiGoogle(oauth); return; }
     if (r && !r.done) {
       if (remaining(r) <= 0) return finish(r);
       hideLogin();
       run(r);
+      verify(r);
     }
   }
   function boot() { setTimeout(start, 60); setTimeout(function () { if (!$("pqTrial")) inject(); }, 800); }
