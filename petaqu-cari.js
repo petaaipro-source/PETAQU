@@ -85,6 +85,9 @@
 .pq-cari-pop button,.pq-cari-pop a{flex:1;min-width:76px;text-align:center;text-decoration:none;font-size:11px;font-weight:700;font-family:inherit;padding:7px 6px;border-radius:8px;border:1px solid #243044;background:#0d1320;color:#e6edf5;cursor:pointer}\
 .pq-cari-pop button:hover,.pq-cari-pop a:hover{border-color:#22d3ee;color:#22d3ee}\
 body.full-map-mode #pqCari{opacity:0;pointer-events:none}\
+#pqCari{transition:left .25s ease,opacity .22s ease,visibility .22s}\
+#pqCari.away:not(.focus):not(.open){opacity:0;visibility:hidden;pointer-events:none}\
+#pqCari.nofolder .bar{padding-left:18px}\
 body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#loginScreen:not(.hide)) #pqCari{display:none}\
 @media(max-width:860px){#pqCari{right:112px}#pqCari .bar{height:48px}#pqCari input{font-size:16px}#pqCari .tag,#pqCari .kbd,#pqCari .ft span+span{display:none}}";
 
@@ -288,9 +291,55 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     setTimeout(function () { pin && pin.openPopup(); }, 850);
   }
 
+
+  /* ---------- Adaptif: sembunyi otomatis bila ada panel lain menimpa pil ---------- */
+  var adaptT = null, whyEl = null;
+  function cls(el) { var c = el.className; return String(c && c.baseVal !== undefined ? c.baseVal : c || ""); }
+  function adapt() {
+    if (!root) return;
+    var bar = root.querySelector(".bar"), r = bar.getBoundingClientRect();
+    var fo = document.getElementById("pqFolder"), nf = true;
+    if (fo) { var fs = getComputedStyle(fo), fr = fo.getBoundingClientRect(); nf = fs.display === "none" || fs.visibility === "hidden" || +fs.opacity < 0.05 || fr.width < 10; }
+    if (root.classList.contains("nofolder") !== nf) root.classList.toggle("nofolder", nf);
+    var mapEl = document.getElementById("map"), appEl = document.getElementById("app"), seen = [], hide = false; whyEl = null;
+    [document.body, mapEl, appEl].forEach(function (par) {
+      if (!par || hide) return;
+      Array.prototype.some.call(par.children, function (el) {
+        if (seen.indexOf(el) !== -1) return false; seen.push(el);
+        if (el === root || el.id === "pqFolder" || /^(SCRIPT|STYLE|LINK|META)$/.test(el.tagName)) return false;
+        if (mapEl && (el === mapEl || el.contains(mapEl))) return false;
+        if (/leaflet/.test(cls(el))) return false;
+        var cs = getComputedStyle(el);
+        if ((cs.position !== "fixed" && cs.position !== "absolute") || cs.display === "none" || cs.visibility === "hidden" || +cs.opacity < 0.05 || cs.pointerEvents === "none") return false;
+        var er = el.getBoundingClientRect();
+        if (er.width < 120 || er.height < 80) return false;
+        if (er.left < r.right - 4 && er.right > r.left + 4 && er.top < r.bottom - 4 && er.bottom > r.top + 4) { hide = true; whyEl = el; return true; }
+        return false;
+      });
+    });
+    if (root.classList.contains("away") !== hide) root.classList.toggle("away", hide);
+  }
+  function sched() { clearTimeout(adaptT); adaptT = setTimeout(adapt, 90); }
+  function startAdapt() {
+    var mo = new MutationObserver(function (ms) {
+      for (var i = 0; i < ms.length; i++) {
+        var t = ms[i].target;
+        if (t === root || (root && root.contains(t))) continue;
+        if (t.nodeType === 1 && /leaflet/.test(cls(t))) continue;
+        sched(); return;
+      }
+    });
+    [document.body, document.getElementById("map"), document.getElementById("app")].forEach(function (el) {
+      if (el) mo.observe(el, { attributes: true, attributeFilter: ["class", "style", "hidden"], childList: true });
+    });
+    window.addEventListener("resize", sched);
+    document.addEventListener("transitionend", sched, true);
+    setInterval(adapt, 800);
+    adapt();
+  }
   var tries = 0, iv = setInterval(function () {
-    if (getMap() && window.L && document.body) { clearInterval(iv); if (!document.getElementById("pqCari")) build(); }
+    if (getMap() && window.L && document.body) { clearInterval(iv); if (!document.getElementById("pqCari")) { build(); startAdapt(); } }
     else if (++tries > 120) clearInterval(iv);
   }, 250);
-  window.PQ_CARI = { open: function () { inp && inp.focus(); }, focus: function (q) { if (!inp) return; inp.value = q || ""; root.classList.toggle("has", !!q); run(q, true); } };
+  window.PQ_CARI = { why: function () { return whyEl; }, open: function () { inp && inp.focus(); }, focus: function (q) { if (!inp) return; inp.value = q || ""; root.classList.toggle("has", !!q); run(q, true); } };
 })();
