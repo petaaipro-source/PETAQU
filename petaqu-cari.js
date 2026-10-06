@@ -22,6 +22,14 @@
   function hist() { try { return JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch (e) { return []; } }
   function pushHist(it) { try { var h = hist().filter(function (x) { return x.main !== it.main; }); h.unshift({ main: it.main, sub: it.sub, lat: it.lat, lng: it.lng, kind: it.kind, id: it.id, group: "Pencarian terakhir" }); localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, 8))); } catch (e) {} }
   function dist(a, b, c, d) { var r = Math.PI / 180, x = (c - a) * r, y = (d - b) * r, h = Math.sin(x / 2) * Math.sin(x / 2) + Math.cos(a * r) * Math.cos(c * r) * Math.sin(y / 2) * Math.sin(y / 2); return 12742 * Math.asin(Math.sqrt(h)); }
+  function detail(kind, r) {
+    var rows = [];
+    function add(k, v) { if (v !== null && v !== undefined && v !== "" && v !== "-") rows.push('<div class="dr"><span>' + k + "</span><b>" + esc(v) + "</b></div>"); }
+    if (kind === "jembatan") { add("No. Jembatan", r.nomor); add("Ruas", r.ruas); add("STA", r.sta); add("Kabupaten", r.kabupaten); add("Panjang", r.panjang != null ? r.panjang + " m" : ""); add("Lebar", r.lebar != null ? r.lebar + " m" : ""); add("Tipe", r.tipe); add("Tahun", r.tahun); add("Kondisi", r.kondisi); }
+    else { add("Jenis", { amp: "Asphalt Mixing Plant", bp: "Batching Plant", quarry: "Quarry" }[r.jenis] || r.jenis); add("Pemilik", r.owner); add("Alamat", r.alamat); add("Kabupaten", r.kabupaten); add("Provinsi", r.provinsi); add("Catatan", r.catatan); }
+    return rows.length ? '<div class="dt">' + rows.join("") + "</div>" : "";
+  }
+  window.PQ_DETAIL = detail;
   function fmtD(k) { return k < 1 ? Math.round(k * 1000) + " m" : k < 100 ? k.toFixed(1).replace(".", ",") + " km" : Math.round(k) + " km"; }
   function hl(text, q) {
     var w = norm(q).split(" ").filter(function (x) { return x.length > 1; });
@@ -79,11 +87,12 @@
 .pq-cari-pin:before{content:'';position:absolute;inset:-10px;border-radius:50%;border:2px solid #ea4335;opacity:0;animation:pqring 2s ease-out infinite}\
 @keyframes pqring{0%{transform:scale(.4);opacity:.9}100%{transform:scale(1.6);opacity:0}}\
 @keyframes pqpulse{50%{box-shadow:0 0 0 7px rgba(239,68,68,.25)}}\
-.pq-cari-pop{font-family:var(--mono,Inter,sans-serif);min-width:210px;max-width:270px}\
+.pq-cari-pop{font-family:var(--mono,Inter,sans-serif);min-width:210px;max-width:310px}\
 .pq-cari-pop b{display:block;font-size:13px;margin-bottom:3px}.pq-cari-pop small{display:block;color:#7c8aa0;font-size:11px;line-height:1.45;margin-bottom:9px}\
 .pq-cari-pop .r{display:flex;gap:6px;flex-wrap:wrap}\
 .pq-cari-pop button,.pq-cari-pop a{flex:1;min-width:76px;text-align:center;text-decoration:none;font-size:11px;font-weight:700;font-family:inherit;padding:7px 6px;border-radius:8px;border:1px solid #243044;background:#0d1320;color:#e6edf5;cursor:pointer}\
 .pq-cari-pop button:hover,.pq-cari-pop a:hover{border-color:#22d3ee;color:#22d3ee}\
+.pq-cari-pop .dt{max-height:220px;overflow-y:auto;margin:2px 0 8px;border-top:1px solid #243044}.pq-cari-pop .dr{display:flex;gap:10px;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a2333;font-size:11px}.pq-cari-pop .dr span{color:#7c8aa0;flex:none}.pq-cari-pop .dr b{display:block;margin:0;font-size:11px;text-align:right;font-weight:600}\
 body.full-map-mode #pqCari{opacity:0;pointer-events:none}\
 #pqCari{transition:left .25s ease,opacity .22s ease,visibility .22s}\
 #pqCari.away:not(.focus):not(.open){opacity:0;visibility:hidden;pointer-events:none}\
@@ -179,8 +188,8 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     var words = n.split(" ");
     function hit(t) { t = norm(t); return words.every(function (w) { return t.indexOf(w) !== -1; }); }
     try { var c = 0; (typeof roads !== "undefined" ? roads : []).some(function (r) { if (hit(r.name) && r.points && r.points.length) { var p = r.points[0]; out.push({ group: "Ruas Jalan PETAQU", kind: "jalan", id: r.id, main: r.name, sub: r.points.length + " titik STA" + (r.lengthKmCalculated ? " • " + (+r.lengthKmCalculated).toFixed(2) + " km" : ""), lat: p.lat, lng: p.lng }); c++; } return c >= 5; }); } catch (e) {}
-    try { var b = 0; (typeof JEMBATAN_DB !== "undefined" ? JEMBATAN_DB : []).some(function (j) { if (typeof j.lat === "number" && hit([j.nama, j.nomor, j.ruas, j.kabupaten].join(" "))) { out.push({ group: "Jembatan", kind: "jembatan", main: j.nama || "Jembatan", sub: [j.ruas, j.kabupaten].filter(Boolean).join(" • "), lat: j.lat, lng: j.lng }); b++; } return b >= 5; }); } catch (e) {}
-    try { var l = 0; (window.LOKASI_DATA || []).some(function (x) { if (hit([x.owner, x.alamat, x.kabupaten, x.jenis].join(" "))) { var lb = { amp: "AMP", bp: "Batching Plant", quarry: "Quarry" }[x.jenis] || x.jenis; out.push({ group: "AMP / Batching Plant / Quarry", kind: x.jenis, main: x.owner || lb, sub: lb + " • " + (x.kabupaten || ""), lat: +x.lat, lng: +x.lng, addr: x.alamat }); l++; } return l >= 5; }); } catch (e) {}
+    try { var b = 0; (typeof JEMBATAN_DB !== "undefined" ? JEMBATAN_DB : []).some(function (j) { if (typeof j.lat === "number" && hit([j.nama, j.nomor, j.ruas, j.kabupaten].join(" "))) { out.push({ group: "Jembatan", kind: "jembatan", main: j.nama || "Jembatan", sub: [j.ruas, j.kabupaten].filter(Boolean).join(" • "), lat: j.lat, lng: j.lng, rec: j }); b++; } return b >= 5; }); } catch (e) {}
+    try { var l = 0; (window.LOKASI_DATA || []).some(function (x) { if (hit([x.owner, x.alamat, x.kabupaten, x.jenis].join(" "))) { var lb = { amp: "AMP", bp: "Batching Plant", quarry: "Quarry" }[x.jenis] || x.jenis; out.push({ group: "AMP / Batching Plant / Quarry", kind: x.jenis, main: x.owner || lb, sub: lb + " • " + (x.kabupaten || ""), lat: +x.lat, lng: +x.lng, addr: x.alamat, rec: x }); l++; } return l >= 5; }); } catch (e) {}
     return out;
   }
   function parseCoord(q) {
@@ -256,14 +265,14 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
   }
   function quick(a) {
     var m = getMap(); if (!m) return; close();
-    if (a === "jateng") m.flyTo([-7.15, 110.15], 8, { duration: 1 });
-    else if (a === "diy") m.flyTo([-7.88, 110.4], 10, { duration: 1 });
+    if (a === "jateng") { if (window.PQ_WILAYAH) PQ_WILAYAH.show("jateng"); else m.flyTo([-7.15, 110.15], 8, { duration: 1 }); }
+    else if (a === "diy") { if (window.PQ_WILAYAH) PQ_WILAYAH.show("diy"); else m.flyTo([-7.88, 110.4], 10, { duration: 1 }); }
     else if (a === "loc") {
       if (!navigator.geolocation) return status("Perangkat tidak mendukung GPS.");
       navigator.geolocation.getCurrentPosition(function (p) {
         var la = p.coords.latitude, ln = p.coords.longitude;
         if (!inBox(la, ln)) { status('<i class="fa-solid fa-location-pin-lock"></i> Lokasi Anda di luar Jawa Tengah &amp; DIY.'); return; }
-        pick({ kind: "coord", main: "Lokasi saya", sub: "Posisi GPS perangkat", lat: la, lng: ln }, true);
+        if (window.PQ_WILAYAH) PQ_WILAYAH.nearest(la, ln); else pick({ kind: "coord", main: "Lokasi saya", sub: "Posisi GPS perangkat", lat: la, lng: ln }, true);
       }, function () { status('<i class="fa-solid fa-triangle-exclamation"></i> Izin lokasi ditolak.'); open(); }, { enableHighAccuracy: true, timeout: 10000 });
     }
   }
@@ -279,8 +288,8 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     clearPin();
     pin = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: "", html: '<div class="pq-cari-pin"></div>', iconSize: [30, 30], iconAnchor: [4, 30] }), zIndexOffset: 9000 }).addTo(m);
     var ll = it.lat.toFixed(6) + ", " + it.lng.toFixed(6);
-    var pop = document.createElement("div"); pop.className = "pq-cari-pop";
-    pop.innerHTML = "<b>" + esc(it.main) + "</b><small>" + esc(it.addr || it.sub || "") + (it.addr || it.sub ? "<br>" : "") + ll + '</small><div class="r"><button data-a="sv">Street View</button><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=' + it.lat + "," + it.lng + '">Rute</a><button data-a="cp">Salin</button><button data-a="rm">Hapus</button></div>';
+    var det = it.rec ? detail(it.kind, it.rec) : ""; var pop = document.createElement("div"); pop.className = "pq-cari-pop";
+    pop.innerHTML = "<b>" + esc(it.main) + "</b>" + (det ? det + "<small>" + ll + "</small>" : "<small>" + esc(it.addr || it.sub || "") + (it.addr || it.sub ? "<br>" : "") + ll + "</small>") + '<div class="r"><button data-a="sv">Street View</button><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=' + it.lat + "," + it.lng + '">Rute</a><button data-a="cp">Salin</button><button data-a="rm">Hapus</button></div>';
     pop.addEventListener("click", function (e) {
       var a = e.target.getAttribute && e.target.getAttribute("data-a");
       if (a === "sv" && window.openStreetViewForGeoResult) window.openStreetViewForGeoResult(it.lat, it.lng, it.main);
