@@ -145,14 +145,16 @@
   function openPanel() { build(); panel.style.display = "flex"; render(); refresh(); }
 
   /* ---------- aktif hanya bila yang login adalah admin ---------- */
+  /* penanda admin untuk modul lain (mis. kartu kapasitas GitHub hanya tampil bagi admin) */
+  function setFlag(v) { if (!!window.__pqIsAdmin === v) return; window.__pqIsAdmin = v; try { window.dispatchEvent(new Event("pq-admin")); } catch (e) { /* abaikan */ } }
   async function cekAdmin() {
     var s = sess();
-    if (!s || !s.uid || localStorage.getItem("peta_auth_ok") !== "1") { adminOk = false; return; }
+    if (!s || !s.uid || localStorage.getItem("peta_auth_ok") !== "1") { adminOk = false; setFlag(false); return; }
     if (adminOk) return;
     try {
       var r = await api("/rest/v1/profiles?select=role&id=eq." + encodeURIComponent(s.uid));
       if (r && r[0] && r[0].role === "admin") {
-        adminOk = true; addButton(); refresh();
+        adminOk = true; setFlag(true); addButton(); refresh();
         if (!poll) poll = setInterval(function () { if (adminOk && document.visibilityState === "visible") refresh(); }, 6e4);   // lencana jumlah menunggu diperbarui tiap menit
       }
     } catch (e) { /* bukan admin / offline: tidak ada tombol */ }

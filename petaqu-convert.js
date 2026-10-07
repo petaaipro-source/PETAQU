@@ -1,5 +1,5 @@
 /* PETAQU - Konversi Data Jalan/Jembatan  <->  Excel/CSV  ->  data-ruas.js / data-jembatan.js
-   Alur: unduh contoh format (data saat ini) -> isi/ubah di Excel -> unggah -> konversi -> unggah .js ke GitHub. */
+   Alur: unduh contoh format (data saat ini) -> isi/ubah di Excel -> unggah -> konversi -> unggah .js ke server. */
 (function () {
   "use strict";
   const ALIAS = {
@@ -120,7 +120,7 @@
   }
   function toJS(kind, data) {
     const ruas = kind === "ruas", file = ruas ? "data-ruas.js" : "data-jembatan.js", v = ruas ? "ROADS_SEED" : "JEMBATAN_SEED";
-    return "// ============================================================\n// PETAQU - DATABASE " + (ruas ? "RUAS" : "JEMBATAN") + " (" + v + ")\n// Dihasilkan oleh Konversi Data pada " + new Date().toISOString() + " (" + data.length + (ruas ? " ruas" : " jembatan") + ")\n// Ganti isi file " + file + " di GitHub dengan file ini, lalu commit. Jangan ubah nama variabel " + v + ".\n// ============================================================\nconst " + v + "=" + JSON.stringify(data) + ";\n";
+    return "// ============================================================\n// PETAQU - DATABASE " + (ruas ? "RUAS" : "JEMBATAN") + " (" + v + ")\n// Dihasilkan oleh Konversi Data pada " + new Date().toISOString() + " (" + data.length + (ruas ? " ruas" : " jembatan") + ")\n// Ganti isi file " + file + (window.__pqIsAdmin ? " di GitHub dengan file ini, lalu commit." : " di server dengan file ini.") + " Jangan ubah nama variabel " + v + ".\n// ============================================================\nconst " + v + "=" + JSON.stringify(data) + ";\n";
   }
 
   /* ---------- Util browser ---------- */
@@ -151,9 +151,9 @@
   const $ = id => document.getElementById(id);
   function build() {
     box = document.createElement("div"); box.className = "modal-overlay"; box.id = "pqcvModal";
-    box.innerHTML = '<div class="modal" style="max-width:600px;max-height:92vh;overflow:auto"><h3><i class="fa-solid fa-file-code"></i> Konversi Data ke JS (GitHub)</h3>' +
+    box.innerHTML = '<div class="modal" style="max-width:600px;max-height:92vh;overflow:auto"><h3><i class="fa-solid fa-file-code"></i> Konversi Data ke JS' + (window.__pqIsAdmin ? " (GitHub)" : "") + '</h3>' +
       '<div style="display:flex;gap:6px;margin-bottom:10px"><button class="btn primary" id="pqcvTabR" type="button">Data Jalan</button><button class="btn" id="pqcvTabB" type="button">Data Jembatan</button></div>' +
-      '<div style="font-size:11.5px;line-height:1.5;margin-bottom:10px;padding:10px 12px;border:1px solid rgba(34,211,238,.25);border-radius:10px;background:rgba(34,211,238,.08)"><b>Alur:</b> 1) Unduh contoh format &rarr; 2) isi/ubah di Excel &rarr; 3) pilih file di bawah &rarr; 4) Konversi &rarr; 5) ganti <code id="pqcvFile"></code> di GitHub &amp; commit.</div>' +
+      '<div style="font-size:11.5px;line-height:1.5;margin-bottom:10px;padding:10px 12px;border:1px solid rgba(34,211,238,.25);border-radius:10px;background:rgba(34,211,238,.08)"><b>Alur:</b> 1) Unduh contoh format &rarr; 2) isi/ubah di Excel &rarr; 3) pilih file di bawah &rarr; 4) Konversi &rarr; 5) ganti <code id="pqcvFile"></code> ' + (window.__pqIsAdmin ? "di GitHub &amp; commit." : "di server.") + '</div>' +
       '<div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:10px"><button class="btn" id="pqcvEx" type="button"><i class="fa-solid fa-download"></i> Unduh Contoh Format (Excel)</button><button class="btn" id="pqcvCur" type="button"><i class="fa-solid fa-code"></i> Ekspor Data Saat Ini &rarr; .js</button></div>' +
       '<label>File Excel / CSV yang sudah diisi</label><input type="file" id="pqcvIn" accept=".xlsx,.xls,.csv" style="width:100%;margin:4px 0 8px">' +
       '<label>Mode</label><select id="pqcvMode" style="width:100%;margin:4px 0 8px"><option value="replace">Ganti seluruh isi file (data = isi Excel)</option><option value="merge">Gabung dengan data default saat ini (perbarui yang sama, tambah yang baru)</option></select>' +
@@ -163,7 +163,7 @@
     $("pqcvTabR").onclick = () => tab("ruas"); $("pqcvTabB").onclick = () => tab("jembatan");
     $("pqcvX").onclick = () => box.classList.remove("show");
     $("pqcvEx").onclick = () => downloadExample(S.kind);
-    $("pqcvCur").onclick = () => { const d = S.kind === "ruas" ? liveRoads() : liveBr(); if (!d.length) return note("Belum ada data", true); dl(S.kind === "ruas" ? "data-ruas.js" : "data-jembatan.js", toJS(S.kind, d)); note("File .js diunduh (" + d.length + " " + (S.kind === "ruas" ? "ruas" : "jembatan") + ") - ganti file di GitHub"); };
+    $("pqcvCur").onclick = () => { const d = S.kind === "ruas" ? liveRoads() : liveBr(); if (!d.length) return note("Belum ada data", true); dl(S.kind === "ruas" ? "data-ruas.js" : "data-jembatan.js", toJS(S.kind, d)); note("File .js diunduh (" + d.length + " " + (S.kind === "ruas" ? "ruas" : "jembatan") + ") - ganti file di " + (window.__pqIsAdmin ? "GitHub" : "server")); };
     $("pqcvIn").onchange = ev => readFile(ev.target.files[0]);
     $("pqcvMode").onchange = refresh;
     $("pqcvGo").onclick = () => { const o = out(); if (o) { dl(o.file, o.text); note(o.file + " dibuat (" + o.n + ")"); } };
@@ -193,12 +193,13 @@
     if (p.warn.length) h += '<ul style="margin:6px 0 0 16px;color:var(--text-dim)">' + p.warn.slice(0, 8).map(w => "<li>" + esc(w) + "</li>").join("") + (p.warn.length > 8 ? "<li>... +" + (p.warn.length - 8) + " peringatan lain</li>" : "") + "</ul>";
     $("pqcvInfo").innerHTML = h;
   }
+  window.addEventListener("pq-admin", () => { const m = $("pqcvModal"); if (m) { m.remove(); box = null; } });
   function open() { if (!window.XLSX) return note("Library Excel belum termuat, coba lagi sebentar", true); if (!box) build(); tab(S.kind); box.classList.add("show"); }
 
   window.PETAQU_CONVERT = { open, parseRoads, parseBridges, finalize, toJS, roadRows, bridgeRows, downloadExample };
   function init() {
     if (typeof document === "undefined" || !document.body) return;
-    const b = document.createElement("button"); b.type = "button"; b.title = "Konversi data jalan/jembatan Excel \u2194 JS (GitHub)"; b.innerHTML = '<i class="fa-solid fa-file-code"></i>'; b.onclick = open;
+    const b = document.createElement("button"); b.type = "button"; const ttl = () => { b.title = "Konversi data jalan/jembatan Excel \u2194 JS" + (window.__pqIsAdmin ? " (GitHub)" : ""); }; ttl(); window.addEventListener("pq-admin", ttl); b.innerHTML = '<i class="fa-solid fa-file-code"></i>'; b.onclick = open;
     if (window.PQ_DOCK) PQ_DOCK.adopt(b, "Konversi ke JS");
     else { b.className = "btn primary"; b.style.cssText = "position:fixed;left:10px;bottom:70px;z-index:3900"; b.innerHTML += " Konversi ke JS"; document.body.appendChild(b); }
   }
