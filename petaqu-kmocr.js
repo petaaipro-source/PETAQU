@@ -374,7 +374,7 @@
   function jget(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } }
   function jset(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
 
-  var DATA = null, ROWS = [], SCAN = jget(K_SCAN, {}), SET = Object.assign({ cap: 9000, radius: 60, step: 15, perRuas: 3, derive: true, mode: "b", minVotes: 2, maxPano: 4, maxImgRuas: 14, minYear: (new Date().getFullYear() - 10), verify: true, cross: true }, jget(K_SET, {}));
+  var DATA = null, ROWS = [], SCAN = jget(K_SCAN, {}), SET = Object.assign({ cap: 9000, radius: 60, step: 15, perRuas: 3, derive: true, mode: "b", minVotes: 2, maxPano: 4, maxImgRuas: 14, minYear: (new Date().getFullYear() - 10), verify: true, cross: true, manual: false, showMap: true }, jget(K_SET, {}));
   var RUN = { on: false, stop: false, sel: -1 }, worker = null, wLoad = null, KONFLIK = [];
 
   function keyOf(r) { return r[0] + "," + r[1] + "|" + r[3]; }
@@ -521,11 +521,19 @@
   }
 
   /* ---- terapkan hasil → peta (lewat localStorage yang dibaca lapisan Patok KM) ---- */
+  // status tinjauan: acc = dipakai · pend = terbaca, menunggu verifikasi manual · ragu · rej = ditolak
+  function stat(s) {
+    if (!s || (s.st !== "ok" && s.st !== "ragu")) return "";
+    if (s.rej) return "rej";
+    if (s.acc) return "acc";
+    if (s.st === "ok") return SET.manual ? "pend" : "acc";
+    return "ragu";
+  }
   function accepted() {   // {key: angka KM terpilih}
     var o = {};
     Object.keys(SCAN).forEach(function (k) {
       var s = SCAN[k];
-      if (!s || (s.st !== "ok" && !(s.st === "ragu" && s.acc)) || s.rej) return;
+      if (stat(s) !== "acc") return;
       var km = C.pickKm(s, SET.mode); if (km != null) o[k] = km;
     });
     return o;
@@ -658,7 +666,11 @@
   }
 
   /* ---- UI ---- */
-  var CSS = ".kmo{margin:10px 0;padding:10px 11px;border:1px solid #38bdf855;border-radius:11px;background:#0b1220;font:12px/1.45 system-ui,sans-serif;color:#e6f1fb}" +
+  var CSS2 = ".kmo-pin{min-width:44px;height:22px;line-height:18px;padding:0 6px;border-radius:11px;border:2px solid #fff;font:800 11px system-ui,sans-serif;color:#fff;text-align:center;white-space:nowrap;box-shadow:0 2px 8px #000a;box-sizing:border-box}" +
+    ".kmo-pin.kmo-a{background:#16a34a}.kmo-pin.kmo-p{background:#0284c7}.kmo-pin.kmo-r{background:#d97706}.kmo-pin.kmo-x{background:#dc2626;text-decoration:line-through}.kmo-pin.kmo-n{min-width:0;width:10px;height:10px;padding:0;border-radius:50%;background:#94a3b8;border:1px solid #fff;opacity:.8}" +
+    ".kmo-pp{font:12px/1.4 system-ui,sans-serif;min-width:180px}.kmo-ev{display:block;width:100%;max-height:90px;object-fit:contain;background:#fff;border-radius:6px;margin:6px 0}.kmo-rd{margin:4px 0;font-size:13px}.kmo-tg{display:inline-block;padding:1px 8px;border-radius:9px;font-weight:700;font-size:10.5px;color:#fff}.kmo-tg.kmo-a{background:#16a34a}.kmo-tg.kmo-p{background:#0284c7}.kmo-tg.kmo-r{background:#d97706}.kmo-tg.kmo-x{background:#dc2626}" +
+    ".kmo-bt{display:flex;gap:5px;margin-top:7px}.kmo-bt button{flex:1;cursor:pointer;border:0;border-radius:7px;padding:6px 4px;font:700 11.5px system-ui;color:#fff;background:#16a34a}.kmo-bt button.x{background:#dc2626}.kmo-bt button.g{background:#ffffff1f;border:1px solid #ffffff44}";
+  var CSS = CSS2 + ".kmo{margin:10px 0;padding:10px 11px;border:1px solid #38bdf855;border-radius:11px;background:#0b1220;font:12px/1.45 system-ui,sans-serif;color:#e6f1fb}" +
     ".kmo summary{cursor:pointer;font-weight:800;color:#a3e635}.kmo .r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:7px 0}.kmo label{opacity:.85}" +
     ".kmo input[type=number]{width:62px;background:#0f1a2d;color:#fff;border:1px solid #ffffff33;border-radius:6px;padding:3px 5px}.kmo select{background:#0f1a2d;color:#fff;border:1px solid #ffffff33;border-radius:6px;padding:3px}" +
     ".kmo button{cursor:pointer;border:0;border-radius:8px;padding:6px 10px;font:700 12px system-ui;color:#fff;background:#0284c7}.kmo button.g{background:#ffffff1a;border:1px solid #ffffff33}.kmo button.d{background:#b91c1c}.kmo button:disabled{opacity:.45;cursor:default}" +
@@ -680,16 +692,68 @@
   function render() {
     var box = $("kmoList"); if (!box) return;
     var c = counts(), ap = jget(K_AP, {}), nAp = Object.keys(ap).length, nDer = Object.keys(ap).filter(function (k) { return ap[k].d; }).length;
-    var keys = Object.keys(SCAN).filter(function (k) { var s = SCAN[k]; return s && (s.st === "ok" || s.st === "ragu"); }).sort(function (a, b) { return SCAN[b].t - SCAN[a].t; }).slice(0, 40);
+    var keys = Object.keys(SCAN).filter(function (k) { var s = SCAN[k]; return s && (s.st === "ok" || s.st === "ragu"); }).sort(function (a, b) { var pa = stat(SCAN[a]) === "pend" || stat(SCAN[a]) === "ragu" ? 1 : 0, pb = stat(SCAN[b]) === "pend" || stat(SCAN[b]) === "ragu" ? 1 : 0; return (pb - pa) || (SCAN[b].t - SCAN[a].t); }).slice(0, 100);
     box.innerHTML = '<div>Terbaca ' + c.ok + ' · ragu ' + c.ragu + ' · tanpa panorama ' + c.nopano + ' · foto lama ' + c.fotolama + ' · tanpa patok ' + c.nopatok + (c.err ? ' · error ' + c.err : '') + '. Diterapkan ke peta: ' + nAp + ' titik (' + nDer + ' turunan).</div>' +
       (KONFLIK.length ? '<div style="color:#fda4af;margin-top:4px">Perlu dicek manual (turunan tidak dipakai): ' + KONFLIK.map(esc).join('; ') + '</div>' : '') +
       (keys.length ? '<table><tr><th>Bukti</th><th>Hasil</th><th>Ruas / titik</th><th></th></tr>' + keys.map(function (k) {
-        var s = SCAN[k], on = s.st === "ok" || s.acc;
-        return '<tr><td>' + (s.ev ? '<img class="ev" src="' + s.ev + '">' : '') + '</td><td><b>' + s.a + (s.b != null ? ' / ' + s.b : '') + '</b><br><span class="tag ' + (on ? 't-ok' : 't-ragu') + '">' + (s.rej ? 'ditolak' : on ? 'diterima' : 'ragu') + '</span>' + (s.kota && s.kota.length ? '<br><small>' + esc(s.kota.join(", ")) + '</small>' : '') + '</td><td><small>' + esc(s.ruas) + '<br>label geometri ' + C.kmFmt(s.km0) + '</small></td><td>' +
-          (s.rej ? '<button class="g" data-act="acc" data-k="' + esc(k) + '">Terima</button>' : (s.st === "ragu" && !s.acc ? '<button data-act="acc" data-k="' + esc(k) + '">Terima</button> ' : '') + '<button class="g" data-act="rej" data-k="' + esc(k) + '">Tolak</button>') + '</td></tr>';
+        var s = SCAN[k], stt = stat(s), on = stt === "acc";
+        return '<tr><td>' + (s.ev ? '<img class="ev" src="' + s.ev + '">' : '') + '</td><td><b>' + s.a + (s.b != null ? ' / ' + s.b : '') + '</b><br><span class="tag ' + (on ? 't-ok' : stt === "rej" ? 't-err' : 't-ragu') + '">' + ({ acc: 'diterima', rej: 'ditolak', pend: 'menunggu verifikasi', ragu: 'ragu' }[stt]) + '</span> <small>' + confTxt(s) + '</small>' + (s.kota && s.kota.length ? '<br><small>' + esc(s.kota.join(", ")) + '</small>' : '') + '</td><td><small>' + esc(s.ruas) + '<br>label geometri ' + C.kmFmt(s.km0) + '</small></td><td>' +
+          (stt !== "acc" ? '<button data-act="acc" data-k="' + esc(k) + '">Terima</button> ' : '') + (stt !== "rej" ? '<button class="g" data-act="rej" data-k="' + esc(k) + '">Tolak</button> ' : '') + '<button class="g" data-act="loc" data-k="' + esc(k) + '" title="Lihat di peta">&#128205;</button>' + '</td></tr>';
       }).join("") + '</table>' : "");
-    ui();
+    ui(); overlay();
   }
+
+  /* ---- keyakinan & lapisan hasil di peta ---- */
+  function confTxt(s) { var lv = s.st === "ok" && (s.votes || 0) >= 3 && (s.conf || 0) >= 70 ? "tinggi" : s.st === "ok" ? "sedang" : "rendah"; return "keyakinan " + lv + " (" + (s.votes || 0) + " suara, conf " + (s.conf || 0) + ")"; }
+  var OV = null, OVK = {}, KL = [];
+  function mapObj() { try { return typeof map !== "undefined" ? map : window.map; } catch (e) { return window.map; } }
+  function pinHtml(s, stt) {
+    var cls = { acc: "a", pend: "p", ragu: "r", rej: "x" }[stt] || "n";
+    return '<div class="kmo-pin kmo-' + cls + '">' + (stt ? esc(s.a + (s.b != null ? "/" + s.b : "")) : "") + '</div>';
+  }
+  function popupHtml(k) {
+    var s = SCAN[k], stt = stat(s), row = OVK[k]; if (!s || !row) return "";
+    var ok = !!stt;
+    var h = '<div class="kmo-pp"><b>' + esc(row.ruas) + '</b><br><small>Label geometri: ' + C.kmFmt(row.km) + '</small>';
+    if (ok) {
+      h += (s.ev ? '<img class="kmo-ev" src="' + s.ev + '">' : '') + '<div class="kmo-rd">Terbaca: <b>' + esc(s.a) + (s.b != null ? " / " + esc(s.b) : "") + '</b></div><small>' + confTxt(s) + (s.date ? " · foto " + esc(s.date) : "") + '</small><br>' +
+        '<span class="kmo-tg kmo-' + { acc: "a", pend: "p", ragu: "r", rej: "x" }[stt] + '">' + { acc: "diterima", rej: "ditolak", pend: "menunggu verifikasi", ragu: "ragu" }[stt] + '</span>' +
+        '<div class="kmo-bt">' + (stt !== "acc" ? '<button onclick="PQ_KMO_ACT(\'' + KL.indexOf(k) + '\',\'acc\')">Terima</button>' : "") + (stt !== "rej" ? '<button class="x" onclick="PQ_KMO_ACT(\'' + KL.indexOf(k) + '\',\'rej\')">Tolak</button>' : "") + '<button class="g" onclick="PQ_KMO_SV(\'' + KL.indexOf(k) + '\')">Street View</button></div>';
+    } else {
+      h += '<div class="kmo-rd">' + ({ nopano: "Tanpa panorama Street View", fotolama: "Foto Street View terlalu lama", nopatok: "Patok tidak terdeteksi", err: "Gagal dibaca" }[s.st] || s.st) + '</div><div class="kmo-bt"><button class="g" onclick="PQ_KMO_SV(\'' + KL.indexOf(k) + '\')">Street View</button></div>';
+    }
+    return h + '</div>';
+  }
+  function overlay() {
+    var M = mapObj();
+    if (!M || typeof L === "undefined") return;
+    if (!OV) OV = L.layerGroup();
+    OV.clearLayers(); OVK = {}; KL = Object.keys(SCAN);
+    if (!SET.showMap) { if (M.hasLayer(OV)) M.removeLayer(OV); return; }
+    loadData(); if (!M.hasLayer(OV)) OV.addTo(M);
+    var by = {}; ROWS.forEach(function (r) { by[r.key] = r; });
+    Object.keys(SCAN).forEach(function (k) {
+      var s = SCAN[k], r = by[k]; if (!s || !r || s.st === "stop") return;
+      OVK[k] = r;
+      var stt = stat(s), m;
+      if (stt) m = L.marker([r.lat, r.lng], { icon: L.divIcon({ className: "", html: pinHtml(s, stt), iconSize: [58, 22], iconAnchor: [29, 11] }), zIndexOffset: stt === "acc" ? 900 : 1000 });
+      else m = L.marker([r.lat, r.lng], { icon: L.divIcon({ className: "", html: '<div class="kmo-pin kmo-n"></div>', iconSize: [10, 10], iconAnchor: [5, 5] }), zIndexOffset: 500 });
+      m.bindPopup(function () { return popupHtml(k); }, { minWidth: 190 });
+      OV.addLayer(m);
+    });
+  }
+  window.PQ_KMO_ACT = function (k, act) {
+    k = KL[k]; var s = SCAN[k]; if (!s) return;
+    if (act === "acc") { s.acc = 1; s.rej = 0; } else { s.rej = 1; s.acc = 0; }
+    jset(K_SCAN, SCAN); applyAll(); render();
+    try { var M = mapObj(); M && M.closePopup(); } catch (e) {}
+  };
+  window.PQ_KMO_SV = function (k) {
+    k = KL[k]; var r = OVK[k]; if (!r) return;
+    try { mapObj().closePopup(); } catch (e) {}
+    if (window.openStreetViewForGeoResult) window.openStreetViewForGeoResult(r.lat, r.lng, "KM " + C.kmFmt(r.km));
+    else window.open("https://www.google.com/maps?q=&layer=c&cbll=" + r.lat + "," + r.lng, "_blank", "noopener");
+  };
 
   function build() {
     var pan = document.querySelector("#pkPanel .body"); if (!pan || $("kmoBox")) return !!$("kmoBox");
@@ -702,23 +766,29 @@
       '<div class="r"><label>Batas kuota gambar/bln <input type="number" id="kmoCap" min="0" step="500"></label><label>Radius <input type="number" id="kmoRad" min="0" step="15"> m</label><label>Langkah <input type="number" id="kmoStep" min="8" step="1"> m</label></div>' +
       '<div class="r"><label>Maks titik dicoba/ruas <input type="number" id="kmoPer" min="1" max="10"></label><label>Cakupan <select id="kmoScope"><option value="all">Semua ruas estimasi</option><option value="filter">Ruas yang dipilih di filter</option></select></label></div>' +
       '<div class="r"><label>Angka patok <select id="kmoMode"><option value="b">Baris bawah (KM ruas)</option><option value="a">Baris atas</option></select></label><label><input type="checkbox" id="kmoDer"> Turunkan ke titik lain di ruas yang sama</label></div>' +
+      '<div class="r"><label><input type="checkbox" id="kmoMap"> Tampilkan hasil OCR di peta</label><label><input type="checkbox" id="kmoMan"> Verifikasi manual (hasil terbaca pun harus diterima dulu)</label></div>' +
+      '<div class="r"><small>Peta: <b style="color:#4ade80">hijau</b> diterima · <b style="color:#38bdf8">biru</b> menunggu verifikasi · <b style="color:#fbbf24">oranye</b> ragu · <b style="color:#f87171">merah</b> ditolak · titik abu = dilewati</small></div>' +
+      '<div class="r"><button class="g" id="kmoAccAll">Terima semua terbaca</button><button class="g" id="kmoRejRagu">Tolak semua ragu</button></div>' +
       '<div class="r"><button id="kmoRun">Mulai OCR</button><button class="d" id="kmoStop" disabled>Jeda</button><button class="g" id="kmoOne">OCR titik terpilih</button><span id="kmoSel" style="opacity:.8"></span></div>' +
       '<div class="r"><label class="g">Uji dari gambar: <input type="file" id="kmoFile" accept="image/*"></label></div>' +
       '<div class="st" id="kmoStat"></div><div id="kmoList"></div>' +
       '<div class="r"><button class="g" id="kmoApply">Terapkan &amp; muat ulang peta</button><button class="g" id="kmoCsv">Ekspor CSV</button><button class="g" id="kmoJson">Ekspor JSON</button><button class="d" id="kmoClr">Hapus hasil</button></div>';
     pan.insertBefore(d, pan.firstChild);
     $("kmoCap").value = SET.cap; $("kmoRad").value = SET.radius; $("kmoStep").value = SET.step; $("kmoPer").value = SET.perRuas;
-    $("kmoScope").value = SET.scope || "all"; $("kmoMode").value = SET.mode; $("kmoDer").checked = !!SET.derive;
-    function sv() { SET.cap = +$("kmoCap").value || 0; SET.radius = +$("kmoRad").value || 0; SET.step = Math.max(8, +$("kmoStep").value || 15); SET.perRuas = Math.max(1, +$("kmoPer").value || 3); SET.scope = $("kmoScope").value; SET.mode = $("kmoMode").value; SET.derive = $("kmoDer").checked; jset(K_SET, SET); applyAll(); ui(); }
-    ["kmoCap", "kmoRad", "kmoStep", "kmoPer", "kmoScope", "kmoMode", "kmoDer"].forEach(function (id) { $(id).onchange = sv; });
+    $("kmoScope").value = SET.scope || "all"; $("kmoMode").value = SET.mode; $("kmoDer").checked = !!SET.derive; $("kmoMap").checked = SET.showMap !== false; $("kmoMan").checked = !!SET.manual;
+    function sv() { SET.cap = +$("kmoCap").value || 0; SET.radius = +$("kmoRad").value || 0; SET.step = Math.max(8, +$("kmoStep").value || 15); SET.perRuas = Math.max(1, +$("kmoPer").value || 3); SET.scope = $("kmoScope").value; SET.mode = $("kmoMode").value; SET.derive = $("kmoDer").checked; SET.showMap = $("kmoMap").checked; SET.manual = $("kmoMan").checked; jset(K_SET, SET); applyAll(); ui(); render(); }
+    ["kmoCap", "kmoRad", "kmoStep", "kmoPer", "kmoScope", "kmoMode", "kmoDer", "kmoMap", "kmoMan"].forEach(function (id) { $(id).onchange = sv; });
     $("kmoRun").onclick = function () { sv(); runBatch(); };
     $("kmoStop").onclick = function () { RUN.stop = true; say("Menjeda…"); };
     $("kmoOne").onclick = function () { sv(); runOne(RUN.sel); };
     $("kmoFile").onchange = function () { testFile(this.files[0]); this.value = ""; };
     $("kmoApply").onclick = function () { sv(); location.reload(); };
     $("kmoClr").onclick = function () { if (confirm("Hapus semua hasil OCR patok dan kembalikan angka geometri?")) { SCAN = {}; jset(K_SCAN, SCAN); jset(K_AP, {}); render(); say("Hasil dihapus. Muat ulang untuk mengembalikan peta."); } };
+    $("kmoAccAll").onclick = function () { var n = 0; Object.keys(SCAN).forEach(function (k) { var s = SCAN[k]; if (s && s.st === "ok" && !s.rej && !s.acc) { s.acc = 1; n++; } }); jset(K_SCAN, SCAN); applyAll(); render(); say(n + " hasil terbaca diterima."); };
+    $("kmoRejRagu").onclick = function () { var n = 0; Object.keys(SCAN).forEach(function (k) { var s = SCAN[k]; if (s && s.st === "ragu" && !s.acc && !s.rej) { s.rej = 1; n++; } }); jset(K_SCAN, SCAN); applyAll(); render(); say(n + " hasil ragu ditolak."); };
     $("kmoList").onclick = function (e) {
       var b = e.target.closest("button[data-act]"); if (!b) return; var s = SCAN[b.dataset.k]; if (!s) return;
+      if (b.dataset.act === "loc") { var r = OVK[b.dataset.k], M = mapObj(); if (r && M) { M.flyTo([r.lat, r.lng], 18, { duration: .6 }); setTimeout(function () { OV && OV.eachLayer(function (l) { var ll = l.getLatLng && l.getLatLng(); if (ll && Math.abs(ll.lat - r.lat) < 1e-9 && Math.abs(ll.lng - r.lng) < 1e-9) l.openPopup(); }); }, 700); } return; }
       if (b.dataset.act === "acc") { s.acc = 1; s.rej = 0; } else { s.rej = 1; s.acc = 0; }
       jset(K_SCAN, SCAN); applyAll(); render();
     };
