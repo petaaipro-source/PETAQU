@@ -48,11 +48,12 @@
   async function clearBak() { try { const d = await idb(); await new Promise(ok => { const tx = d.transaction("bak", "readwrite"); tx.objectStore("bak").clear(); tx.oncomplete = ok; tx.onerror = ok; }); } catch (_) { } histDraw(); note("Cadangan dikosongkan"); }
   /* ---------- Kapasitas repo GitHub (gratis ±1 GB) ---------- */
   const GH_KEY = "pq_gh_repo", GH_MAX = 1024 * 1024 * 1024; let ghC = null;
-  const ghRepo = () => { const v = localStorage.getItem(GH_KEY); if (v) return v; const m = location.hostname.match(/^([^.]+)\.github\.io$/); return m ? m[1] + "/" + (location.pathname.split("/")[1] || m[1] + ".github.io") : ""; };
+  const normRepo = v => { v = String(v || "").trim().replace(/^https?:\/\//i, "").replace(/^www\./, "").replace(/[?#].*$/, "").replace(/\.git$/, "").replace(/\/+$/, ""); let m = v.match(/^([^./]+)\.github\.io(?:\/([^/]+))?/i); if (m) return m[1] + "/" + (m[2] || m[1] + ".github.io"); m = v.match(/^github\.com\/([^/]+)\/([^/]+)/i); if (m) return m[1] + "/" + m[2]; return /^[\w.-]+\/[\w.-]+$/.test(v) ? v : ""; };
+  const ghRepo = () => { const v = normRepo(localStorage.getItem(GH_KEY)); if (v) return v; const m = location.hostname.match(/^([^.]+)\.github\.io$/); return m ? m[1] + "/" + (location.pathname.split("/")[1] || m[1] + ".github.io") : ""; };
   const ghForm = msg => '<h4 style="margin-top:12px"><span>Kapasitas GitHub (gratis)</span></h4><small style="margin:0 0 6px">' + (msg ? esc(msg) + " · " : "") + 'Isi nama repo (contoh: <b>namaakun/PETAQU</b>) untuk melihat pemakaian.</small><div class="pqd-g" style="margin:0"><input id="pqdGhIn" placeholder="pemilik/repo" value="' + esc(ghRepo()) + '" style="flex:1;min-width:160px;background:#0f1726;color:#e6f1fb;border:1px solid #94b2cc44;border-radius:8px;padding:7px 9px"><button class="pqd-btn" id="pqdGhOk">Simpan &amp; cek</button></div>';
   async function ghDraw(force) {
     const el = $("pqdGh"); if (!el) return; const repo = ghRepo();
-    const bind = () => { const b = $("pqdGhOk"); if (b) b.onclick = () => { const v = $("pqdGhIn").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, ""); if (/^[\w.-]+\/[\w.-]+$/.test(v)) { localStorage.setItem(GH_KEY, v); ghC = null; ghDraw(true); } else note("Format: pemilik/repo", true); }; const c = $("pqdGhCh"); if (c) c.onclick = e => { e.preventDefault(); el.innerHTML = ghForm(); bind(); }; const rf = $("pqdGhRf"); if (rf) rf.onclick = e => { e.preventDefault(); ghDraw(true); }; };
+    const bind = () => { const b = $("pqdGhOk"); if (b) b.onclick = () => { const v = normRepo($("pqdGhIn").value); if (v) { localStorage.setItem(GH_KEY, v); ghC = null; ghDraw(true); } else note("Format: pemilik/repo", true); }; const c = $("pqdGhCh"); if (c) c.onclick = e => { e.preventDefault(); el.innerHTML = ghForm(); bind(); }; const rf = $("pqdGhRf"); if (rf) rf.onclick = e => { e.preventDefault(); ghDraw(true); }; };
     if (!repo) { el.innerHTML = ghForm(); return bind(); }
     try {
       if (force || !ghC || ghC.repo !== repo || Date.now() - ghC.t > 3e5) {
@@ -106,11 +107,17 @@
   /* ---------- Analisis: diff + QA ---------- */
   function analyze(it, mode, clip) {
     const isR = it.kind === "ruas", issues = (it.parsed.warn || []).map(m => ["warn", m]);
-    let data = it.parsed.data.slice();
+    let data = it.parsed.data.slice(), fixed = 0, bad = 0;
+    if (S.fix) {   // perbaikan otomatis: lat/lng tertukar, tanda minus hilang
+      const f = (la, ln) => la == null || ln == null || inBB(la, ln) ? null : [[ln, la], [-la, ln], [-ln, la], [la, -ln]].find(c => inBB(c[0], c[1])) || null;
+      data = isR ? data.map(r => { let ch = false; const pts = (r.points || []).map(p => { const c = f(p.lat, p.lng); if (!c) return p; ch = true; fixed++; return Object.assign({}, p, { lat: c[0], lng: c[1] }); }); return ch ? Object.assign({}, r, { points: pts }) : r; })
+        : data.map(b => { const c = f(b.lat, b.lng); if (!c) return b; fixed++; return Object.assign({}, b, { lat: c[0], lng: c[1] }); });
+      if (fixed) issues.push(["info", "✔ " + fixed + " koordinat diperbaiki otomatis (lat/lng tertukar atau tanda minus hilang)"]);
+    }
     if (it.ignored.length) issues.push(["info", "Kolom tidak dikenali (diabaikan): " + it.ignored.slice(0, 6).join(", ")]);
     if (isR) {
       let out = 0, jump = [];
-      data.forEach(r => { const p = r.points || []; out += p.filter(x => !inBB(x.lat, x.lng)).length; for (let i = 1; i < p.length; i++) if (hav(p[i - 1], p[i]) > 3000) { jump.push(r.name); break; } });
+      data.forEach(r => { const p = r.points || [], o = p.filter(x => !inBB(x.lat, x.lng)).length; out += o; let j = false; for (let i = 1; i < p.length; i++) if (hav(p[i - 1], p[i]) > 3000) { jump.push(r.name); j = true; break; } if (o || j) bad++; });
       if (out) issues.push(["warn", fmt(out) + " titik STA berada di luar wilayah Jateng–DIY — cek tanda koma/minus pada lat/lng"]);
       if (jump.length) issues.push(["warn", "Loncatan >3 km antar titik STA pada " + jump.length + " ruas (" + jump.slice(0, 3).join("; ") + ") — kemungkinan salah ketik koordinat"]);
     } else {
@@ -118,15 +125,24 @@
       if (nol) issues.push(["warn", nol + " jembatan tanpa koordinat — disimpan, tetapi tidak tampil di peta"]);
       if (out.length) { issues.push(["warn", out.length + " jembatan di luar Jateng–DIY" + (clip ? " dilewati: " : ": ") + out.slice(0, 3).map(b => b.nama).join("; ")]); if (clip) data = data.filter(b => !out.includes(b)); }
       const seen = new Set(); let dup = 0; data.forEach(b => { const k = slug(b.nama) + "|" + (+b.lat).toFixed(4) + "|" + (+b.lng).toFixed(4); seen.has(k) ? dup++ : seen.add(k); });
-      if (dup) issues.push(["warn", dup + " baris ganda (nama & koordinat sama) dalam file ini"]);
+      bad = nol + out.length + dup; if (dup) issues.push(["warn", dup + " baris ganda (nama & koordinat sama) dalam file ini"]);
     }
     const parsed = Object.assign({}, it.parsed, { data }), base = isR ? liveR() : liveB();
     let final = C().finalize(it.kind, parsed, mode, base);
     const bm = new Map(base.map(b => [isR ? b.id : bKey(b), b]));
     if (!isR) { const byId = new Map(base.map(b => [b.id, b])); final = final.map(f => Object.assign({}, byId.get(f.id) || {}, f)); }
-    let nNew = 0, nUpd = 0, nSame = 0; const hit = new Set();
-    data.forEach(x => { const k = isR ? x.id : bKey(x), o = bm.get(k); if (!o) nNew++; else { hit.add(k); (isR ? rSig(o) === rSig(x) : bSig(o) === bSig(x)) ? nSame++ : nUpd++; } });
-    return Object.assign({}, it, { data, final, nNew, nUpd, nSame, nGone: mode === "replace" ? [...bm.keys()].filter(k => !hit.has(k)).length : 0, issues });
+    let nNew = 0, nUpd = 0, nSame = 0; const hit = new Set(), chg = [], near = [], grid = new Map(), FL = ["nama", "lat", "lng", "panjang", "lebar", "tipe", "tahun", "ruas", "kabupaten", "nomor"];
+    if (!isR) base.forEach(o => { if (o.lat != null && o.lng != null) { const c = Math.floor(o.lat * 400) + "," + Math.floor(o.lng * 400); if (!grid.has(c)) grid.set(c, []); grid.get(c).push(o); } });
+    data.forEach(x => {
+      const k = isR ? x.id : bKey(x), o = bm.get(k), nm = isR ? x.name : x.nama;
+      if (!o) {
+        nNew++; if (chg.length < 12) chg.push(["n", nm, ""]);
+        if (!isR && x.lat != null && near.length < 5) { const la = Math.floor(x.lat * 400), lo = Math.floor(x.lng * 400); out: for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const q of grid.get((la + a) + "," + (lo + b)) || []) if (hav(q, x) < 30) { near.push(nm + " ≈ " + q.nama); break out; } }
+      } else { hit.add(k); if (isR ? rSig(o) === rSig(x) : bSig(o) === bSig(x)) nSame++; else { nUpd++; if (chg.length < 12) chg.push(["u", nm, isR ? "nama/titik STA berubah" : FL.filter(f => o[f] !== x[f]).join(", ")]); } }
+    });
+    if (near.length) issues.push(["warn", "Kemungkinan duplikat (<30 m dari jembatan lama, nama berbeda): " + near.slice(0, 3).join("; ")]);
+    const score = Math.max(0, Math.round(100 - bad / Math.max(1, it.parsed.data.length) * 100));
+    return Object.assign({}, it, { data, final, nNew, nUpd, nSame, chg, chgMore: nNew + nUpd > 12, score, fixed, nGone: mode === "replace" ? [...bm.keys()].filter(k => !hit.has(k)).length : 0, issues });
   }
 
   /* ---------- Terapkan ke aplikasi ---------- */
@@ -151,13 +167,26 @@
       else { setBr(r.final); r.data.slice(0, 800).forEach(x => x.lat != null && pts.push([x.lat, x.lng])); }
       sum.push(fmt(r.data.length) + " " + (it.kind === "ruas" ? "ruas" : "jembatan") + " (" + r.nNew + " baru, " + r.nUpd + " diperbarui)");
     });
-    refresh(); fit(pts); S.items = []; draw(); histDraw();
+    pvClear(); refresh(); fit(pts); S.items = []; draw(); histDraw();
     note("Data diperbarui: " + sum.join(" · ") + ". Tersimpan di perangkat ini.");
   }
   async function restore(t) {
     const rec = (await bakAll()).find(x => x.t === t); if (!rec) return;
     await bakPut("Sebelum memulihkan cadangan " + new Date(t).toLocaleString("id-ID"));
     setRoads(cp(rec.roads)); setBr(cp(rec.jbt)); refresh(); histDraw(); note("Cadangan dipulihkan");
+  }
+
+  /* ---------- Pratinjau di peta (oranye) sebelum diterapkan ---------- */
+  let pvL = null;
+  function pvClear() { try { if (pvL) map.removeLayer(pvL); } catch (_) { } pvL = null; const b = $("pqdBack"); if (b) b.remove(); }
+  function preview() {
+    pvClear(); const g = L.layerGroup(), pts = [];
+    S.items.forEach(i => { const r = i.res; if (!r) return;
+      if (i.kind === "ruas") r.data.slice(0, 400).forEach(x => { const p = (x.points || []).map(q => [q.lat, q.lng]); if (p.length > 1) { L.polyline(p, { color: "#fb923c", weight: 5, opacity: .9, dashArray: "8 6" }).bindTooltip(x.name || "").addTo(g); p.forEach((q, k) => k % 15 === 0 && pts.push(q)); } });
+      else r.data.slice(0, 1500).forEach(x => { if (x.lat != null && x.lng != null) { L.circleMarker([x.lat, x.lng], { radius: 6, color: "#fff", weight: 1.5, fillColor: "#fb923c", fillOpacity: .95 }).bindTooltip(x.nama || "").addTo(g); pts.push([x.lat, x.lng]); } }); });
+    if (!pts.length) return note("Tidak ada koordinat untuk ditampilkan", true);
+    pvL = g.addTo(map); fit(pts); $("pqdBox").classList.remove("show");
+    const b = document.createElement("button"); b.id = "pqdBack"; b.className = "pqd-btn pri"; b.style.cssText = "position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:4101;box-shadow:0 6px 24px #000a"; b.textContent = "↩ Kembali ke Upload Data (pratinjau oranye)"; b.onclick = open; document.body.appendChild(b);
   }
 
   /* ---------- Unduh / ekspor ---------- */
@@ -171,7 +200,7 @@
   }
 
   /* ---------- UI ---------- */
-  const S = { items: [], mode: "merge", clip: true, force: "auto" };
+  const S = { items: [], mode: "merge", clip: true, fix: true, force: "auto" };
   const CSS = ".pqd{position:fixed;inset:0;z-index:4100;display:none;align-items:center;justify-content:center;background:#02060ccc;backdrop-filter:blur(3px);padding:10px}.pqd.show{display:flex}" +
     ".pqd-card{width:min(720px,100%);max-height:92vh;display:flex;flex-direction:column;border-radius:16px;border:1px solid #22d3ee44;background:#0a0e17;color:#dbe7f3;font:13px/1.45 system-ui,sans-serif;box-shadow:0 20px 60px #000a}" +
     ".pqd-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #94b2cc22;font-size:15px}.pqd-h b{flex:1}.pqd-h button{background:0;border:0;color:#8fa6bd;font-size:22px;cursor:pointer}" +
@@ -189,16 +218,16 @@
     const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
     const box = document.createElement("div"); box.id = "pqdBox"; box.className = "pqd";
     box.innerHTML = '<div class="pqd-card"><div class="pqd-h"><b><i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Perbarui Data</b><button id="pqdX" aria-label="Tutup">×</button></div><div class="pqd-b">' +
-      '<div id="pqdMem" class="pqd-it pqd-m"></div><div id="pqdDrop" class="pqd-drop"><b>Seret file Excel / CSV ke sini</b> atau <u>pilih file</u><small>Ruas jalan (kolom Ruas, STA, Latitude, Longitude) dan/atau jembatan (Nama, Latitude, Longitude). Jenis data dikenali otomatis; boleh banyak file sekaligus.</small><input id="pqdFile" type="file" multiple accept=".xlsx,.xls,.csv" hidden></div>' +
+      '<div id="pqdMem" class="pqd-it pqd-m"></div><div id="pqdDrop" class="pqd-drop"><b>Seret file Excel / CSV ke sini</b> atau <u>pilih file</u><small>Ruas jalan (kolom Ruas, STA, Latitude, Longitude) dan/atau jembatan (Nama, Latitude, Longitude). Jenis data dikenali otomatis; boleh banyak file sekaligus. Bisa juga tempel (Ctrl+V) langsung dari Excel.</small><input id="pqdFile" type="file" multiple accept=".xlsx,.xls,.csv" hidden></div>' +
       '<div class="pqd-row">Mode: <label><input type="radio" name="pqdM" value="merge" checked> Gabung (tambah &amp; perbarui)</label><label><input type="radio" name="pqdM" value="replace"> Ganti semua</label>' +
-      '<label><input type="checkbox" id="pqdClip" checked> Lewati jembatan di luar Jateng–DIY</label><label>Jenis: <select id="pqdKind"><option value="auto">Otomatis</option><option value="ruas">Ruas jalan</option><option value="jembatan">Jembatan</option></select></label></div>' +
-      '<div id="pqdRes"></div><div class="pqd-row"><button id="pqdGo" class="pqd-btn pri" disabled>Terapkan ke peta</button><button class="pqd-btn" data-t="ruas">Template ruas</button><button class="pqd-btn" data-t="jembatan">Template jembatan</button></div>' +
+      '<label><input type="checkbox" id="pqdClip" checked> Lewati jembatan di luar Jateng–DIY</label><label><input type="checkbox" id="pqdFix" checked> Perbaiki koordinat otomatis</label><label>Jenis: <select id="pqdKind"><option value="auto">Otomatis</option><option value="ruas">Ruas jalan</option><option value="jembatan">Jembatan</option></select></label></div>' +
+      '<div id="pqdRes"></div><div class="pqd-row"><button id="pqdGo" class="pqd-btn pri" disabled>Terapkan ke peta</button><button id="pqdPv" class="pqd-btn" disabled>Lihat pratinjau di peta</button><button class="pqd-btn" data-t="ruas">Template ruas</button><button class="pqd-btn" data-t="jembatan">Template jembatan</button></div>' +
       '<details id="pqdHd"><summary>Cadangan &amp; urungkan</summary><div id="pqdHist"></div></details>' +
       '<details><summary>Simpan permanen / ekspor</summary><div style="color:#9db3c9;font-size:12px;margin-top:6px">Perubahan di atas tersimpan di perangkat ini. Agar semua pengguna ikut ter-update, unduh file .js lalu unggah ke GitHub (ganti file lama).</div><div class="pqd-g">' +
       '<button class="pqd-btn" data-js="ruas">Unduh data-ruas.js</button><button class="pqd-btn" data-js="jembatan">Unduh data-jembatan.js</button><button class="pqd-btn" data-x="ruas">Excel ruas</button><button class="pqd-btn" data-x="jembatan">Excel jembatan</button><button class="pqd-btn" id="pqdReset" style="border-color:#f8717166">Reset ke data bawaan</button></div></details></div></div>';
     document.body.appendChild(box);
     const drop = $("pqdDrop"), inp = $("pqdFile");
-    $("pqdX").onclick = () => box.classList.remove("show"); box.onclick = e => { if (e.target === box) box.classList.remove("show"); };
+    $("pqdX").onclick = () => { box.classList.remove("show"); pvClear(); }; box.onclick = e => { if (e.target === box) box.classList.remove("show"); };
     drop.onclick = () => inp.click(); inp.onchange = () => { take(inp.files); inp.value = ""; };
     ["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("on"); }));
     ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("on"); }));
@@ -206,6 +235,8 @@
     box.querySelectorAll("[name=pqdM]").forEach(r => r.onchange = () => { S.mode = r.value; reanalyze(); });
     $("pqdClip").onchange = e => { S.clip = e.target.checked; reanalyze(); };
     $("pqdKind").onchange = e => { S.force = e.target.value; const fs = S.items.map(i => i.f); S.items = []; take(fs); };
+    $("pqdFix").onchange = e => { S.fix = e.target.checked; reanalyze(); }; $("pqdPv").onclick = preview;
+    document.addEventListener("paste", e => { if (!box.classList.contains("show")) return; let t = (e.clipboardData || window.clipboardData).getData("text"); if (!t || !/\n/.test(t)) return; const tab = /\t/.test(t); if (!tab && (t.match(/;/g) || []).length > (t.match(/,/g) || []).length) t = t.replace(/;/g, "\t"); if (!tab && !/[;,\t]/.test(t)) return; e.preventDefault(); take([new File([t], tab || /;/.test(t) ? "tempelan.tsv" : "tempelan.csv")]); });
     $("pqdGo").onclick = apply; $("pqdReset").onclick = reset;
     box.querySelectorAll("[data-t]").forEach(b => b.onclick = () => C().downloadExample(b.dataset.t));
     box.querySelectorAll("[data-js]").forEach(b => b.onclick = () => dlJS(b.dataset.js));
@@ -216,13 +247,13 @@
     for (const f of files) { try { S.items.push(await readFile(f)); } catch (e) { note(f.name + ": " + e.message, true); } }
     reanalyze();
   }
-  function reanalyze() { S.items.forEach(i => { try { i.res = analyze(i, S.mode, S.clip); } catch (e) { i.res = null; i.err = e.message; } }); draw(); }
+  function reanalyze() { pvClear(); S.items.forEach(i => { try { i.res = analyze(i, S.mode, S.clip); } catch (e) { i.res = null; i.err = e.message; } }); draw(); }
   function draw() {
     $("pqdRes").innerHTML = S.items.map(i => { const r = i.res; if (!r) return '<div class="pqd-it"><h4>' + esc(i.f.name) + '</h4><ul class="pqd-is"><li class="warn">' + esc(i.err || "Gagal dibaca") + "</li></ul></div>";
       return '<div class="pqd-it"><h4><span class="pqd-tag' + (i.kind === "ruas" ? "" : " j") + '">' + (i.kind === "ruas" ? "RUAS JALAN" : "JEMBATAN") + "</span>" + esc(i.f.name) + "</h4>" +
-        '<div class="pqd-chips"><span>' + fmt(r.data.length) + " " + (i.kind === "ruas" ? "ruas · " + esc(i.parsed.extra || "") : "jembatan") + '</span><span class="n">+' + fmt(r.nNew) + ' baru</span><span class="u">' + fmt(r.nUpd) + ' diperbarui</span><span>' + fmt(r.nSame) + ' sama</span>' + (r.nGone ? '<span class="g">−' + fmt(r.nGone) + " dihapus</span>" : "") + "</div>" +
-        '<ul class="pqd-is">' + r.issues.map(x => '<li class="' + x[0] + '">' + (x[0] === "warn" ? "⚠ " : "ℹ ") + esc(x[1]) + "</li>").join("") + "</ul></div>"; }).join("");
-    $("pqdGo").disabled = !S.items.some(i => i.res && i.res.data.length);
+        '<div class="pqd-chips"><span style="color:' + (r.score >= 90 ? '#4ade80' : r.score >= 70 ? '#facc15' : '#f87171') + '">Kualitas ' + r.score + '/100</span><span>' + fmt(r.data.length) + " " + (i.kind === "ruas" ? "ruas · " + esc(i.parsed.extra || "") : "jembatan") + '</span><span class="n">+' + fmt(r.nNew) + ' baru</span><span class="u">' + fmt(r.nUpd) + ' diperbarui</span><span>' + fmt(r.nSame) + ' sama</span>' + (r.nGone ? '<span class="g">−' + fmt(r.nGone) + " dihapus</span>" : "") + "</div>" +
+        (r.chg.length ? '<details style="margin-top:6px"><summary>Lihat perubahan (' + r.chg.length + (r.chgMore ? "+" : "") + ')</summary><ul class="pqd-is">' + r.chg.map(c => "<li>" + (c[0] === "n" ? '<b style="color:#4ade80">baru</b> ' : '<b style="color:#facc15">ubah</b> ') + esc(c[1]) + (c[2] ? ' <span style="color:#8fa6bd">(' + esc(c[2]) + ")</span>" : "") + "</li>").join("") + "</ul></details>" : "") + '<ul class="pqd-is">' + r.issues.map(x => '<li class="' + x[0] + '">' + (x[0] === "warn" ? "⚠ " : "ℹ ") + esc(x[1]) + "</li>").join("") + "</ul></div>"; }).join("");
+    $("pqdGo").disabled = $("pqdPv").disabled = !S.items.some(i => i.res && i.res.data.length);
   }
   async function histDraw() {
     memDraw();
@@ -230,7 +261,7 @@
     el.innerHTML = l.length ? l.map(x => '<div class="pqd-hr"><span>' + new Date(x.t).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) + " · " + esc(x.label) + " (" + fmt(x.roads.length) + " ruas, " + fmt(x.jbt.length) + ' jembatan)</span><button class="pqd-btn" data-r="' + x.t + '">Pulihkan</button></div>').join("")
       : '<div style="color:#8fa6bd;font-size:12px;padding-top:6px">Belum ada cadangan. Dibuat otomatis setiap kali Anda menerapkan upload.</div>';
   }
-  function open() { if (!$("pqdBox")) build(); $("pqdBox").classList.add("show"); draw(); memDraw(); }
+  function open() { if (!$("pqdBox")) build(); const bk = $("pqdBack"); if (bk) bk.remove(); $("pqdBox").classList.add("show"); draw(); memDraw(); }
   function init() {
     const b = document.createElement("button"); b.type = "button"; b.title = "Upload data ruas jalan & jembatan (Excel/CSV) — langsung tampil di peta"; b.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i>'; b.onclick = open;
     if (window.PQ_DOCK) PQ_DOCK.adopt(b, "Upload Data");
