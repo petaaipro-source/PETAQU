@@ -4,6 +4,7 @@
    - Rencana linear vs realisasi fisik -> deviasi (Sesuai / Waspada / Kritis), sisa hari kontrak
    - Riwayat progres tiap paket (tercatat saat progres berubah via unggah ulang atau edit)
    - Tampil di peta (garis ruas berwarna menurut status), ekspor Excel (bisa diunggah ulang), template + data contoh
+   - LAMPIRAN unggahan: tiap unggahan yang diterapkan disimpan sebagai lampiran terpisah (Ringkasan, Baru, Diperbarui + perubahan nilai, Galat) dan bisa diunduh sebagai Excel/ditinjau kapan saja; paket baru/diperbarui diberi lencana di tabel
    - Terhubung ke Strategos: ruas dalam paket aktif tidak diusulkan ulang; ruas yang baru selesai ditandai. */
 (function () {
   "use strict";
@@ -147,6 +148,60 @@
     if (L && L[0] === t) { L[1] = fisik; L[2] = keu; } else p.log.push([t, fisik, keu]);
     p.log = p.log.slice(-40);
   }
+
+  /* ---------- Lampiran unggahan (terpisah dari data utama) ---------- */
+  const LKEY = "pq_paket_lampiran_v1", LMAX = 15;
+  const loadL = () => { try { const a = JSON.parse(localStorage.getItem(LKEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const storeL = a => { try { localStorage.setItem(LKEY, JSON.stringify(a)); return true; } catch (e) { return false; } };
+  let LAMP = loadL();
+  const FLD = [["nama", "Nama Paket"], ["kabupaten", "Kabupaten"], ["ruas", "Ruas"], ["ruasId", "ID Ruas"], ["jenis", "Jenis"], ["tahun", "Tahun"], ["nilai", "Nilai (Rp)"], ["penyedia", "Penyedia"], ["noKontrak", "No. Kontrak"], ["mulai", "Tgl Mulai"], ["selesai", "Tgl Selesai"], ["fisik", "Fisik (%)"], ["keu", "Keuangan (%)"], ["statusManual", "Status"], ["sumber", "Sumber Dana"], ["panjang", "Panjang (km)"], ["lat", "Lat"], ["lng", "Lng"], ["catatan", "Catatan"]];
+  const eq = (a, b) => (a == null || a === "" ? "" : a) === (b == null || b === "" ? "" : b);
+  function ubahan(o, n) { return FLD.filter(f => !eq(o[f[0]], n[f[0]])).map(f => ({ f: f[1], dari: o[f[0]] == null ? "" : o[f[0]], ke: n[f[0]] == null ? "" : n[f[0]] })); }
+  // Bangun lampiran dari hasil diff; dipanggil SEBELUM data diterapkan (DB masih keadaan lama)
+  function bangunLampiran(items, errors, nama) {
+    const d = diff(items), by = new Map(DB.map(p => [p.kode, p])), clean = p => { const c = Object.assign({}, p); delete c._contoh; delete c.log; return c; };
+    return {
+      id: "L" + Date.now().toString(36), waktu: new Date().toISOString(), berkas: nama || "-", total: items.length,
+      baru: d.baru.map(clean), sama: d.sama.length,
+      ubah: d.ubah.map(p => ({ kode: p.kode, nama: p.nama, perubahan: ubahan(by.get(p.kode), p) })),
+      galat: errors.slice(0, 500), contoh: items.filter(p => p._contoh).length
+    };
+  }
+  function simpanLampiran(L) { LAMP.unshift(L); LAMP = LAMP.slice(0, LMAX); if (!storeL(LAMP)) { LAMP = LAMP.slice(0, 3); storeL(LAMP); } }
+  const fmtW = iso => { const d = new Date(iso); return isNaN(d) ? "-" : pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+  function unduhLampiran(L) {
+    if (typeof XLSX === "undefined") return say("Pustaka Excel belum termuat");
+    L = L || LAMP[0]; if (!L) return say("Belum ada lampiran unggahan");
+    const wb = XLSX.utils.book_new(), tg = todayStr();
+    const ring = [["LAMPIRAN UNGGAHAN DATA PAKET"], [""], ["Berkas", L.berkas], ["Waktu unggah", fmtW(L.waktu)], ["Total baris terbaca", L.total], ["Paket baru", L.baru.length], ["Paket diperbarui", L.ubah.length], ["Tidak berubah", L.sama], ["Galat / peringatan", L.galat.length]];
+    if (L.contoh) ring.push(["Catatan", L.contoh + " baris bertanda CONTOH (data fiktif)"]);
+    const w1 = XLSX.utils.aoa_to_sheet(ring); w1["!cols"] = [{ wch: 24 }, { wch: 50 }]; XLSX.utils.book_append_sheet(wb, w1, "Ringkasan");
+    const w2 = XLSX.utils.aoa_to_sheet([HDR].concat(L.baru.map(toRow))); w2["!cols"] = [13, 40, 12, 34, 30, 20, 10, 18, 28, 22, 12, 13, 10, 11, 16, 14, 10, 13, 13, 46].map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, w2, "Paket Baru");
+    const rows = [["Kode", "Nama Paket", "Kolom", "Sebelum", "Sesudah"]];
+    L.ubah.forEach(u => u.perubahan.forEach(c => rows.push([u.kode, u.nama, c.f, c.dari, c.ke])));
+    const w3 = XLSX.utils.aoa_to_sheet(rows); w3["!cols"] = [13, 40, 18, 28, 28].map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, w3, "Diperbarui");
+    if (L.galat.length) { const w4 = XLSX.utils.aoa_to_sheet([["Galat / peringatan"]].concat(L.galat.map(g => [g]))); w4["!cols"] = [{ wch: 100 }]; XLSX.utils.book_append_sheet(wb, w4, "Galat"); }
+    XLSX.writeFile(wb, "lampiran-unggahan-paket-" + L.waktu.slice(0, 10) + "-" + L.id.slice(-4) + ".xlsx");
+  }
+  function hapusLampiran(id) { LAMP = LAMP.filter(l => l.id !== id); storeL(LAMP); }
+  const barusan = kode => { const L = LAMP[0]; if (!L) return ""; return L.baru.some(p => p.kode === kode) ? "baru" : L.ubah.some(u => u.kode === kode) ? "ubah" : ""; };
+
+  function lampiranUi() {
+    const o = $("div", "position:fixed;inset:0;z-index:6100;background:#000b;display:flex;align-items:center;justify-content:center;padding:10px"), b = $("div", "background:#071a26;color:#e6f1f7;border:1px solid #22d3ee55;border-radius:14px;width:min(720px,100%);max-height:90vh;overflow:auto;padding:14px;font:13px system-ui");
+    const draw = () => {
+      b.innerHTML = '<div style="display:flex;align-items:center"><b style="flex:1;font-size:14px">Lampiran Unggahan Data Paket</b><button id="lX" style="background:none;border:0;color:#fff;font-size:18px;cursor:pointer">\u2715</button></div>' +
+        '<div style="color:#9fb6c3;margin:6px 0 10px;line-height:1.5">Setiap unggahan yang diterapkan disimpan sebagai lampiran terpisah dari data utama: berisi paket baru, perubahan paket lama (sebelum \u2192 sesudah), dan galat. Menyimpan ' + LMAX + ' unggahan terakhir di perangkat ini.</div>' +
+        (LAMP.length ? LAMP.map((l, i) => '<div style="border:1px solid #ffffff22;border-radius:8px;padding:9px 10px;margin-bottom:8px;background:#0b2a3b"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1;min-width:160px;word-break:break-all">' + esc(l.berkas) + (i === 0 ? " " + bdg("terbaru", "#22d3ee") : "") + '</b><span style="color:#9fb6c3;font-size:11px">' + fmtW(l.waktu) + '</span></div><div style="margin:5px 0;font-size:12px"><span style="color:#34d399">' + l.baru.length + ' baru</span> \u00b7 <span style="color:#f59e0b">' + l.ubah.length + ' diperbarui</span> \u00b7 ' + l.sama + ' sama' + (l.galat.length ? ' \u00b7 <span style="color:#fecaca">' + l.galat.length + ' galat</span>' : "") + '</div>' +
+          (l.baru.length || l.ubah.length ? '<div style="font-size:11px;color:#9fb6c3;max-height:64px;overflow:auto">' + l.baru.slice(0, 40).map(p => esc(p.kode)).join(", ") + (l.ubah.length ? (l.baru.length ? " \u00b7 diperbarui: " : "diperbarui: ") + l.ubah.slice(0, 40).map(u => esc(u.kode)).join(", ") : "") + "</div>" : "") +
+          '<div style="margin-top:7px;display:flex;gap:6px">' + '<button data-d="' + l.id + '" style="background:#15803d;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer;font:600 12px system-ui">Unduh Excel</button><button data-h="' + l.id + '" style="background:#b91c1c;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer;font:600 12px system-ui">Hapus lampiran</button></div></div>').join("")
+          : '<div style="padding:16px;color:#9fb6c3">Belum ada lampiran. Lampiran dibuat otomatis saat Anda menekan <b>Terapkan</b> pada pratinjau unggahan.</div>');
+      b.querySelector("#lX").onclick = () => o.remove();
+      b.querySelectorAll("[data-d]").forEach(x => x.onclick = () => unduhLampiran(LAMP.find(l => l.id === x.dataset.d)));
+      b.querySelectorAll("[data-h]").forEach(x => x.onclick = () => { if (confirm("Hapus lampiran ini? Data paket utama tidak terpengaruh.")) { hapusLampiran(x.dataset.h); draw(); render(); } });
+    };
+    o.append(b); document.body.append(o); o.onclick = e => { if (e.target === o) o.remove(); }; draw();
+  }
+
   function terapkan(items) {
     try { localStorage.setItem(BAK, JSON.stringify(DB)); } catch (e) { }
     const by = new Map(DB.map(p => [p.kode, p]));
@@ -159,7 +214,7 @@
     DB = Array.from(by.values()); return store(DB);
   }
   function urungkan() {
-    try { const b = JSON.parse(localStorage.getItem(BAK)); if (!Array.isArray(b)) return false; DB = b; store(DB); return true; } catch (e) { return false; }
+    try { const b = JSON.parse(localStorage.getItem(BAK)); if (!Array.isArray(b)) return false; DB = b; store(DB); if (LAMP.length && Date.now() - Date.parse(LAMP[0].waktu) < 36e5) { LAMP.shift(); storeL(LAMP); } return true; } catch (e) { return false; }
   }
 
   /* ---------- Template & ekspor ---------- */
@@ -268,7 +323,7 @@
     const box = $("div", "background:#071a26;color:#e6f1f7;border:1px solid #22d3ee55;border-radius:14px;width:min(1100px,100%);max-height:92vh;display:flex;flex-direction:column;font:13px system-ui");
     ov.append(box); document.body.append(ov); ov.onclick = e => { if (e.target === ov) ov.remove(); };
     box.innerHTML = '<div style="padding:12px 14px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #ffffff22"><b style="font-size:15px;flex:1">Paket Berjalan & Riwayat Paket</b><button id="pkX" style="background:none;border:0;color:#fff;font-size:20px;cursor:pointer">\u2715</button></div>' +
-      '<div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + btn("pkUp", "Unggah Excel", "#0e7490") + btn("pkTpl", "Unduh Template", "#475569") + btn("pkDemo", "Muat Contoh Banyumas & Cilacap", "#7c3aed") + btn("pkMap", "Tampilkan di Peta", "#0369a1") + btn("pkXl", "Ekspor Excel", "#15803d") + btn("pkUndo", "Urungkan", "#92400e") + '<label style="display:flex;align-items:center;gap:4px;margin-left:6px"><input id="pkLbl" type="checkbox"> Label paket di peta</label><label style="display:flex;align-items:center;gap:4px"><input id="pkAuto" type="checkbox"> Tampil otomatis</label><input id="pkFile" type="file" accept=".xlsx,.xls,.csv" style="display:none"></div>' +
+      '<div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + btn("pkUp", "Unggah Excel", "#0e7490") + btn("pkTpl", "Unduh Template", "#475569") + btn("pkDemo", "Muat Contoh Banyumas & Cilacap", "#7c3aed") + btn("pkMap", "Tampilkan di Peta", "#0369a1") + btn("pkXl", "Ekspor Excel", "#15803d") + btn("pkLamp", "Lampiran Unggahan", "#0f766e") + btn("pkUndo", "Urungkan", "#92400e") + '<label style="display:flex;align-items:center;gap:4px;margin-left:6px"><input id="pkLbl" type="checkbox"> Label paket di peta</label><label style="display:flex;align-items:center;gap:4px"><input id="pkAuto" type="checkbox"> Tampil otomatis</label><input id="pkFile" type="file" accept=".xlsx,.xls,.csv" style="display:none"></div>' +
       '<div id="pkPrev"></div><div id="pkKpi" style="padding:0 14px"></div>' +
       '<div style="padding:8px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center" id="pkBar"></div><div id="pkBody" style="overflow:auto;padding:0 14px 14px"></div>';
     const q = s => box.querySelector(s), file = q("#pkFile");
@@ -277,6 +332,7 @@
     q("#pkLbl").onchange = e => setLabel(e.target.checked); q("#pkAuto").onchange = e => setAuto(e.target.checked);
     q("#pkUp").onclick = () => file.click();
     q("#pkTpl").onclick = unduhTemplate;
+    q("#pkLamp").onclick = lampiranUi;
     q("#pkXl").onclick = () => DB.length ? ekspor(filtered()) : say("Belum ada data paket");
     q("#pkMap").onclick = () => { const l = filtered(); if (!l.length) return say("Tidak ada paket"); ov.remove(); petakan(l); };
     q("#pkUndo").onclick = () => { if (urungkan()) { say("Dikembalikan ke data sebelum perubahan terakhir"); render(); sync(); } else say("Tidak ada cadangan"); };
@@ -292,9 +348,10 @@
       q("#pkPrev").innerHTML = '<div style="margin:0 14px 8px;padding:10px;border:1px solid #22d3ee66;border-radius:8px;background:#0b2a3b"><b>Pratinjau: ' + esc(nm) + "</b><br>" + items.length + " paket terbaca \u00b7 <span style='color:#34d399'>" + d.baru.length + " baru</span> \u00b7 <span style='color:#f59e0b'>" + d.ubah.length + " diperbarui</span> \u00b7 " + d.sama.length + " sama" +
         (contoh ? "<br><span style='color:#fbbf24'>\u26a0 " + contoh + " baris bertanda CONTOH (data fiktif). Terapkan hanya untuk mencoba fitur.</span>" : "") +
         (errors.length ? '<div style="margin-top:6px;color:#fecaca;font-size:12px;max-height:90px;overflow:auto">' + errors.slice(0, 30).map(esc).join("<br>") + (errors.length > 30 ? "<br>\u2026" : "") + "</div>" : "") +
-        '<div style="margin-top:8px;display:flex;gap:6px">' + btn("pkOk", "Terapkan", "#15803d") + btn("pkNo", "Batal", "#475569") + "</div></div>";
+        '<div style="margin-top:8px;display:flex;gap:6px">' + btn("pkOk", "Terapkan", "#15803d") + btn("pkPL", "Unduh Lampiran (pratinjau)", "#0f766e") + btn("pkNo", "Batal", "#475569") + "</div></div>";
       q("#pkNo").onclick = () => { pending = null; q("#pkPrev").innerHTML = ""; };
-      q("#pkOk").onclick = () => { if (!pending) return; const n = pending.length; if (terapkan(pending)) say(n + " paket diterapkan (bisa diurungkan)"); pending = null; q("#pkPrev").innerHTML = ""; render(); sync(); };
+      q("#pkPL").onclick = () => { if (pending) unduhLampiran(bangunLampiran(pending, errors, nm)); };
+      q("#pkOk").onclick = () => { if (!pending) return; const n = pending.length, L = bangunLampiran(pending, errors, nm); if (terapkan(pending)) { simpanLampiran(L); say(n + " paket diterapkan \u00b7 " + L.baru.length + " baru, " + L.ubah.length + " diperbarui \u00b7 lampiran tersimpan (bisa diurungkan)"); } pending = null; q("#pkPrev").innerHTML = ""; render(); sync(); };
     }
     render();
   }
@@ -338,7 +395,7 @@
     body.innerHTML = '<table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr style="text-align:left;color:#22d3ee"><th>Paket</th><th>Kab.</th><th>Ruas / Penyedia</th><th>Periode</th><th>Nilai</th><th style="width:170px">Progres fisik</th><th>Deviasi</th><th>Status</th></tr></thead><tbody>' +
       list.map(p => { const d = derive(p, tg), c = SC[d.status];
         const bar = '<div style="position:relative;height:10px;background:#ffffff1a;border-radius:5px"><div style="height:10px;border-radius:5px;width:' + Math.min(100, p.fisik) + "%;background:" + c + '"></div>' + (d.rencana != null && d.aktif ? '<div title="Rencana ' + d.rencana.toFixed(0) + '%" style="position:absolute;top:-3px;left:' + d.rencana + '%;width:2px;height:16px;background:#fff"></div>' : "") + '</div><div style="font-size:11px;color:#9fb6c3">' + p.fisik + "% fisik \u00b7 " + p.keu + "% keu</div>";
-        return '<tr data-k="' + esc(p.kode) + '" style="border-top:1px solid #ffffff14;cursor:pointer;vertical-align:top"><td><b>' + esc(p.kode) + '</b><div style="max-width:230px">' + esc(p.nama) + '</div><div style="color:#9fb6c3;font-size:11px">' + esc(p.jenis || "") + "</div></td><td>" + esc(p.kabupaten) + '</td><td style="max-width:200px">' + esc(p.ruas) + '<div style="color:#9fb6c3;font-size:11px">' + esc(p.penyedia || "-") + "</div></td><td>" + fmtD(p.mulai) + " \u2192 " + fmtD(p.selesai) + (d.aktif && d.sisa != null ? '<div style="font-size:11px;color:' + (d.sisa < 0 ? "#f43f5e" : "#9fb6c3") + '">' + (d.sisa < 0 ? "lewat " + -d.sisa : "sisa " + d.sisa) + " hari</div>" : "") + "</td><td>" + rpS(p.nilai || 0) + "</td><td>" + bar + "</td><td>" + (d.kat ? bdg(d.kat + " " + (d.dev > 0 ? "+" : "") + d.dev.toFixed(0), KC[d.kat]) : "-") + "</td><td>" + bdg(d.status, c) + "</td></tr>"; }).join("") + "</tbody></table>";
+        return '<tr data-k="' + esc(p.kode) + '" style="border-top:1px solid #ffffff14;cursor:pointer;vertical-align:top"><td><b>' + esc(p.kode) + '</b> ' + (barusan(p.kode) === "baru" ? bdg("BARU", "#34d399") : barusan(p.kode) === "ubah" ? bdg("DIPERBARUI", "#f59e0b") : "") + '<div style="max-width:230px">' + esc(p.nama) + '</div><div style="color:#9fb6c3;font-size:11px">' + esc(p.jenis || "") + "</div></td><td>" + esc(p.kabupaten) + '</td><td style="max-width:200px">' + esc(p.ruas) + '<div style="color:#9fb6c3;font-size:11px">' + esc(p.penyedia || "-") + "</div></td><td>" + fmtD(p.mulai) + " \u2192 " + fmtD(p.selesai) + (d.aktif && d.sisa != null ? '<div style="font-size:11px;color:' + (d.sisa < 0 ? "#f43f5e" : "#9fb6c3") + '">' + (d.sisa < 0 ? "lewat " + -d.sisa : "sisa " + d.sisa) + " hari</div>" : "") + "</td><td>" + rpS(p.nilai || 0) + "</td><td>" + bar + "</td><td>" + (d.kat ? bdg(d.kat + " " + (d.dev > 0 ? "+" : "") + d.dev.toFixed(0), KC[d.kat]) : "-") + "</td><td>" + bdg(d.status, c) + "</td></tr>"; }).join("") + "</tbody></table>";
     body.querySelectorAll("tr[data-k]").forEach(tr => tr.onclick = () => detail(tr.dataset.k));
   }
 
@@ -376,6 +433,6 @@
     if (CFG.auto) autoStart();
   }
 
-  window.PETAQU_PAKET = { open, all: () => DB.slice(), derive, ruasAktif, ruasBaruSelesai, petakan, hapusPeta, setLabel, setAuto, sync, ekspor, unduhTemplate, _t: { parseWorkbook, parseDate, parseNum, parseProg, matchRoads, diff, terapkan } };
+  window.PETAQU_PAKET = { open, all: () => DB.slice(), derive, ruasAktif, ruasBaruSelesai, petakan, hapusPeta, setLabel, setAuto, sync, ekspor, unduhTemplate, lampiran: () => LAMP.slice(), unduhLampiran, lampiranUi, _t: { bangunLampiran, simpanLampiran, parseWorkbook, parseDate, parseNum, parseProg, matchRoads, diff, terapkan } };
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => setTimeout(mount, 90)) : setTimeout(mount, 90);
 })();
