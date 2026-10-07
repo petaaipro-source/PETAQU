@@ -15,7 +15,7 @@
 |---|---|---|---|
 | admin | ya | ya | semua foto |
 | surveyor | ya | ya | foto miliknya |
-| viewer | ya | tidak | tidak |
+| viewer | ya | ya | foto miliknya |
 | pending / trial / blocked | tidak | tidak | tidak |
 
 Naikkan peran: `update profiles set role='surveyor' where id='<uuid-user>';`
@@ -48,3 +48,8 @@ await sb.from('project_photos').select('*').eq('jenis','ac_wc').eq('paket','Pake
 - Penyimpanan ±1 GB, foto terkompresi ±100 KB → sekitar 10.000 foto.
 - Proyek gratis otomatis dijeda bila 7 hari tanpa aktivitas.
 - Foto asli resolusi tinggi sebaiknya diarsipkan terpisah (Google Drive / Cloudflare R2).
+
+
+## F. Catatan perubahan
+- Semua akun login penuh (admin, surveyor, viewer) kini boleh mengunggah. Akun trial/pending/blocked tetap ditolak.
+- Jalankan ulang `supabase-foto-proyek.sql` di SQL Editor agar kebijakan baru berlaku (aman diulang).

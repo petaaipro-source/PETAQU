@@ -2,7 +2,7 @@
    • Kirim foto geotag yang ada di perangkat ke cloud, lengkap dengan paket, jenis pekerjaan, tahap & progres.
    • Ambil foto dari cloud (hanya untuk dilihat selama sesi; tidak memenuhi penyimpanan perangkat).
    Memakai sesi login yang sama (pq_cloud_session) dan RLS dari supabase-foto-proyek.sql.
-   Peran: admin/surveyor boleh kirim; admin/surveyor/viewer boleh melihat. */
+   Peran: semua akun login penuh (admin/surveyor/viewer) boleh kirim & melihat; akun trial/pending/blocked ditolak. */
 (function () {
   "use strict";
   if (window.PQ_FOTOCLOUD) return;
@@ -97,7 +97,7 @@
         try {
           var blob = await (await fetch(p.dataUrl)).blob();
           var up = await fetch(cfg().url + "/storage/v1/object/" + BUCKET + "/" + path, { method: "POST", headers: H({ "Content-Type": "image/jpeg", "x-upsert": "false" }), body: blob });
-          if (!up.ok) { var t1 = await up.text(); throw new Error(up.status === 400 || up.status === 403 ? "Akun tidak diizinkan mengunggah (butuh peran admin/surveyor). " + t1.slice(0, 80) : "Unggah gagal " + up.status + " " + t1.slice(0, 80)); }
+          if (!up.ok) { var t1 = await up.text(); throw new Error(up.status === 400 || up.status === 403 ? "Akun tidak diizinkan mengunggah (hanya akun login penuh, bukan trial/pending). " + t1.slice(0, 80) : "Unggah gagal " + up.status + " " + t1.slice(0, 80)); }
           var near = f.near ? f.near(p) : null;
           var row = { id: id, paket: meta.paket || null, ruas_id: near ? near.id : null, ruas_nama: near ? near.name : null, jenis: meta.jenis, tahap: meta.tahap, progres: meta.progres, lat: p.lat, lng: p.lng, akurasi_m: p.accuracy || null, taken_at: isoOf(p.time), catatan: meta.catatan || null, nama_file: p.name || null, storage_path: path, size_bytes: blob.size };
           var ins = await fetch(cfg().url + "/rest/v1/project_photos", { method: "POST", headers: H({ "Content-Type": "application/json", Prefer: "return=minimal" }), body: JSON.stringify(row) });

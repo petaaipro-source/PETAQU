@@ -3,10 +3,9 @@
 -- Aman dijalankan ulang.
 --
 -- Akses (sesuai peran PETAQU yang sudah ada):
---   admin, surveyor, viewer  = boleh MELIHAT foto
---   admin, surveyor          = boleh MENGUNGGAH foto
---   admin                    = boleh menghapus/mengubah SEMUA foto; surveyor hanya foto miliknya sendiri
---   pending / trial / blocked = tidak punya akses sama sekali
+--   admin, surveyor, viewer  = login penuh: boleh MELIHAT dan MENGUNGGAH foto
+--   admin                    = boleh menghapus/mengubah SEMUA foto; surveyor & viewer hanya foto miliknya sendiri
+--   pending / trial / blocked = tidak punya akses sama sekali (akun gratisan/trial ditolak)
 
 -- 1) Bucket penyimpanan (PRIVAT, maks 5 MB per file, hanya gambar)
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -53,11 +52,11 @@ drop policy if exists "hapus foto proyek" on project_photos;
 create policy "baca foto proyek"  on project_photos for select
   using (my_role() in ('admin','surveyor','viewer'));
 create policy "tulis foto proyek" on project_photos for insert
-  with check (my_role() in ('admin','surveyor') and uploaded_by = auth.uid());
+  with check (my_role() in ('admin','surveyor','viewer') and uploaded_by = auth.uid());
 create policy "ubah foto proyek"  on project_photos for update
-  using (my_role() = 'admin' or (my_role() = 'surveyor' and uploaded_by = auth.uid()));
+  using (my_role() = 'admin' or (my_role() in ('surveyor','viewer') and uploaded_by = auth.uid()));
 create policy "hapus foto proyek" on project_photos for delete
-  using (my_role() = 'admin' or (my_role() = 'surveyor' and uploaded_by = auth.uid()));
+  using (my_role() = 'admin' or (my_role() in ('surveyor','viewer') and uploaded_by = auth.uid()));
 
 -- 3) Aturan akses FILE di bucket 'foto-proyek'
 --    Aturan path: file HARUS di dalam folder bernama user id pengunggah:  <user_id>/....
@@ -68,11 +67,11 @@ drop policy if exists "foto-proyek hapus"  on storage.objects;
 create policy "foto-proyek baca" on storage.objects for select to authenticated
   using (bucket_id = 'foto-proyek' and my_role() in ('admin','surveyor','viewer'));
 create policy "foto-proyek unggah" on storage.objects for insert to authenticated
-  with check (bucket_id = 'foto-proyek' and my_role() in ('admin','surveyor')
+  with check (bucket_id = 'foto-proyek' and my_role() in ('admin','surveyor','viewer')
               and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "foto-proyek hapus" on storage.objects for delete to authenticated
   using (bucket_id = 'foto-proyek' and (my_role() = 'admin'
-         or (my_role() = 'surveyor' and (storage.foldername(name))[1] = auth.uid()::text)));
+         or (my_role() in ('surveyor','viewer') and (storage.foldername(name))[1] = auth.uid()::text)));
 
 -- 4) Cek cepat (opsional): jalankan setelah ada data
 -- select jenis, tahap, count(*) from project_photos group by 1,2 order by 3 desc;

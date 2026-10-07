@@ -1138,7 +1138,7 @@
   function rows() {
     var out = [];
     document.querySelectorAll("i.fa-trash, i.fa-trash-can").forEach(function (ic) {
-      if (ic.closest("#pqjPanel")) return;
+      if (ic.closest("#pqjPanel, .leaflet-popup, .pq-multi, .pq-popup-wrap, .pq-slide-vp, #pqGallery, [id^=pqDel]")) return; /* jangan sentuh popup/slide/galeri foto */
       var p = (ic.closest("button") || ic).parentElement;
       while (p && p.querySelectorAll("button").length < 6) p = p.parentElement;
       if (p && p.querySelectorAll("button").length <= 10 && out.indexOf(p) < 0) out.push(p);
@@ -1147,6 +1147,7 @@
   }
 
   function init() {
+    document.querySelectorAll(".leaflet-popup .pq-aksi-hide, .pq-multi .pq-aksi-hide, .pq-slide-vp .pq-aksi-hide").forEach(function (e) { e.classList.remove("pq-aksi-hide"); });
     rows().forEach(function (r) {
       if (r.dataset.pqInit) return;
       r.dataset.pqInit = 1;
