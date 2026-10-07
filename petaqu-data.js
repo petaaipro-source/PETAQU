@@ -46,31 +46,6 @@
   const bar = (parts, tot) => '<div class="pqd-bar">' + parts.filter(p => p[0] > 0).map(p => '<i style="width:' + Math.max(p[0] / tot * 100, .8).toFixed(2) + "%;background:" + p[1] + '" title="' + p[2] + " " + mb(p[0]) + '"></i>').join("") + "</div>";
   const lg = parts => '<div class="pqd-lg">' + parts.map(p => '<span><em style="background:' + p[1] + '"></em>' + p[2] + " <b>" + mb(p[0]) + "</b></span>").join("") + "</div>";
   async function clearBak() { try { const d = await idb(); await new Promise(ok => { const tx = d.transaction("bak", "readwrite"); tx.objectStore("bak").clear(); tx.oncomplete = ok; tx.onerror = ok; }); } catch (_) { } histDraw(); note("Cadangan dikosongkan"); }
-  /* ---------- Kapasitas repo GitHub (gratis ±1 GB) ---------- */
-  const GH_KEY = "pq_gh_repo", GH_MAX = 1024 * 1024 * 1024; let ghC = null;
-  const normRepo = v => { v = String(v || "").trim().replace(/^https?:\/\//i, "").replace(/^www\./, "").replace(/[?#].*$/, "").replace(/\.git$/, "").replace(/\/+$/, ""); let m = v.match(/^([^./]+)\.github\.io(?:\/([^/]+))?/i); if (m) return m[1] + "/" + (m[2] || m[1] + ".github.io"); m = v.match(/^github\.com\/([^/]+)\/([^/]+)/i); if (m) return m[1] + "/" + m[2]; return /^[\w.-]+\/[\w.-]+$/.test(v) ? v : ""; };
-  const ghRepo = () => { const v = normRepo(localStorage.getItem(GH_KEY)); if (v) return v; const m = location.hostname.match(/^([^.]+)\.github\.io$/); return m ? m[1] + "/" + (location.pathname.split("/")[1] || m[1] + ".github.io") : ""; };
-  const ghForm = msg => '<h4 style="margin-top:12px"><span>Kapasitas GitHub (gratis)</span></h4><small style="margin:0 0 6px">' + (msg ? esc(msg) + " · " : "") + 'Isi nama repo (contoh: <b>namaakun/PETAQU</b>) untuk melihat pemakaian.</small><div class="pqd-g" style="margin:0"><input id="pqdGhIn" placeholder="pemilik/repo" value="' + esc(ghRepo()) + '" style="flex:1;min-width:160px;background:#0f1726;color:#e6f1fb;border:1px solid #94b2cc44;border-radius:8px;padding:7px 9px"><button class="pqd-btn" id="pqdGhOk">Simpan &amp; cek</button></div>';
-  async function ghDraw(force) {
-    const el = $("pqdGh"); if (!el) return; const repo = ghRepo();
-    const bind = () => { const b = $("pqdGhOk"); if (b) b.onclick = () => { const v = normRepo($("pqdGhIn").value); if (v) { localStorage.setItem(GH_KEY, v); ghC = null; ghDraw(true); } else note("Format: pemilik/repo", true); }; const c = $("pqdGhCh"); if (c) c.onclick = e => { e.preventDefault(); el.innerHTML = ghForm(); bind(); }; const rf = $("pqdGhRf"); if (rf) rf.onclick = e => { e.preventDefault(); ghDraw(true); }; };
-    if (!repo) { el.innerHTML = ghForm(); return bind(); }
-    try {
-      if (force || !ghC || ghC.repo !== repo || Date.now() - ghC.t > 3e5) {
-        el.innerHTML = '<small>Memeriksa GitHub…</small>';
-        const r = await fetch("https://api.github.com/repos/" + repo); if (!r.ok) throw new Error(r.status === 404 ? "Repo tidak ditemukan atau private" : r.status === 403 ? "Batas permintaan GitHub tercapai, coba lagi nanti" : "Gagal (" + r.status + ")");
-        const j = await r.json(); let files = [];
-        try { const t = await (await fetch("https://api.github.com/repos/" + repo + "/git/trees/" + (j.default_branch || "main") + "?recursive=1")).json(); files = (t.tree || []).filter(x => x.type === "blob").sort((a, b) => b.size - a.size); } catch (_) { }
-        ghC = { repo, t: Date.now(), size: j.size * 1024, files, pushed: j.pushed_at };
-      }
-      const g = ghC, sz = n => (g.files.find(f => f.path === n) || {}).size || 0, tree = g.files.reduce((a, f) => a + f.size, 0), rs = sz("data-ruas.js"), jb = sz("data-jembatan.js"), ot = Math.max(0, tree - rs - jb), hist = Math.max(0, g.size - tree), free = Math.max(0, GH_MAX - g.size), pct = g.size / GH_MAX * 100, cls = pct > 80 ? "bad" : pct > 50 ? "mid" : "ok";
-      const parts = [[rs, "#22d3ee", "data-ruas.js"], [jb, "#a78bfa", "data-jembatan.js"], [ot, "#64748b", "File lain"], [hist, "#f59e0b", "Riwayat git"]];
-      el.innerHTML = '<h4 style="margin-top:12px"><span>Kapasitas GitHub (gratis) · ' + esc(g.repo) + '</span><span class="' + cls + '">' + pct.toFixed(2) + "% dari 1 GB · sisa " + mb(free) + "</span></h4>" +
-        bar(parts.concat([[free, "#1e293b", "Sisa"]]), GH_MAX) + lg(parts.concat([[free, "#334155", "Sisa bebas"]])) +
-        "<small>Batas aman repo/GitHub Pages ±1 GB, maks. 100 MB per file (peringatan di 50 MB). Terbesar: " + g.files.slice(0, 3).map(f => esc(f.path) + " " + mb(f.size)).join(" · ") + ". Push terakhir: " + (g.pushed ? new Date(g.pushed).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "-") +
-        ' · <a href="#" id="pqdGhRf" style="color:#22d3ee">Segarkan</a> · <a href="#" id="pqdGhCh" style="color:#22d3ee">Ganti repo</a></small>'; bind();
-    } catch (e) { el.innerHTML = ghForm(e.message); bind(); }
-  }
   async function memDraw() {
     const el = $("pqdMem"); if (!el) return;
     let tot = 0; for (let i = 0; i < localStorage.length; i++) tot += lsLen(localStorage.key(i));
@@ -85,10 +60,9 @@
         lg([[ix, "#f59e0b", "Cadangan"], [ca, "#34d399", "Cache offline"], [ot, "#64748b", "Lainnya"], [Math.max(0, q - use), "#334155", "Sisa bebas"]]) : "") +
       "<small>" + (pct > 85 ? "⚠ Hampir penuh — unduh data .js lalu kosongkan cadangan agar upload berikutnya tidak gagal. " : pct > 65 ? "Mulai terisi; pantau sebelum upload besar. " : "Kapasitas aman. ") +
       (per ? "Penyimpanan ditetapkan permanen (tidak dihapus otomatis browser)." : '<a href="#" id="pqdPer" style="color:#22d3ee">Minta penyimpanan permanen</a> agar browser tidak menghapus data saat memori HP menipis.') +
-      ' · <a href="#" id="pqdClr" style="color:#22d3ee">Kosongkan cadangan</a></small><div id="pqdGh"></div>';
+      ' · <a href="#" id="pqdClr" style="color:#22d3ee">Kosongkan cadangan</a></small>';
     const pe = $("pqdPer"); if (pe) pe.onclick = async e => { e.preventDefault(); try { note(await navigator.storage.persist() ? "Penyimpanan permanen aktif" : "Browser belum mengizinkan (coba setelah memasang aplikasi ke layar utama)", false); } catch (_) { } memDraw(); };
     $("pqdClr").onclick = e => { e.preventDefault(); clearBak().then(memDraw); };
-    ghDraw();
   }
 
   /* ---------- Baca file + deteksi jenis ---------- */
@@ -223,7 +197,7 @@
       '<label><input type="checkbox" id="pqdClip" checked> Lewati jembatan di luar Jateng–DIY</label><label><input type="checkbox" id="pqdFix" checked> Perbaiki koordinat otomatis</label><label>Jenis: <select id="pqdKind"><option value="auto">Otomatis</option><option value="ruas">Ruas jalan</option><option value="jembatan">Jembatan</option></select></label></div>' +
       '<div id="pqdRes"></div><div class="pqd-row"><button id="pqdGo" class="pqd-btn pri" disabled>Terapkan ke peta</button><button id="pqdPv" class="pqd-btn" disabled>Lihat pratinjau di peta</button><button class="pqd-btn" data-t="ruas">Template ruas</button><button class="pqd-btn" data-t="jembatan">Template jembatan</button></div>' +
       '<details id="pqdHd"><summary>Cadangan &amp; urungkan</summary><div id="pqdHist"></div></details>' +
-      '<details><summary>Simpan permanen / ekspor</summary><div style="color:#9db3c9;font-size:12px;margin-top:6px">Perubahan di atas tersimpan di perangkat ini. Agar semua pengguna ikut ter-update, unduh file .js lalu unggah ke GitHub (ganti file lama).</div><div class="pqd-g">' +
+      '<details><summary>Simpan permanen / ekspor</summary><div style="color:#9db3c9;font-size:12px;margin-top:6px">Perubahan di atas tersimpan di perangkat ini. Agar semua pengguna ikut ter-update, unduh file .js lalu ganti file lama di hosting aplikasi.</div><div class="pqd-g">' +
       '<button class="pqd-btn" data-js="ruas">Unduh data-ruas.js</button><button class="pqd-btn" data-js="jembatan">Unduh data-jembatan.js</button><button class="pqd-btn" data-x="ruas">Excel ruas</button><button class="pqd-btn" data-x="jembatan">Excel jembatan</button><button class="pqd-btn" id="pqdReset" style="border-color:#f8717166">Reset ke data bawaan</button></div></details></div></div>';
     document.body.appendChild(box);
     const drop = $("pqdDrop"), inp = $("pqdFile");
