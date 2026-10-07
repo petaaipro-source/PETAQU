@@ -33,7 +33,8 @@
     tarif: 1800,       // Rp per ton-km (angkut)
     faktor: 1.3,       // jarak jalan = garis lurus x faktor
     maxAmp: 45,        // km, di atas ini campuran panas berisiko dingin
-    jembatanM: 300     // m, jembatan dianggap berada di lintasan paket
+    jembatanM: 300,    // m, jembatan dianggap berada di lintasan paket
+    skipAktif: true    // lewati ruas yang sedang ditangani paket aktif (menu Paket)
   };
   const cfgGet = () => { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { return Object.assign({}, DEF); } };
   const cfgSet = c => { try { localStorage.setItem(KEY, JSON.stringify(c)); } catch (e) { } };
@@ -56,9 +57,10 @@
     return e.len * Math.min(1, (e.score || 0) / 100);
   }
 
-  function candidates() {
+  function candidates(cfg) {
     if (!window.PETAQU_PRO) return [];
-    return PETAQU_PRO.all().map(e => {
+    const aktif = cfg && cfg.skipAktif && window.PETAQU_PAKET ? PETAQU_PAKET.ruasAktif() : null;
+    return PETAQU_PRO.all().filter(e => !(aktif && aktif.has(e.r.id))).map(e => {
       const c = centroid(e.r);
       return c && (e.cost > 0 || e.score > 0) ? { e, c, kab: kabOf(e.r), tr: treated(e) } : null;
     }).filter(Boolean).sort((a, b) => b.e.score - a.e.score || b.e.cost - a.e.cost);
@@ -88,7 +90,7 @@
     return out;
   }
 
-  function buildPackage(items, cfg, no) {
+  function buildPackage(items, cfg, no, recent) {
     let L = 0, T = 0, cost = 0, sc = 0, la = 0, ln = 0;
     items.forEach(it => { const w = it.e.len || 1; L += it.e.len; T += it.tr; cost += it.e.cost; sc += it.e.score * w; la += it.c.lat * w; ln += it.c.lng * w; });
     const wsum = items.reduce((s, it) => s + (it.e.len || 1), 0) || 1;
@@ -110,6 +112,8 @@
     const tua = br.filter(j => j.tahun && new Date().getFullYear() - j.tahun > 30).length;
     if (tua) risk.push(tua + " jembatan berumur >30 th");
     if (hujan) risk.push("Musim hujan: jadwalkan di hari cerah, siapkan drainase");
+    const baru = recent ? items.filter(it => recent.has(it.e.r.id)) : [];
+    if (baru.length) risk.push(baru.length + " ruas baru selesai ditangani (" + baru.map(it => recent.get(it.e.r.id).kode).filter((v, i, a) => a.indexOf(v) === i).join(", ") + "): cek ulang kebutuhan");
     if (kabs.length > 2) risk.push("Lintas " + kabs.length + " kabupaten: koordinasi wilayah");
     const level = skor > 60 ? "Darurat" : skor > 30 ? "Prioritas" : "Terjadwal";
     return {
@@ -122,7 +126,9 @@
 
   function plan(cfgIn) {
     const cfg = Object.assign({}, cfgGet(), cfgIn || {});
-    const cand = candidates(), used = new Set(), pk = [];
+    const cand = candidates(cfg), used = new Set(), pk = [];
+    const recent = window.PETAQU_PAKET ? PETAQU_PAKET.ruasBaruSelesai(2) : null;
+    const nAktif = cfg.skipAktif && window.PETAQU_PAKET ? PETAQU_PAKET.ruasAktif().size : 0;
     for (let s = 0; s < cand.length; s++) {
       if (used.has(s)) continue;
       const m = [s]; used.add(s);
@@ -139,7 +145,7 @@
       }
       pk.push(m.map(i => cand[i]));
     }
-    let list = pk.map((items, i) => buildPackage(items, cfg, i + 1));
+    let list = pk.map((items, i) => buildPackage(items, cfg, i + 1, recent));
     list.sort((a, b) => b.skor - a.skor || b.efisiensi - a.efisiensi);
     list.forEach((p, i) => { p.no = i + 1; p.kode = "PKT-" + String(i + 1).padStart(2, "0"); });
     let sisa = cfg.pagu > 0 ? cfg.pagu : Infinity;
@@ -147,7 +153,7 @@
       if (cfg.pagu > 0) { if (p.total <= sisa) { p.status = "Didanai"; sisa -= p.total; } else p.status = "Ditunda"; }
       else p.status = "Didanai";
     });
-    return { cfg, list, sisa: cfg.pagu > 0 ? sisa : null, ruas: cand.length };
+    return { cfg, list, sisa: cfg.pagu > 0 ? sisa : null, ruas: cand.length, nAktif };
   }
 
   /* ---------- Cuaca (Open-Meteo, gratis, tanpa API key) ---------- */
@@ -214,15 +220,16 @@
     box.innerHTML = '<div style="padding:12px 14px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #ffffff22"><b style="font-size:15px;flex:1">Strategos \u00b7 Perencana Paket Pekerjaan Otomatis</b><button id="stX" style="background:none;border:0;color:#fff;font-size:20px;cursor:pointer">\u2715</button></div>' +
       '<div style="padding:10px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">' +
       inp("pagu", "Pagu (Rp juta, 0=bebas)", 110, 1e6) + inp("maxNilai", "Maks. nilai paket (Rp juta)", 110, 1e6) + inp("radius", "Radius klaster (km)", 80) + inp("maxRuas", "Ruas/paket", 70) + inp("lebar", "Lebar (m)", 60) + inp("tebal", "Tebal (m)", 60) + inp("tarif", "Angkut Rp/ton-km", 90) + inp("maxAmp", "Maks. jarak AMP (km)", 80) +
+      '<label style="display:flex;align-items:center;gap:5px;color:#9fb6c3;font-size:11px;max-width:150px"><input id="stSkip" type="checkbox" ' + (cfg.skipAktif ? "checked" : "") + '> Lewati ruas dalam paket aktif</label>' +
       '<button id="stGo" style="background:#0e7490;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer">Susun Paket</button><button id="stWx" style="background:#7c3aed;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer">Cek Cuaca 7 Hari</button><button id="stXl" style="background:#15803d;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer">Ekspor Excel</button></div>' +
       '<div id="stSum" style="padding:0 14px 8px"></div><div id="stBody" style="overflow:auto;padding:0 14px 14px"></div>';
     box.querySelector("#stX").onclick = () => ov.remove();
-    const read = () => { const c = {}; box.querySelectorAll("input[data-k]").forEach(i => { c[i.dataset.k] = (+i.value || 0) * (+i.dataset.s || 1); }); if (c.radius <= 0) c.radius = DEF.radius; if (c.maxRuas < 1) c.maxRuas = 1; if (c.maxNilai <= 0) c.maxNilai = DEF.maxNilai; return c; };
+    const read = () => { const c = {}; box.querySelectorAll("input[data-k]").forEach(i => { c[i.dataset.k] = (+i.value || 0) * (+i.dataset.s || 1); }); if (c.radius <= 0) c.radius = DEF.radius; if (c.maxRuas < 1) c.maxRuas = 1; if (c.maxNilai <= 0) c.maxNilai = DEF.maxNilai; const sk = box.querySelector("#stSkip"); c.skipAktif = !!(sk && sk.checked); return c; };
     const render = () => {
       const s = box.querySelector("#stSum"), body = box.querySelector("#stBody");
       if (!state.list.length) { s.innerHTML = ""; body.innerHTML = '<div style="padding:20px;color:#9fb6c3">Belum ada ruas dengan data IRI atau hasil Scan. Unggah data IRI lewat menu Upload Data, lalu susun ulang paket.</div>'; return; }
       const dg = state.list.filter(p => p.status === "Didanai"), tot = dg.reduce((a, p) => a + p.total, 0);
-      s.innerHTML = "<b>" + state.list.length + "</b> paket dari <b>" + state.ruas + "</b> ruas rusak \u00b7 Didanai: <b>" + dg.length + "</b> paket senilai <b>" + rpS(tot) + "</b>" + (state.sisa != null ? " \u00b7 Sisa pagu: <b>" + rpS(state.sisa) + "</b>" : "") + '<div style="color:#9fb6c3;font-size:11px;margin-top:2px">Total = RAB (harga satuan di menu Prioritas & RAB) + biaya angkut campuran dari AMP terdekat. Jarak jalan = garis lurus x ' + state.cfg.faktor + ". Perkiraan perencanaan awal.</div>";
+      s.innerHTML = "<b>" + state.list.length + "</b> paket dari <b>" + state.ruas + "</b> ruas rusak \u00b7 Didanai: <b>" + dg.length + "</b> paket senilai <b>" + rpS(tot) + "</b>" + (state.sisa != null ? " \u00b7 Sisa pagu: <b>" + rpS(state.sisa) + "</b>" : "") + (state.nAktif ? " \u00b7 <span style='color:#a78bfa'>" + state.nAktif + " ruas dilewati (sudah dalam paket aktif)</span>" : "") + '<div style="color:#9fb6c3;font-size:11px;margin-top:2px">Total = RAB (harga satuan di menu Prioritas & RAB) + biaya angkut campuran dari AMP terdekat. Jarak jalan = garis lurus x ' + state.cfg.faktor + ". Perkiraan perencanaan awal.</div>";
       body.innerHTML = '<table style="width:100%;border-collapse:collapse;min-width:860px"><thead><tr style="text-align:left;color:#22d3ee"><th>Paket</th><th>Wilayah</th><th>Ruas</th><th>Km</th><th>Skor</th><th>RAB</th><th>AMP</th><th>Angkut</th><th>Total</th><th>Cuaca</th><th>Status</th></tr></thead><tbody>' +
         state.list.map((p, i) => '<tr data-i="' + i + '" style="border-top:1px solid #ffffff14;cursor:pointer;vertical-align:top;' + (p.status === "Ditunda" ? "opacity:.55" : "") + '"><td><b>' + p.kode + '</b><div style="color:' + COL[p.level] + ';font-size:11px">' + p.level + '</div></td><td>' + esc(p.kabs.slice(0, 3).join(", ") || "-") + '</td><td>' + p.items.length + '</td><td>' + (p.len / 1000).toFixed(1) + '</td><td><b style="color:' + COL[p.level] + '">' + p.skor + '</b></td><td>' + rpS(p.rab) + '</td><td>' + (p.dAmp == null ? "-" : p.dAmp.toFixed(0) + " km") + '</td><td>' + rpS(p.haul) + '</td><td><b>' + rpS(p.total) + '</b></td><td>' + (p.cuaca ? p.cuaca.kerja + "/" + p.cuaca.n + " hari" : "-") + '</td><td>' + p.status + '</td></tr>' +
           '<tr style="border:0"><td></td><td colspan="10" style="padding-bottom:8px;color:#9fb6c3;font-size:11.5px">' + (p.risk.length ? "\u26a0 " + p.risk.join(" \u00b7 ") : "Tidak ada risiko khusus") + '</td></tr>').join("") + "</tbody></table>";
