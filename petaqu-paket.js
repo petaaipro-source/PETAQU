@@ -190,20 +190,72 @@
   /* ---------- Peta ---------- */
   const SC = { "Berjalan": "#22d3ee", "Terlambat": "#f43f5e", "Belum Mulai": "#a78bfa", "Selesai": "#34d399", "Putus Kontrak": "#94a3b8" };
   const KC = { Sesuai: "#34d399", Waspada: "#f59e0b", Kritis: "#f43f5e" };
-  let layer = null;
-  function petakan(list) {
+  const CK = "pq_paket_lbl_v1", LBL_Z = 9;
+  let CFG = (() => { try { return Object.assign({ lbl: true, auto: false }, JSON.parse(localStorage.getItem(CK)) || {}); } catch (e) { return { lbl: true, auto: false }; } })();
+  const cfgSave = () => { try { localStorage.setItem(CK, JSON.stringify(CFG)); } catch (e) { } };
+  let layer = null, lblLayer = null, mode = null, chip = null, zHook = false;
+  function css() {
+    if (document.getElementById("pqPaketCss")) return;
+    const st = $("style"); st.id = "pqPaketCss";
+    st.textContent = ".pqpl-w{background:none!important;border:0!important}.pqpl{display:inline-block;transform:translate(-50%,-50%);white-space:nowrap;background:#071a26ee;color:#fff;border:2px solid #22d3ee;border-radius:10px;padding:1px 7px;font:700 11px system-ui;box-shadow:0 1px 6px #0009;cursor:pointer}";
+    document.head.appendChild(st);
+  }
+  function labelPos(p, rs) {
+    let best = null; rs.forEach(r => { const q = r.points || []; if (q.length && (!best || q.length > best.length)) best = q; });
+    if (best) { const m = best[Math.floor(best.length / 2)]; return [m.lat, m.lng]; }
+    return p.lat != null && p.lng != null ? [p.lat, p.lng] : null;
+  }
+  function lblApply() {
+    const m = MAP(); if (!m || !lblLayer) return;
+    const show = CFG.lbl && m.getZoom() >= LBL_Z, on = m.hasLayer(lblLayer);
+    if (show && !on) lblLayer.addTo(m); else if (!show && on) m.removeLayer(lblLayer);
+  }
+  function chipRender() {
+    if (!layer) { if (chip) chip.style.display = "none"; return; }
+    if (!chip) {
+      chip = $("div", "position:fixed;right:10px;bottom:136px;z-index:3900;display:flex;gap:5px;font:600 11.5px system-ui");
+      document.body.append(chip);
+    }
+    const b = (id, on, t, tip) => '<button data-c="' + id + '" title="' + tip + '" style="border:1px solid #22d3ee66;border-radius:14px;padding:5px 10px;cursor:pointer;color:#fff;background:' + (on ? "#0e7490" : "#071a26ee") + '">' + t + (on === null ? "" : on ? ": ON" : ": OFF") + "</button>";
+    chip.innerHTML = b("lbl", CFG.lbl, "Label paket", "Label tampil mulai zoom " + LBL_Z) + b("auto", CFG.auto, "Otomatis", "Tampilkan paket aktif di peta setiap aplikasi dibuka") + b("x", null, "\u2715", "Sembunyikan paket dari peta");
+    chip.style.display = "flex";
+    chip.querySelector('[data-c="lbl"]').onclick = () => setLabel(!CFG.lbl);
+    chip.querySelector('[data-c="auto"]').onclick = () => setAuto(!CFG.auto);
+    chip.querySelector('[data-c="x"]').onclick = hapusPeta;
+  }
+  function syncUi() { chipRender(); if (ov) { const a = ov.querySelector("#pkLbl"), b = ov.querySelector("#pkAuto"); if (a) a.checked = CFG.lbl; if (b) b.checked = CFG.auto; } }
+  function setLabel(v) { CFG.lbl = !!v; cfgSave(); lblApply(); syncUi(); say("Label paket " + (CFG.lbl ? "ON (tampil mulai zoom " + LBL_Z + ")" : "OFF")); }
+  function setAuto(v) { CFG.auto = !!v; cfgSave(); syncUi(); if (CFG.auto && !layer) sync(); say("Tampil otomatis " + (CFG.auto ? "ON: paket aktif muncul di peta saat aplikasi dibuka" : "OFF")); }
+  function petakan(list, opt) {
+    opt = opt || {};
     const m = MAP(); if (!m || !window.L) return say("Peta belum siap");
-    if (layer) { m.removeLayer(layer); layer = null; }
-    layer = L.layerGroup().addTo(m); const bnd = [], tg = todayStr();
+    css();
+    if (layer) m.removeLayer(layer); if (lblLayer && m.hasLayer(lblLayer)) m.removeLayer(lblLayer);
+    layer = L.layerGroup().addTo(m); lblLayer = L.layerGroup();
+    mode = opt.auto ? { auto: true } : { kodes: list.map(p => p.kode) };
+    const bnd = [], tg = todayStr();
     list.forEach(p => {
       const d = derive(p, tg), col = SC[d.status], pop = "<b>" + esc(p.kode) + "</b><br>" + esc(p.nama) + "<br>" + esc(d.status) + " \u00b7 fisik " + p.fisik + "%" + (d.dev != null ? " (dev " + d.dev.toFixed(1) + ")" : "") + "<br>" + esc(p.penyedia || "") + "<br>" + rpS(p.nilai || 0);
       const rs = matchRoads(p);
       rs.forEach(r => { const pts = (r.points || []).map(x => [x.lat, x.lng]); if (pts.length > 1) { L.polyline(pts, { color: col, weight: 7, opacity: .9 }).bindPopup(pop).addTo(layer); pts.forEach(x => bnd.push(x)); } });
       if (!rs.length && p.lat != null && p.lng != null) { L.circleMarker([p.lat, p.lng], { radius: 9, color: "#fff", weight: 2, fillColor: col, fillOpacity: 1 }).bindPopup(pop).addTo(layer); bnd.push([p.lat, p.lng]); }
+      const lp = labelPos(p, rs);
+      if (lp) L.marker(lp, { icon: L.divIcon({ className: "pqpl-w", iconSize: [0, 0], html: '<span class="pqpl" style="border-color:' + col + '">' + (d.status === "Terlambat" ? "\u26a0 " : "") + esc(p.kode) + " \u00b7 " + p.fisik + "%</span>" }), keyboard: false }).on("click", () => detail(p.kode)).addTo(lblLayer);
     });
-    if (bnd.length) m.fitBounds(bnd, { padding: [50, 50], maxZoom: 14 }); else say("Tidak ada paket yang bisa dipetakan (isi ID Ruas atau Lat/Lng)");
+    if (!zHook) { zHook = true; m.on("zoomend", lblApply); }
+    lblApply(); chipRender();
+    if (opt.fit !== false) { if (bnd.length) m.fitBounds(bnd, { padding: [50, 50], maxZoom: 14 }); else say("Tidak ada paket yang bisa dipetakan (isi ID Ruas atau Lat/Lng)"); }
   }
-  const hapusPeta = () => { const m = MAP(); if (layer && m) { m.removeLayer(layer); layer = null; } };
+  function hapusPeta() { const m = MAP(); if (m) { if (layer) m.removeLayer(layer); if (lblLayer && m.hasLayer(lblLayer)) m.removeLayer(lblLayer); } layer = lblLayer = mode = null; chipRender(); }
+  // segarkan peta setelah data berubah (unggah/edit/hapus/urungkan); mode otomatis = semua paket aktif
+  function sync() {
+    if (!layer && !CFG.auto) return;
+    const tg = todayStr();
+    const list = !mode || mode.auto ? DB.filter(p => derive(p, tg).aktif) : mode.kodes.map(k => DB.find(p => p.kode === k)).filter(Boolean);
+    if (!list.length) return hapusPeta();
+    petakan(list, { fit: false, auto: !mode || !!mode.auto });
+  }
+  function autoStart() { let n = 0; const iv = setInterval(() => { n++; if (MAP() && window.L && roadsAll().length && DB.length) { clearInterval(iv); sync(); } else if (n > 40) clearInterval(iv); }, 500); }
 
   /* ---------- UI ---------- */
   let ov = null, tab = "aktif", fKab = "", fThn = "", fQ = "", pending = null;
@@ -216,16 +268,18 @@
     const box = $("div", "background:#071a26;color:#e6f1f7;border:1px solid #22d3ee55;border-radius:14px;width:min(1100px,100%);max-height:92vh;display:flex;flex-direction:column;font:13px system-ui");
     ov.append(box); document.body.append(ov); ov.onclick = e => { if (e.target === ov) ov.remove(); };
     box.innerHTML = '<div style="padding:12px 14px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #ffffff22"><b style="font-size:15px;flex:1">Paket Berjalan & Riwayat Paket</b><button id="pkX" style="background:none;border:0;color:#fff;font-size:20px;cursor:pointer">\u2715</button></div>' +
-      '<div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + btn("pkUp", "Unggah Excel", "#0e7490") + btn("pkTpl", "Unduh Template", "#475569") + btn("pkDemo", "Muat Contoh Banyumas & Cilacap", "#7c3aed") + btn("pkMap", "Tampilkan di Peta", "#0369a1") + btn("pkXl", "Ekspor Excel", "#15803d") + btn("pkUndo", "Urungkan", "#92400e") + '<input id="pkFile" type="file" accept=".xlsx,.xls,.csv" style="display:none"></div>' +
+      '<div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + btn("pkUp", "Unggah Excel", "#0e7490") + btn("pkTpl", "Unduh Template", "#475569") + btn("pkDemo", "Muat Contoh Banyumas & Cilacap", "#7c3aed") + btn("pkMap", "Tampilkan di Peta", "#0369a1") + btn("pkXl", "Ekspor Excel", "#15803d") + btn("pkUndo", "Urungkan", "#92400e") + '<label style="display:flex;align-items:center;gap:4px;margin-left:6px"><input id="pkLbl" type="checkbox"> Label paket di peta</label><label style="display:flex;align-items:center;gap:4px"><input id="pkAuto" type="checkbox"> Tampil otomatis</label><input id="pkFile" type="file" accept=".xlsx,.xls,.csv" style="display:none"></div>' +
       '<div id="pkPrev"></div><div id="pkKpi" style="padding:0 14px"></div>' +
       '<div style="padding:8px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center" id="pkBar"></div><div id="pkBody" style="overflow:auto;padding:0 14px 14px"></div>';
     const q = s => box.querySelector(s), file = q("#pkFile");
     q("#pkX").onclick = () => ov.remove();
+    q("#pkLbl").checked = CFG.lbl; q("#pkAuto").checked = CFG.auto;
+    q("#pkLbl").onchange = e => setLabel(e.target.checked); q("#pkAuto").onchange = e => setAuto(e.target.checked);
     q("#pkUp").onclick = () => file.click();
     q("#pkTpl").onclick = unduhTemplate;
     q("#pkXl").onclick = () => DB.length ? ekspor(filtered()) : say("Belum ada data paket");
     q("#pkMap").onclick = () => { const l = filtered(); if (!l.length) return say("Tidak ada paket"); ov.remove(); petakan(l); };
-    q("#pkUndo").onclick = () => { if (urungkan()) { say("Dikembalikan ke data sebelum perubahan terakhir"); render(); } else say("Tidak ada cadangan"); };
+    q("#pkUndo").onclick = () => { if (urungkan()) { say("Dikembalikan ke data sebelum perubahan terakhir"); render(); sync(); } else say("Tidak ada cadangan"); };
     q("#pkDemo").onclick = () => { if (!window.PAKET_CONTOH) return say("data-paket-contoh.js belum termuat"); preview(window.PAKET_CONTOH.map(p => Object.assign({ statusManual: p.status || "", _contoh: true }, p)), [], "Data contoh"); };
     file.onchange = async () => {
       const f = file.files[0]; file.value = ""; if (!f) return;
@@ -240,7 +294,7 @@
         (errors.length ? '<div style="margin-top:6px;color:#fecaca;font-size:12px;max-height:90px;overflow:auto">' + errors.slice(0, 30).map(esc).join("<br>") + (errors.length > 30 ? "<br>\u2026" : "") + "</div>" : "") +
         '<div style="margin-top:8px;display:flex;gap:6px">' + btn("pkOk", "Terapkan", "#15803d") + btn("pkNo", "Batal", "#475569") + "</div></div>";
       q("#pkNo").onclick = () => { pending = null; q("#pkPrev").innerHTML = ""; };
-      q("#pkOk").onclick = () => { if (!pending) return; const n = pending.length; if (terapkan(pending)) say(n + " paket diterapkan (bisa diurungkan)"); pending = null; q("#pkPrev").innerHTML = ""; render(); };
+      q("#pkOk").onclick = () => { if (!pending) return; const n = pending.length; if (terapkan(pending)) say(n + " paket diterapkan (bisa diurungkan)"); pending = null; q("#pkPrev").innerHTML = ""; render(); sync(); };
     }
     render();
   }
@@ -308,19 +362,20 @@
       const f = clamp(q("#dF").value), k = clamp(q("#dK").value);
       if (f !== p.fisik || k !== p.keu) logProgres(p, f, k);
       p.fisik = f; p.keu = k; p.statusManual = q("#dS").value; p.catatan = q("#dC").value.trim();
-      if (store(DB)) say("Tersimpan"); o.remove(); render();
+      if (store(DB)) say("Tersimpan"); o.remove(); render(); sync();
     };
     q("#dMap").onclick = () => { o.remove(); if (ov) ov.remove(); petakan([p]); };
-    q("#dDel").onclick = () => { if (!confirm("Hapus paket " + p.kode + "? (bisa diurungkan lewat tombol Urungkan)")) return; try { localStorage.setItem(BAK, JSON.stringify(DB)); } catch (e) { } DB = DB.filter(x => x.kode !== p.kode); store(DB); o.remove(); render(); };
+    q("#dDel").onclick = () => { if (!confirm("Hapus paket " + p.kode + "? (bisa diurungkan lewat tombol Urungkan)")) return; try { localStorage.setItem(BAK, JSON.stringify(DB)); } catch (e) { } DB = DB.filter(x => x.kode !== p.kode); store(DB); o.remove(); render(); sync(); };
   }
 
   function mount() {
     const b = $("button"); b.innerHTML = '<i class="fa-solid fa-file-contract"></i>'; b.title = "Paket berjalan & riwayat paket"; b.onclick = open;
     window.PQ_DOCK ? PQ_DOCK.adopt(b, "Paket berjalan & riwayat") : (b.style.cssText = "position:fixed;left:10px;bottom:270px;z-index:3900", document.body.append(b));
     const N = window.PETAQU_NEXUS;
-    if (N && N.ACT) N.ACT.push(["Paket Berjalan & Riwayat", "kontrak aktif, progres, deviasi, riwayat; unggah Excel", open], ["Paket di Peta", "tampilkan semua paket berwarna menurut status", () => petakan(DB)]);
+    if (N && N.ACT) N.ACT.push(["Paket Berjalan & Riwayat", "kontrak aktif, progres, deviasi, riwayat; unggah Excel", open], ["Paket di Peta", "tampilkan semua paket berwarna menurut status", () => petakan(DB)], ["Label Paket ON/OFF", "tampilkan/sembunyikan label kode & progres paket di peta", () => setLabel(!CFG.lbl)]);
+    if (CFG.auto) autoStart();
   }
 
-  window.PETAQU_PAKET = { open, all: () => DB.slice(), derive, ruasAktif, ruasBaruSelesai, petakan, hapusPeta, ekspor, unduhTemplate, _t: { parseWorkbook, parseDate, parseNum, parseProg, matchRoads, diff, terapkan } };
+  window.PETAQU_PAKET = { open, all: () => DB.slice(), derive, ruasAktif, ruasBaruSelesai, petakan, hapusPeta, setLabel, setAuto, sync, ekspor, unduhTemplate, _t: { parseWorkbook, parseDate, parseNum, parseProg, matchRoads, diff, terapkan } };
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => setTimeout(mount, 90)) : setTimeout(mount, 90);
 })();
