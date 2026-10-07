@@ -155,7 +155,7 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
 
   function showHome() {
     var h = hist(); items = h; active = -1; lastAll = [];
-    var html = '<div class="qa"><button class="chip" data-qa="loc"><i class="fa-solid fa-crosshairs"></i> Lokasi saya</button><button class="chip" data-qa="jateng"><i class="fa-solid fa-map"></i> Seluruh Jateng</button><button class="chip" data-qa="diy"><i class="fa-solid fa-landmark"></i> Yogyakarta</button></div><div class="ls">';
+    var html = '<div class="qa"><button class="chip" data-qa="loc"><i class="fa-solid fa-crosshairs"></i> Lokasi saya</button><button class="chip" data-qa="paket"><i class="fa-solid fa-file-contract"></i> Paket Upload</button><button class="chip" data-qa="jateng"><i class="fa-solid fa-map"></i> Seluruh Jateng</button><button class="chip" data-qa="diy"><i class="fa-solid fa-landmark"></i> Yogyakarta</button></div><div class="ls">';
     if (h.length) html += rows(h, "");
     else html += '<div class="st"><i class="fa-solid fa-circle-info"></i> Ketik nama jalan, desa, jembatan, atau tempel koordinat.</div>';
     dd.innerHTML = html + "</div>" + footer(""); open();
@@ -267,6 +267,12 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     var m = getMap(); if (!m) return; close();
     if (a === "jateng") { if (window.PQ_WILAYAH) PQ_WILAYAH.show("jateng"); else m.flyTo([-7.15, 110.15], 8, { duration: 1 }); }
     else if (a === "diy") { if (window.PQ_WILAYAH) PQ_WILAYAH.show("diy"); else m.flyTo([-7.88, 110.4], 10, { duration: 1 }); }
+    else if (a === "paket") {
+      var P = window.PETAQU_PAKET;
+      if (!P) return status('<i class="fa-solid fa-triangle-exclamation"></i> Modul Paket belum siap, coba sesaat lagi.');
+      var all = P.all ? P.all() : [];
+      if (all.length) { P.petakan(all); } else { P.open(); }
+    }
     else if (a === "loc") {
       if (!navigator.geolocation) return status("Perangkat tidak mendukung GPS.");
       navigator.geolocation.getCurrentPosition(function (p) {
