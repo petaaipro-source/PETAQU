@@ -428,6 +428,25 @@
   function mount() {
     const b = $("button"); b.innerHTML = '<i class="fa-solid fa-file-contract"></i>'; b.title = "Paket berjalan & riwayat paket"; b.onclick = open;
     window.PQ_DOCK ? PQ_DOCK.adopt(b, "Paket berjalan & riwayat") : (b.style.cssText = "position:fixed;left:10px;bottom:270px;z-index:3900", document.body.append(b));
+    /* Tombol Paket juga dipasang di toolbar peta, tepat di sebelah tombol Lokasi (AMP/BP/Quarry) */
+    (function () {
+      let tries = 0;
+      const t = setInterval(() => {
+        const tb = document.getElementById("mapToolbar");
+        if (document.getElementById("pqPaketToolBtn")) { clearInterval(t); return; }
+        const lok = document.getElementById("pqlokBtn");
+        if ((tb && lok) || ++tries > 60) {
+          clearInterval(t);
+          if (!tb) return;
+          const tbtn = document.createElement("button");
+          tbtn.className = "tool-btn"; tbtn.id = "pqPaketToolBtn";
+          tbtn.title = "Paket berjalan & riwayat paket (unggah Excel)";
+          tbtn.innerHTML = '<i class="fa-solid fa-file-contract"></i>';
+          tbtn.onclick = e => { e.stopPropagation(); open(); };
+          lok && lok.parentNode === tb ? tb.insertBefore(tbtn, lok.nextSibling) : tb.appendChild(tbtn);
+        }
+      }, 300);
+    })();
     const N = window.PETAQU_NEXUS;
     if (N && N.ACT) N.ACT.push(["Paket Berjalan & Riwayat", "kontrak aktif, progres, deviasi, riwayat; unggah Excel", open], ["Paket di Peta", "tampilkan semua paket berwarna menurut status", () => petakan(DB)], ["Label Paket ON/OFF", "tampilkan/sembunyikan label kode & progres paket di peta", () => setLabel(!CFG.lbl)]);
     if (CFG.auto) autoStart();
