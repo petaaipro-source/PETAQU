@@ -252,7 +252,6 @@
         applied[r.key] = { km: C.kmFmt(anchors[r.key]), d: 0, note: "terbaca dari patok (OCR Street View)" };
       });
       if (!opt.derive) return;
-      var shifts = anc.map(function (r) { return anchors[r.key] - r.km; });
       var ok = true, i;
       if (anc.length > 1) {
         // arah: selisih label geometri vs selisih angka patok harus sama tanda & besar
@@ -262,11 +261,19 @@
         }
       }
       if (!ok) return;
-      var sh = shifts.reduce(function (a, b) { return a + b; }, 0) / shifts.length;
+      // geseran per-segmen: di antara dua jangkar dipakai bila keduanya sepakat (≤150 m); di luar ujung dipakai jangkar terdekat.
+      // Bila dua jangkar tak sepakat (mis. −1 km vs −2 km → patok hilang/geometri keliru), titik di antaranya TIDAK diturunkan.
+      var TS = opt.shiftTol || 0.15, ancS = anc.map(function (r) { return { sta: r.sta, sh: anchors[r.key] - r.km }; }), diff = 0;
       rs.forEach(function (r) {
         if (applied[r.key] || r.flag !== 3 || r.km == null) return;
+        var pv = null, nx = null, j, sh;
+        for (j = 0; j < ancS.length; j++) { if (ancS[j].sta <= r.sta) pv = ancS[j]; else { nx = ancS[j]; break; } }
+        if (pv && nx) { if (Math.abs(pv.sh - nx.sh) > TS) { diff++; return; } sh = (pv.sh + nx.sh) / 2; }
+        else sh = (pv || nx).sh;
+        if (r.km + sh < 0) return;   // km negatif = di luar ruas
         applied[r.key] = { km: C.kmFmt(r.km + sh), d: 1, note: "diturunkan dari " + anc.length + " patok OCR di ruas ini (geseran " + (sh >= 0 ? "+" : "") + sh.toFixed(3) + " km)" };
       });
+      if (diff) konflik.push(ruas + ": geseran KM tidak konstan antar jangkar — " + diff + " titik di antaranya tidak diturunkan (patok hilang/tergeser?), cek manual");
     });
     return { applied: applied, konflik: konflik };
   };
@@ -304,7 +311,52 @@
     return { boxes: boxes, km: reads, kota: kota, dbg: dbg };
   };
 
-  C.version = "1.0";
+  /* ---------- PERENCANA CERDAS (murni, bisa diuji) ----------
+     Tujuan: sedikit gambar, hasil sebanyak mungkin. Semua keputusan di sini memakai data GRATIS
+     (metadata Street View: ada/tidaknya panorama + bulan-tahun foto) dan struktur data itu sendiri. */
+  C.yearOf = function (d) { var m = /^(\d{4})/.exec(String(d || "")); return m ? +m[1] : null; };
+  C.workYear = function (t) { var m = /TA\.?\s*(\d{4})/i.exec(String(t || "")); return m ? +m[1] : null; };   // "Pelebaran TA.2019" → 2019
+  C.isRound = function (km, tol) { return km != null && Math.abs(km - Math.round(km)) <= (tol || 0.02); };
+  // Urutan titik yang layak dicoba dalam satu ruas: (1) hanya km BULAT (patok fisik ada tiap 1 km),
+  // (2) mulai dari tengah ruas, (3) probe ke-2 sejauh mungkin dari probe ke-1 (untuk verifikasi geseran), (4) sisanya.
+  C.pickProbes = function (list) {
+    var n = list.length, idx = [], i; if (!n) return [];
+    for (i = 0; i < n; i++) idx.push(i);
+    var rd = idx.filter(function (j) { return C.isRound(list[j].km); }), pool = (rd.length >= 2 ? rd : idx).slice();
+    var mid = (list[0].sta + list[n - 1].sta) / 2;
+    pool.sort(function (a, b) { return Math.abs(list[a].sta - mid) - Math.abs(list[b].sta - mid); });
+    var first = pool[0], out = [first];
+    var far = pool.slice(1).sort(function (a, b) { return Math.abs(list[b].sta - list[first].sta) - Math.abs(list[a].sta - list[first].sta); });
+    if (far.length) out.push(far[0]);
+    pool.concat(idx).forEach(function (j) { if (out.indexOf(j) < 0) out.push(j); });
+    return out;
+  };
+  // Peringatan LUNAK: pelat ber-2 angka biasanya bergerak 1:1 per km (|Δatas| = |Δbawah|). Hanya penanda, tidak menolak otomatis.
+  C.crossCheck = function (reads) {
+    var w = [], i;
+    for (i = 1; i < reads.length; i++) {
+      if (reads[i].b == null || reads[0].b == null) continue;
+      var da = Math.abs(reads[i].a - reads[0].a), db = Math.abs(reads[i].b - reads[0].b);
+      if (da !== db) w.push("angka atas/bawah tidak seirama (" + reads[0].a + "/" + reads[0].b + " vs " + reads[i].a + "/" + reads[i].b + ") — cek 1 foto");
+    }
+    return w;
+  };
+  // Peringkat ruas dari hasil pra-survei gratis: ada panorama, lalu foto terbaru dulu.
+  C.rankRuas = function (names, plan, minYear) {
+    var keep = [], skipNo = [], skipOld = [];
+    names.forEach(function (nm) {
+      var p = plan[nm];
+      if (!p) { keep.push(nm); return; }
+      if (!p.ok) { skipNo.push(nm); return; }
+      var y = C.yearOf(p.date);
+      if (y && minYear && y < minYear) { skipOld.push(nm); return; }
+      keep.push(nm);
+    });
+    keep.sort(function (a, b) { return String((plan[b] || {}).date || "").localeCompare(String((plan[a] || {}).date || "")) || ((plan[b] || {}).ok || 0) - ((plan[a] || {}).ok || 0); });
+    return { keep: keep, skipNo: skipNo, skipOld: skipOld };
+  };
+
+  C.version = "2.0-planner";
   G.PQ_KMOCR_CORE = C;
   if (typeof module !== "undefined" && module.exports) module.exports = C;
 
@@ -316,13 +368,13 @@
 
   var TESS = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
   var LANG = "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int";
-  var K_SCAN = "petaqu_kmocr_scan_v1", K_AP = "petaqu_kmocr_v1", K_SET = "petaqu_kmocr_set_v1", K_Q = "petaqu_kmocr_quota_v1";
+  var K_SCAN = "petaqu_kmocr_scan_v1", K_AP = "petaqu_kmocr_v1", K_SET = "petaqu_kmocr_set_v1", K_Q = "petaqu_kmocr_quota_v1", K_PLAN = "petaqu_kmocr_plan_v1", K_SIDE = "petaqu_kmocr_side_v1";
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function jget(k, d) { try { var v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } }
   function jset(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
 
-  var DATA = null, ROWS = [], SCAN = jget(K_SCAN, {}), SET = Object.assign({ cap: 9000, radius: 60, step: 15, perRuas: 3, derive: true, mode: "b", minVotes: 2 }, jget(K_SET, {}));
+  var DATA = null, ROWS = [], SCAN = jget(K_SCAN, {}), SET = Object.assign({ cap: 9000, radius: 60, step: 15, perRuas: 3, derive: true, mode: "b", minVotes: 2, maxPano: 4, maxImgRuas: 14, minYear: (new Date().getFullYear() - 10), verify: true, cross: true }, jget(K_SET, {}));
   var RUN = { on: false, stop: false, sel: -1 }, worker = null, wLoad = null, KONFLIK = [];
 
   function keyOf(r) { return r[0] + "," + r[1] + "|" + r[3]; }
@@ -422,27 +474,46 @@
 
   async function scanPoint(i, onMsg) {
     var r = DATA[i], brg = neighborBearing(i), step = +SET.step || 15, rad = +SET.radius || 60;
-    var offs = [0], k;
+    var offs = [0], k, wy = C.workYear(r[6]), minY = +SET.minYear || 0;
     for (k = 1; k * step <= rad; k++) { offs.push(k * step); offs.push(-k * step); }
-    var seen = {}, panos = [];
-    for (k = 0; k < offs.length; k++) {
-      var p = brg == null ? { lat: r[0], lng: r[1] } : C.dest(r[0], r[1], brg, offs[k]);
-      var m; try { m = await meta(p.lat, p.lng, Math.max(12, step)); } catch (e) { throw e; }
-      if (m.status === "OK" && !seen[m.pano_id]) { seen[m.pano_id] = 1; panos.push({ id: m.pano_id, loc: m.location, date: m.date, off: offs[k] }); }
-      if (RUN.stop) return { st: "stop" };
+    // metadata GRATIS, dijalankan paralel (cepat). Foto lebih tua dari tahun perbaikan jalan / batas tahun → dibuang tanpa buka Street View.
+    var ms = await Promise.all(offs.map(function (o) {
+      var p = brg == null ? { lat: r[0], lng: r[1] } : C.dest(r[0], r[1], brg, o);
+      return meta(p.lat, p.lng, Math.max(12, step)).then(function (m) { return { m: m, off: o }; });
+    }));
+    if (RUN.stop) return { st: "stop" };
+    var seen = {}, panos = [], lama = 0;
+    ms.forEach(function (x) {
+      var m = x.m; if (m.status !== "OK" || seen[m.pano_id]) return; seen[m.pano_id] = 1;
+      var y = C.yearOf(m.date);
+      if (y && ((wy && y < wy) || (minY && y < minY))) { lama++; return; }
+      panos.push({ id: m.pano_id, loc: m.location, date: m.date, off: x.off });
+    });
+    if (!panos.length) return lama ? { st: "fotolama", n: lama } : { st: "nopano" };
+    panos.sort(function (a, b) { return Math.abs(a.off) - Math.abs(b.off); });
+    panos = panos.slice(0, Math.max(1, +SET.maxPano || 4));
+    // sisi jalan: dipelajari dari hasil sebelumnya; bila sudah ≥80% satu sisi, sisi itu diperiksa duluan untuk SEMUA panorama
+    var side = jget(K_SIDE, { l: 0, r: 0 }), tot = side.l + side.r, heads, passes;
+    if (brg == null) { heads = [0, 90, 180, 270]; passes = [heads]; }
+    else {
+      var R = (brg + 90) % 360, L = (brg + 270) % 360, pref = side.l > side.r ? [L, R] : [R, L];
+      heads = [R, L]; passes = (tot >= 4 && Math.max(side.l, side.r) / tot >= 0.8) ? [[pref[0]], [pref[1]]] : [pref];
     }
-    if (!panos.length) return { st: "nopano" };
-    var heads = brg == null ? [0, 90, 180, 270] : [(brg + 90) % 360, (brg + 270) % 360], best = null, lastKota = [], tries = 0;
-    for (k = 0; k < panos.length; k++) {
-      for (var h = 0; h < heads.length; h++) {
-        if (RUN.stop) return { st: "stop" };
-        onMsg && onMsg("panorama " + (k + 1) + "/" + panos.length + " arah " + Math.round(heads[h]) + "°");
-        var img = await svImage(panos[k].id, heads[h], 80, -4); tries++;
-        var rd = await C.readImage(img, recog, { maxPlates: 4, mode: SET.mode });
-        lastKota = lastKota.concat(rd.kota.map(function (x) { return x.pr.kode + " " + x.pr.jarak; }));
-        if (rd.km.length) {
-          var top = rd.km[0];
-          return { st: top.votes >= SET.minVotes ? "ok" : "ragu", a: top.pr.a, b: top.pr.b, votes: top.votes, conf: Math.round(top.conf || 0), kota: lastKota.slice(0, 4), pano: panos[k].id, date: panos[k].date || "", heading: Math.round(heads[h]), off: panos[k].off, plat: panos[k].loc, ev: thumb(img, top.box), tries: tries, raw: top.pr.raw };
+    var lastKota = [], tries = 0, pi, h;
+    for (pi = 0; pi < passes.length; pi++) {
+      for (k = 0; k < panos.length; k++) {
+        for (h = 0; h < passes[pi].length; h++) {
+          if (RUN.stop) return { st: "stop" };
+          var hd = passes[pi][h];
+          onMsg && onMsg("panorama " + (k + 1) + "/" + panos.length + " arah " + Math.round(hd) + "°" + (panos[k].date ? " · foto " + panos[k].date : ""));
+          var img = await svImage(panos[k].id, hd, 80, -4); tries++;
+          var rd = await C.readImage(img, recog, { maxPlates: 4, mode: SET.mode });
+          lastKota = lastKota.concat(rd.kota.map(function (x) { return x.pr.kode + " " + x.pr.jarak; }));
+          if (rd.km.length) {
+            var top = rd.km[0];
+            if (brg != null) { side[((hd - brg + 360) % 360) < 180 ? "r" : "l"]++; jset(K_SIDE, side); }
+            return { st: top.votes >= SET.minVotes ? "ok" : "ragu", a: top.pr.a, b: top.pr.b, votes: top.votes, conf: Math.round(top.conf || 0), kota: lastKota.slice(0, 4), pano: panos[k].id, date: panos[k].date || "", heading: Math.round(hd), off: panos[k].off, plat: panos[k].loc, ev: thumb(img, top.box), tries: tries, raw: top.pr.raw };
+          }
         }
       }
     }
@@ -470,8 +541,15 @@
   }
   function applyAll() {
     var res = C.derive(rowsForDerive(), accepted(), { derive: !!SET.derive });
-    jset(K_AP, res.applied); KONFLIK = res.konflik || [];
+    jset(K_AP, res.applied); KONFLIK = (res.konflik || []).concat(softWarn());
     return res;
+  }
+  function softWarn() {
+    if (SET.cross === false) return [];
+    var g = {}, w = [];
+    Object.keys(SCAN).forEach(function (k) { var s = SCAN[k]; if (!s || s.rej || (s.st !== "ok" && s.st !== "ragu") || s.b == null) return; (g[s.ruas] = g[s.ruas] || []).push({ a: s.a, b: s.b }); });
+    Object.keys(g).forEach(function (ru) { C.crossCheck(g[ru]).forEach(function (t) { w.push(ru + ": " + t); }); });
+    return w;
   }
 
   /* ---- jalankan batch ---- */
@@ -487,24 +565,56 @@
     order.forEach(function (k) { by[k].sort(function (a, b) { return a.sta - b.sta; }); });
     return { order: order, by: by };
   }
+  /* ---- PRA-SURVEI GRATIS: hanya metadata (tanpa kuota gambar). Hasil di-cache 30 hari. ---- */
+  async function presurvey(T) {
+    var plan = jget(K_PLAN, {}), now = Date.now(), ri, pi;
+    for (ri = 0; ri < T.order.length; ri++) {
+      var nm = T.order[ri], p = plan[nm];
+      if (p && now - p.t < 30 * 864e5) continue;
+      var list = T.by[nm], pr = C.pickProbes(list).slice(0, 2), ok = 0, best = "";
+      say("Pra-survei gratis " + (ri + 1) + "/" + T.order.length + " · " + nm);
+      for (pi = 0; pi < pr.length; pi++) {
+        if (RUN.stop) return null;
+        var row = list[pr[pi]], m = await meta(row.lat, row.lng, 100);
+        if (m.status === "OK") { ok++; if ((m.date || "") > best) best = m.date || ""; }
+      }
+      plan[nm] = { ok: ok, date: best, t: now };
+      if (ri % 10 === 9) jset(K_PLAN, plan);
+    }
+    jset(K_PLAN, plan);
+    return C.rankRuas(T.order, plan, +SET.minYear || 0);
+  }
   async function runBatch() {
     if (RUN.on) return; RUN.on = true; RUN.stop = false; ui();
-    var T = targets(), done = 0, hit = 0, skip = 0, total = T.order.length;
+    var T = targets(), hit = 0, skip = 0, pre = null;
     try {
       if (!apiKey()) throw new Error("API key Street View kosong (Pengaturan → Google Maps API key)");
+      pre = await presurvey(T);
+      if (!pre) { RUN.on = false; RUN.stop = false; ui(); say("Pra-survei dijeda."); return; }
+      T.order = pre.keep;
+      say("Pra-survei: " + pre.keep.length + " ruas dikerjakan · " + pre.skipNo.length + " tanpa panorama & " + pre.skipOld.length + " foto terlalu lama DILEWATI (0 kuota). Mulai OCR…");
       await getWorker();
+      var total = T.order.length;
       for (var ri = 0; ri < T.order.length && !RUN.stop; ri++) {
-        var list = T.by[T.order[ri]], tried = 0, got = false, li;
-        // titik dicoba dari tengah ruas ke luar (lebih dekat ke tengah = lebih mungkin ada patok sebaris jalan)
-        var seq = list.map(function (_, ix) { return ix; }).sort(function (a, b) { return Math.abs(a - list.length / 2) - Math.abs(b - list.length / 2); });
-        for (li = 0; li < seq.length && !RUN.stop && tried < SET.perRuas; li++) {
-          var row = list[seq[li]];
-          if (SCAN[row.key] && SCAN[row.key].st !== "err") { if (SCAN[row.key].st === "ok" || SCAN[row.key].st === "ragu") got = true; continue; }
-          if (got && SET.derive) break;
+        var name = T.order[ri], list = T.by[name], q0 = quota().n, seq = C.pickProbes(list), anchors = 0, li, tried = 0;
+        var span = list.length ? (list[list.length - 1].sta - list[0].sta) : 0;
+        var need = !SET.derive ? list.length : (SET.verify && span >= 4000 ? 2 : 1);   // ruas panjang → 1 jangkar tambahan untuk memastikan geseran sama di ujung lain
+        for (li = 0; li < seq.length && !RUN.stop; li++) {
+          var row = list[seq[li]], ex = SCAN[row.key];
+          if (ex && ex.st !== "err") { if (ex.st === "ok" || ex.st === "ragu") anchors++; continue; }
+          if (anchors >= need) {
+            var kf = KONFLIK.some(function (t) { return t.indexOf(name + ":") === 0; });   // dua jangkar tak sejalan → satu jangkar penentu lagi
+            if (!(kf && need < 3)) break;
+            need = 3;
+          }
+          var used = quota().n - q0;
+          if (tried >= (+SET.perRuas || 3) + (need > 1 ? 1 : 0)) break;
+          if (used >= (anchors ? SET.maxImgRuas * 1.5 : SET.maxImgRuas)) break;     // anggaran gambar per ruas
           tried++;
-          say("Ruas " + (ri + 1) + "/" + total + " · " + T.order[ri] + " · titik " + C.kmFmt(row.km) + " · kuota sisa " + quotaLeft());
+          var head = "Ruas " + (ri + 1) + "/" + total + " · " + name + " · titik " + C.kmFmt(row.km) + " · jangkar " + anchors + "/" + need;
+          say(head + " · sisa kuota " + quotaLeft());
           var s;
-          try { s = await scanPoint(row.i, function (m) { say("Ruas " + (ri + 1) + "/" + total + " · " + C.kmFmt(row.km) + " · " + m + " · sisa kuota " + quotaLeft()); }); }
+          try { s = await scanPoint(row.i, function (m) { say(head + " · " + m + " · sisa kuota " + quotaLeft()); }); }
           catch (e) {
             if (e.quota) { RUN.stop = true; say("Berhenti: batas kuota " + SET.cap + " tercapai bulan ini."); break; }
             if (e.cors) { RUN.stop = true; say("Gambar Street View tidak bisa dibaca browser (CORS). Pakai 'Uji dari gambar' / lihat catatan."); break; }
@@ -512,14 +622,13 @@
           }
           if (s.st === "stop") break;
           s.t = Date.now(); s.ruas = row.ruas; s.km0 = row.km; SCAN[row.key] = s; jset(K_SCAN, SCAN);
-          if (s.st === "ok" || s.st === "ragu") { hit++; got = true; } else skip++;
+          if (s.st === "ok" || s.st === "ragu") { hit++; anchors++; applyAll(); } else skip++;
         }
-        done++;
         applyAll(); render();
       }
     } catch (e) { say("Error: " + (e.message || e)); }
     RUN.on = false; RUN.stop = false; applyAll(); ui(); render();
-    say("Selesai/Jeda · terbaca " + hit + " · dilewati " + skip + " · kuota terpakai " + quota().n + "/" + SET.cap);
+    say("Selesai/Jeda · terbaca " + hit + " · dilewati " + skip + (pre ? " · ruas dilewati gratis " + (pre.skipNo.length + pre.skipOld.length) : "") + " · kuota terpakai " + quota().n + "/" + SET.cap);
   }
   async function runOne(i) {
     if (RUN.on) return; loadData();
@@ -564,7 +673,7 @@
     $("kmoQt").textContent = "Kuota gambar bulan ini: " + q.n + " / " + SET.cap + " (metadata gratis, tidak dihitung)";
   }
   function counts() {
-    var c = { ok: 0, ragu: 0, nopano: 0, nopatok: 0, err: 0 };
+    var c = { ok: 0, ragu: 0, nopano: 0, fotolama: 0, nopatok: 0, err: 0 };
     Object.keys(SCAN).forEach(function (k) { var s = SCAN[k] && SCAN[k].st; if (c[s] != null) c[s]++; });
     return c;
   }
@@ -572,7 +681,7 @@
     var box = $("kmoList"); if (!box) return;
     var c = counts(), ap = jget(K_AP, {}), nAp = Object.keys(ap).length, nDer = Object.keys(ap).filter(function (k) { return ap[k].d; }).length;
     var keys = Object.keys(SCAN).filter(function (k) { var s = SCAN[k]; return s && (s.st === "ok" || s.st === "ragu"); }).sort(function (a, b) { return SCAN[b].t - SCAN[a].t; }).slice(0, 40);
-    box.innerHTML = '<div>Terbaca ' + c.ok + ' · ragu ' + c.ragu + ' · tanpa panorama ' + c.nopano + ' · tanpa patok ' + c.nopatok + (c.err ? ' · error ' + c.err : '') + '. Diterapkan ke peta: ' + nAp + ' titik (' + nDer + ' turunan).</div>' +
+    box.innerHTML = '<div>Terbaca ' + c.ok + ' · ragu ' + c.ragu + ' · tanpa panorama ' + c.nopano + ' · foto lama ' + c.fotolama + ' · tanpa patok ' + c.nopatok + (c.err ? ' · error ' + c.err : '') + '. Diterapkan ke peta: ' + nAp + ' titik (' + nDer + ' turunan).</div>' +
       (KONFLIK.length ? '<div style="color:#fda4af;margin-top:4px">Perlu dicek manual (turunan tidak dipakai): ' + KONFLIK.map(esc).join('; ') + '</div>' : '') +
       (keys.length ? '<table><tr><th>Bukti</th><th>Hasil</th><th>Ruas / titik</th><th></th></tr>' + keys.map(function (k) {
         var s = SCAN[k], on = s.st === "ok" || s.acc;
