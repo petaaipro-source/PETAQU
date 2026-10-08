@@ -302,7 +302,7 @@
     if (!$("pqLoginAlt")) {
       var a = document.createElement("div");
       a.id = "pqLoginAlt";
-      a.innerHTML = '<button type="button" id="pqLoginAltBtn">Masuk dengan username</button>';
+      a.innerHTML = '<button type="button" id="pqLoginAltBtn">Masuk dengan email / username</button>';
       w.parentNode.insertBefore(a, w.nextSibling);
       var u = false, ab = $("pqLoginAltBtn");
       ab.addEventListener("click", function () {
@@ -310,7 +310,7 @@
         var t = $(u ? "tabUser" : "tabEmail");
         if (t) t.click();
         w.style.display = u ? "none" : "";
-        ab.textContent = u ? "\u2190 Kembali, masuk dengan Google" : "Masuk dengan username";
+        ab.textContent = u ? "\u2190 Kembali, masuk dengan Google" : "Masuk dengan email / username";
       });
     }
   }

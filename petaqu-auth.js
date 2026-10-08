@@ -128,7 +128,10 @@ window.PQ_AUTH_INIT=function(){
     try{
       const r=await post("/auth/v1/token?grant_type=password",{email,password:pw});
       if(r.status===429)return pesan("Terlalu banyak percobaan, tunggu sebentar lalu coba lagi");
-      if(!r.ok)throw 0;
+      if(!r.ok){let j={};try{j=await r.json()}catch{}const t=(j.error_code||"")+" "+(j.msg||j.error_description||"");
+        if(/email_not_confirmed|not confirmed/i.test(t)){pwP.value="";return pesan("Email belum dikonfirmasi. Buka tautan konfirmasi di email Anda (cek Spam), lalu masuk lagi.")}
+        if(/banned|user_banned/i.test(t)){pwP.value="";return pesan("Akun ini dikunci/diblokir. Hubungi admin.")}
+        throw 0}
       const d=await r.json();const iz=await periksaMasuk(d.access_token,d.user&&d.user.id);if(!iz.ok){pwP.value="";return pesan(iz.pesan)}
       simpan(d,email);$("loginError").classList.remove("show");scr.classList.add("hide");tutupPanel();pwP.value="";
       typeof showWelcomeSplash==="function"&&showWelcomeSplash();fit();mulaiSegarkan();
