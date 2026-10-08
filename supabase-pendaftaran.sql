@@ -116,11 +116,19 @@ drop trigger if exists on_email_confirmed on auth.users;
 create trigger on_email_confirmed after update of email_confirmed_at on auth.users for each row execute function auto_setuju_dikonfirmasi();
 
 -- 6) Lengkapi skor untuk pengguna lama yang belum punya skor ----------------------
-update profiles p set
-  nama = coalesce(p.nama, nullif(left(btrim(coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', '')), 80), '')),
-  skor = n.skor, saran = n.saran
-from auth.users u, lateral nilai_pendaftar(u.email, coalesce(p.nama, u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name'), p.instansi, p.hp) n
-where u.id = p.id and p.saran is null;
+do $$
+declare r record; n record;
+begin
+  for r in select p.id, p.nama, p.instansi, p.hp, u.email, coalesce(u.raw_user_meta_data, '{}'::jsonb) as m
+             from profiles p join auth.users u on u.id = p.id where p.saran is null loop
+    select * into n from nilai_pendaftar(r.email, coalesce(r.nama, r.m->>'full_name', r.m->>'name'), r.instansi, r.hp);
+    update profiles set
+      nama  = coalesce(nama, nullif(left(btrim(coalesce(r.m->>'full_name', r.m->>'name', '')), 80), '')),
+      skor  = coalesce(n.skor, 0),
+      saran = n.saran
+    where id = r.id;
+  end loop;
+end $$;
 
 -- 7) Fungsi admin -------------------------------------------------------------------
 drop function if exists admin_daftar_pengguna();
