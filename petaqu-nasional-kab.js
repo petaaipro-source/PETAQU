@@ -1,0 +1,217 @@
+/* ==========================================================================
+   PETAQU – Jalan Nasional per Kabupaten (ringkas, tanpa duplikat, tanpa request jaringan)
+   • Daftar kabupaten (tampil/sembunyi di peta) -> buka -> tiap ruas di kabupaten itu
+   • Ruas yang sama (nama + No. Link) digabung, tidak pernah tampil dobel
+   • Tombol "+ STA": jadikan ruas (bagian di kabupaten itu) ruas terkelola penuh
+     (titik STA tiap 100 m) -> muncul aksi lengkap seperti kartu ruas:
+     ganti nama, animasi, video dashcam, IRI, interval STA, hitung KM, PDF, ekspor, hapus
+   • Tombol hide/show untuk data di atasnya (pencarian, lintas, tebal, daftar ruas)
+   Sumber data: #kb-data (ruas per kabupaten) + #jn-data (nama/lintas) yang sudah ada.
+   ========================================================================== */
+(function () {
+  "use strict";
+  var W = typeof window !== "undefined" ? window : globalThis;
+  if (W.PQ_JNKAB) return;
+  var LS_LINK = "pq_jnkab_link", LS_HIDE = "pq_jn_top_hidden";
+  var K = null, R = null, SAT = [], G = null, layers = {}, openKab = {}, linkMap = {}, filterQ = "";
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function fmtKm(v) { return (Math.round(v * 10 + 1e-6) / 10).toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+  function ls(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} return null; }
+  function toast(m, err) { try { if (typeof W.toast === "function") return W.toast(m, !!err); } catch (e) {} }
+  function getMap() { try { if (typeof map !== "undefined" && map && map.addLayer) return map; } catch (e) {} return W.map && W.map.addLayer ? W.map : null; }
+  function getRoads() { try { return typeof roads !== "undefined" && roads ? roads : (W.roads || []); } catch (e) { return W.roads || []; } }
+
+  /* ---------- decode polyline (presisi 5) ---------- */
+  function decode(str) {
+    var i = 0, lat = 0, lng = 0, out = [];
+    while (i < str.length) {
+      var b, s = 0, r = 0;
+      do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << s; s += 5; } while (b >= 32);
+      lat += (r & 1) ? ~(r >> 1) : (r >> 1); s = 0; r = 0;
+      do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << s; s += 5; } while (b >= 32);
+      lng += (r & 1) ? ~(r >> 1) : (r >> 1);
+      out.push([lat / 1e5, lng / 1e5]);
+    }
+    return out;
+  }
+  function hav(a, b) {
+    var r = Math.PI / 180, x = (b[0] - a[0]) * r, y = (b[1] - a[1]) * r;
+    var h = Math.sin(x / 2) * Math.sin(x / 2) + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(y / 2) * Math.sin(y / 2);
+    return 12742000 * Math.asin(Math.sqrt(h));
+  }
+
+  /* ---------- kelompok data: kabupaten -> ruas (digabung, tanpa duplikat) ---------- */
+  function build() {
+    if (G) return G;
+    var a = document.getElementById("kb-data"), b = document.getElementById("jn-data");
+    if (!a || !b) return null;
+    try { K = JSON.parse(a.textContent); var d = JSON.parse(b.textContent); R = d.r || []; SAT = d.sat || []; } catch (e) { return null; }
+    G = [];
+    K.forEach(function (k, ki) {
+      var by = {}, list = [];
+      (k.r || []).forEach(function (x) {
+        var ref = R[x[0]]; if (!ref) return;
+        var key = String(ref[0]).trim().toUpperCase() + "|" + (ref[1] || "");
+        var it = by[key];
+        if (!it) { it = by[key] = { key: key, ri: x[0], name: ref[0], no: ref[1], lintas: ref[3], color: (SAT[ref[3]] || [])[1] || "#22d3ee", km: 0, lines: [] }; list.push(it); }
+        it.km += +x[1] || 0;
+        (x[2] || []).forEach(function (l) { if (it.lines.indexOf(l) < 0) it.lines.push(l); });
+      });
+      if (!list.length) return;
+      list.sort(function (p, q) { return q.km - p.km; });
+      G.push({ ki: ki, name: k.t === "Kab." ? "Kabupaten " + k.n : "Kota " + k.n, n: k.n, items: list, km: list.reduce(function (s, v) { return s + v.km; }, 0) });
+    });
+    G.sort(function (p, q) { return p.name.localeCompare(q.name); });
+    return G;
+  }
+
+  /* ---------- gambar di peta ---------- */
+  function popupHtml(g, it) {
+    return '<div style="font-size:12px"><b>' + esc(it.name) + "</b><br>No. Link " + esc(it.no || "-") + "<br>" + esc(g.name) + " · " + fmtKm(it.km) + " km</div>";
+  }
+  function lyr(g, it) {
+    var id = g.ki + "|" + it.key; if (layers[id]) return layers[id];
+    var m = getMap(); if (!m || !W.L) return null;
+    var grp = L.featureGroup();
+    it.lines.forEach(function (s) { L.polyline(decode(s), { color: it.color, weight: 5, opacity: .95 }).bindPopup(popupHtml(g, it)).addTo(grp); });
+    return (layers[id] = grp);
+  }
+  function setItem(g, it, on, fit) {
+    var m = getMap(), l = lyr(g, it); if (!m || !l) return;
+    if (on) { if (!m.hasLayer(l)) l.addTo(m); if (fit) try { m.fitBounds(l.getBounds(), { padding: [40, 40], maxZoom: 14 }); } catch (e) {} }
+    else m.removeLayer(l);
+  }
+  function itemOn(g, it) { var m = getMap(), l = layers[g.ki + "|" + it.key]; return !!(m && l && m.hasLayer(l)); }
+  function kabOn(g) { return g.items.some(function (it) { return itemOn(g, it); }); }
+  function setKab(g, on) {
+    g.items.forEach(function (it) { setItem(g, it, on, false); });
+    if (on) { var m = getMap(), b = null; g.items.forEach(function (it) { var l = layers[g.ki + "|" + it.key]; if (l) b = b ? b.extend(l.getBounds()) : L.latLngBounds(l.getBounds().getSouthWest(), l.getBounds().getNorthEast()); }); if (m && b) try { m.fitBounds(b, { padding: [30, 30] }); } catch (e) {} }
+  }
+
+  /* ---------- "+ STA": jadikan ruas terkelola penuh ---------- */
+  function sampleSta(it) {
+    var pts = []; it.lines.forEach(function (s) { decode(s).forEach(function (p) { var l = pts[pts.length - 1]; if (!l || l[0] !== p[0] || l[1] !== p[1]) pts.push(p); }); });
+    if (pts.length < 2) return [];
+    var out = [], step = 100, cum = 0, next = 0, res = [];
+    for (var i = 1; i < pts.length; i++) {
+      var d = hav(pts[i - 1], pts[i]); if (!d) continue;
+      while (next <= cum + d + 1e-6) { var t = (next - cum) / d; res.push([pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t, next]); next += step; }
+      cum += d;
+    }
+    var last = pts[pts.length - 1]; if (cum - res[res.length - 1][2] > 5) res.push([last[0], last[1], cum]);
+    res.forEach(function (p) {
+      var km = Math.floor(p[2] / 1000), m = Math.round(p[2] - km * 1000);
+      out.push({ sta: km + "+" + String(m).padStart(3, "0"), lat: +p[0].toFixed(6), lng: +p[1].toFixed(6), tipe: Math.round(p[2]) % 500 === 0 ? "Label Utama" : "Titik Detail" });
+    });
+    return out;
+  }
+  function roadFor(g, it) {
+    var rs = getRoads(), id = linkMap[g.ki + "|" + it.key], r = id && rs.filter(function (x) { return x.id === id; })[0];
+    if (r) return r;
+    return rs.filter(function (x) { return x && x.name === it.name && x.kabupaten === g.name; })[0] || null;
+  }
+  function addSta(g, it) {
+    var ex = roadFor(g, it);
+    if (ex) { linkMap[g.ki + "|" + it.key] = ex.id; ls(LS_LINK, linkMap); try { W.focusRoad(ex.id); } catch (e) {} return render(); }
+    if (typeof W.addRoad !== "function") return toast("Fitur ruas belum siap, coba lagi sebentar", true);
+    var pts = sampleSta(it); if (pts.length < 2) return toast("Geometri ruas terlalu pendek", true);
+    var multi = G.filter(function (x) { return x.items.some(function (y) { return y.key === it.key; }); }).length > 1;
+    var nm = multi ? it.name + " (" + g.name.replace(/^Kabupaten /, "Kab. ") + ")" : it.name;
+    var r = W.addRoad(nm, pts, "Jalan Nasional (PETAQU)");
+    if (r) { r.kabupaten = g.name; try { W.persist(); W.renderRoadList(); } catch (e) {} linkMap[g.ki + "|" + it.key] = r.id; ls(LS_LINK, linkMap); toast("Ruas \"" + nm + "\" siap dikelola (" + pts.length + " titik STA)"); }
+    render();
+  }
+  var ACT = [
+    ["renameRoad", "fa-pen", "Ganti nama ruas"], ["playRouteAnimation", "fa-play", "Putar animasi rute"],
+    ["openDashcamUpload", "fa-video", "Sinkron video dashcam"], ["openIriAnalysis", "fa-chart-simple", "Analisis IRI"],
+    ["reIntervalRoad", "fa-ruler-combined", "Edit interval STA"], ["autoFillRoadKm", "fa-calculator", "Hitung otomatis KM"],
+    ["quickRoadPdf", "fa-file-pdf", "Unduh PDF ruas"], ["openExportModal", "fa-share-nodes", "Ekspor ruas"], ["deleteRoad", "fa-trash", "Hapus ruas"]
+  ];
+
+  /* ---------- UI ---------- */
+  function css() {
+    if (document.getElementById("jnkab-css")) return;
+    var s = document.createElement("style"); s.id = "jnkab-css";
+    s.textContent = "#jnKab{display:flex;flex-direction:column;gap:8px;border-top:1px dashed rgba(148,178,204,.25);padding-top:10px}" +
+      ".jk-bar{display:flex;gap:6px;align-items:center}.jk-bar b{flex:1;font-size:12.5px;color:#e6f1fb}" +
+      ".jk-b{background:#0f1726;border:1px solid rgba(148,178,204,.28);color:#cfe0f0;border-radius:8px;padding:5px 9px;font-size:11px;cursor:pointer}" +
+      "#jkQ{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid rgba(148,178,204,.25);background:#0b1220;color:#e6f1fb;font-size:12px}" +
+      ".jk-k{border:1px solid rgba(148,178,204,.22);background:#0f1726;border-radius:12px;overflow:hidden}" +
+      ".jk-h{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer}.jk-h i{color:#8fa6bd;font-size:11px;transition:transform .15s;width:10px}" +
+      ".jk-k.o .jk-h i{transform:rotate(90deg)}.jk-h div{flex:1;min-width:0}.jk-h b{display:block;font-size:13px;color:#e6f1fb}.jk-h small{color:#9db3c9;font-size:11px}" +
+      ".jk-sw{width:38px;height:22px;border-radius:99px;background:#2a3446;position:relative;border:0;cursor:pointer;flex:none}.jk-sw:after{content:'';position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#e6f1fb;transition:left .15s}.jk-sw.on{background:#06b6d4}.jk-sw.on:after{left:19px}" +
+      ".jk-l{display:none;border-top:1px solid rgba(148,178,204,.15)}.jk-k.o .jk-l{display:block}" +
+      ".jk-r{padding:8px 12px;border-bottom:1px solid rgba(148,178,204,.1)}.jk-r:last-child{border-bottom:0}.jk-rt{display:flex;align-items:center;gap:8px;cursor:pointer}" +
+      ".jk-rt i{width:9px;height:9px;border-radius:50%;flex:none}.jk-rt div{flex:1;min-width:0}.jk-rt b{display:block;font-size:11.5px;color:#dbe9f7;line-height:1.3}.jk-rt small{font-size:10.5px;color:#8fa6bd}" +
+      ".jk-sta{font-size:9.5px;font-weight:800;color:#34d399;border:1px solid #34d39966;border-radius:6px;padding:1px 5px}" +
+      ".jk-ac{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.jk-ac button{width:30px;height:28px;border-radius:8px;border:1px solid rgba(148,178,204,.25);background:#0b1220;color:#cfe0f0;cursor:pointer;font-size:12px}.jk-ac button.add{width:auto;padding:0 10px;font-weight:700;color:#34d399;border-color:#34d39966}" +
+      ".jk-hide{width:100%;margin:2px 0}.jn-hid{display:none!important}";
+    document.head.appendChild(s);
+  }
+  function topEls() {
+    var b = document.querySelector("#jnPanel .body"); if (!b) return [];
+    return ["jnSearch", "jnChips", "jnList"].map(function (i) { return document.getElementById(i); }).concat(Array.prototype.slice.call(b.querySelectorAll(".jn-row"))).filter(Boolean);
+  }
+  function applyTop() {
+    var h = !!ls(LS_HIDE), btn = document.getElementById("jkHide");
+    topEls().forEach(function (e) { e.classList.toggle("jn-hid", h); });
+    if (btn) btn.innerHTML = h ? '<i class="fa-solid fa-eye"></i> Tampilkan data di atas' : '<i class="fa-solid fa-eye-slash"></i> Sembunyikan data di atas';
+  }
+  function render() {
+    var box = document.getElementById("jnKab"); if (!box || !G) return;
+    var q = filterQ.trim().toLowerCase(), h = "", shown = 0;
+    G.forEach(function (g, gi) {
+      var items = g.items.filter(function (it) { return !q || g.name.toLowerCase().indexOf(q) >= 0 || it.name.toLowerCase().indexOf(q) >= 0 || String(it.no).indexOf(q) >= 0; });
+      if (!items.length) return; shown++;
+      var o = openKab[gi] || !!q, on = kabOn(g);
+      h += '<div class="jk-k' + (o ? " o" : "") + '" data-g="' + gi + '"><div class="jk-h" data-a="open"><i class="fa-solid fa-chevron-right"></i><div><b>' + esc(g.name) + "</b><small>" + g.items.length + " ruas · " + fmtKm(g.km) + ' km</small></div><button class="jk-sw' + (on ? " on" : "") + '" data-a="kab" title="Tampilkan semua ruas di peta"></button></div>';
+      if (o) {
+        h += '<div class="jk-l">';
+        items.forEach(function (it) {
+          var ii = g.items.indexOf(it), r = roadFor(g, it), a = "";
+          if (r) ACT.forEach(function (x) { a += '<button data-a="' + x[0] + '" title="' + x[2] + '"><i class="fa-solid ' + x[1] + '"></i></button>'; });
+          else a = '<button class="add" data-a="sta" title="Jadikan ruas terkelola penuh (titik STA tiap 100 m)">+ STA</button>';
+          h += '<div class="jk-r" data-i="' + ii + '"><div class="jk-rt" data-a="zoom"><i style="background:' + it.color + '"></i><div><b>' + esc(it.name) + "</b><small>No. " + esc(it.no || "-") + " · " + fmtKm(it.km) + " km</small></div>" + (r ? '<span class="jk-sta">STA</span>' : "") + '<button class="jk-sw' + (itemOn(g, it) ? " on" : "") + '" data-a="item" title="Tampil/sembunyi ruas ini"></button></div><div class="jk-ac">' + (r ? "" : "") + a + "</div></div>";
+        });
+        h += "</div>";
+      }
+      h += "</div>";
+    });
+    document.getElementById("jkList").innerHTML = h || '<small style="color:#8fa6bd">Tidak ada hasil.</small>';
+    document.getElementById("jkInfo").textContent = G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat)";
+  }
+  function onClick(e) {
+    var t = e.target.closest("[data-a]"); if (!t) return;
+    var kEl = t.closest(".jk-k"), g = kEl && G[+kEl.dataset.g], rEl = t.closest(".jk-r"), it = rEl && g && g.items[+rEl.dataset.i], a = t.dataset.a;
+    e.stopPropagation();
+    if (a === "open") { openKab[kEl.dataset.g] = !openKab[kEl.dataset.g]; return render(); }
+    if (a === "kab") { setKab(g, !kabOn(g)); return render(); }
+    if (a === "item") { setItem(g, it, !itemOn(g, it), false); return render(); }
+    if (a === "zoom") { setItem(g, it, true, true); return render(); }
+    if (a === "sta") return addSta(g, it);
+    var r = it && roadFor(g, it); if (!r) return;
+    if (typeof W[a] !== "function") return toast("Fitur belum tersedia", true);
+    try { W[a](r.id); } catch (er) { console.error(er); }
+    if (a === "deleteRoad" || a === "renameRoad") setTimeout(render, 700);
+  }
+  function mount() {
+    var body = document.querySelector("#jnPanel .body"); if (!body || document.getElementById("jnKab") || !build()) return false;
+    css();
+    var box = document.createElement("div"); box.id = "jnKab";
+    box.innerHTML = '<button class="jk-b jk-hide" id="jkHide"></button><div class="jk-bar"><b>Per Kabupaten</b><button class="jk-b" id="jkAllOff">Matikan semua</button></div><small id="jkInfo" style="color:#8fa6bd;font-size:11px"></small>' +
+      '<input id="jkQ" type="search" placeholder="Cari kabupaten / ruas / No. Link…" autocomplete="off"><div id="jkList" style="display:flex;flex-direction:column;gap:8px"></div>';
+    body.appendChild(box);
+    try { linkMap = ls(LS_LINK) || {}; } catch (e) { linkMap = {}; }
+    document.getElementById("jkHide").onclick = function () { ls(LS_HIDE, !ls(LS_HIDE)); applyTop(); };
+    document.getElementById("jkAllOff").onclick = function () { G.forEach(function (g) { setKab(g, false); }); render(); };
+    document.getElementById("jkQ").oninput = function () { filterQ = this.value; render(); };
+    document.getElementById("jkList").addEventListener("click", onClick);
+    var jb = document.getElementById("jnBtn"); if (jb) jb.addEventListener("click", function () { setTimeout(render, 50); });
+    applyTop(); render(); return true;
+  }
+  W.PQ_JNKAB = { build: build, decode: decode, render: render };
+  if (typeof document !== "undefined" && document.addEventListener) {
+    var n = 0, t = setInterval(function () { if (mount() || ++n > 40) clearInterval(t); }, 500);
+  }
+})();
