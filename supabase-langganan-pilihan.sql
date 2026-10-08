@@ -125,3 +125,27 @@ revoke all on function admin_setujui_banyak(uuid[], text, int) from public, anon
 grant execute on function admin_daftar_pengguna() to authenticated;
 grant execute on function admin_setujui(uuid, text, int) to authenticated;
 grant execute on function admin_setujui_banyak(uuid[], text, int) to authenticated;
+
+-- 5) Hapus akun: admin boleh menghapus akun AKTIF juga (p_paksa = true), dengan konfirmasi di aplikasi -------
+--    Tanpa p_paksa perilaku lama tetap: pelanggan aktif ditolak ('masih_berlangganan'). Akun admin tidak pernah bisa dihapus.
+drop function if exists admin_hapus_akun(uuid);
+create or replace function admin_hapus_akun(p_id uuid, p_paksa boolean default false)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare r profiles; em text;
+begin
+  perform admin_cek();
+  if p_id = auth.uid() then return jsonb_build_object('ok', false, 'reason', 'akun_admin'); end if;
+  select * into r from profiles where id = p_id;
+  if found and r.role = 'admin' then return jsonb_build_object('ok', false, 'reason', 'akun_admin'); end if;
+  if not coalesce(p_paksa, false) and found and r.role in ('viewer','surveyor')
+     and not (r.aktif_sampai is not null and r.aktif_sampai < hari_wib()) then
+    return jsonb_build_object('ok', false, 'reason', 'masih_berlangganan');
+  end if;
+  select email into em from auth.users where id = p_id;
+  if em is null then return jsonb_build_object('ok', false, 'reason', 'tidak_ada'); end if;
+  perform hapus_akun_inti(p_id);   -- foto proyek dipindah ke admin; riwayat pembayaran tetap tersimpan
+  insert into audit_log(road_id, action, by) values (null, 'hapus-akun:' || em || case when coalesce(p_paksa, false) then ':paksa' else '' end, auth.uid());
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function admin_hapus_akun(uuid, boolean) from public, anon;
+grant execute on function admin_hapus_akun(uuid, boolean) to authenticated;

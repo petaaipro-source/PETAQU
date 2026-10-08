@@ -355,12 +355,19 @@
       bl.onclick = function () { if (confirm("Blokir " + (r.email || "akun ini") + "? Akun akan keluar dari semua perangkat.")) act(bl, "admin_blokir", { p_id: r.id }, "Akun diblokir: " + r.email); };
       aks.appendChild(bl);
     }
-    if (group(r) !== "aktif") {
-      var tidakLangganan = group(r) === "berakhir";
+    {
+      var aktifNow = group(r) === "aktif", tidakLangganan = group(r) === "berakhir" || aktifNow;
       var hp = el("button", btnCss("transparent", "#fca5a5", "#7f1d1d"), tidakLangganan ? "Hapus akun" : "Tolak & hapus");
-      hp.title = tidakLangganan ? "Hapus akun yang sudah tidak berlangganan" : "Hapus pendaftar ini sepenuhnya (bisa mendaftar ulang)";
+      hp.title = aktifNow ? "Hapus akun aktif ini secara permanen" : tidakLangganan ? "Hapus akun yang sudah tidak berlangganan" : "Hapus pendaftar ini sepenuhnya (bisa mendaftar ulang)";
       hp.onclick = function () {
-        var msg = tidakLangganan ? "Hapus akun " + (r.email || "") + " yang langganannya berakhir " + fmtTgl(r.aktif_sampai) + "?\n\nAkun dihapus permanen. Foto proyeknya dipindah ke akun admin; riwayat pembayaran tetap tersimpan." : "Tolak & hapus " + (r.email || "akun ini") + "? Akun dihapus permanen; pemilik bisa mendaftar ulang.";
+        var nm = r.email || "akun ini";
+        if (aktifNow) {
+          if (!confirm("HAPUS AKUN AKTIF " + nm + (r.nama ? " (" + r.nama + ")" : "") + "?\n\nAkun dihapus permanen dan langsung tidak bisa masuk. Foto proyeknya dipindah ke akun admin; riwayat pembayaran tetap tersimpan.\n\nTindakan ini tidak bisa dibatalkan.")) return;
+          if (!confirm("Konfirmasi terakhir: hapus " + nm + " sekarang?")) return;
+          act(hp, "admin_hapus_akun", { p_id: r.id, p_paksa: true }, "Akun dihapus: " + nm);
+          return;
+        }
+        var msg = tidakLangganan ? "Hapus akun " + nm + " yang langganannya berakhir " + fmtTgl(r.aktif_sampai) + "?\n\nAkun dihapus permanen. Foto proyeknya dipindah ke akun admin; riwayat pembayaran tetap tersimpan." : "Tolak & hapus " + nm + "? Akun dihapus permanen; pemilik bisa mendaftar ulang.";
         if (confirm(msg)) act(hp, tidakLangganan ? "admin_hapus_akun" : "admin_hapus_pendaftar", { p_id: r.id }, (tidakLangganan ? "Akun dihapus: " : "Pendaftar dihapus: ") + r.email);
       };
       aks.appendChild(hp);
