@@ -202,13 +202,54 @@
     });
     try { W.persist(); W.renderRoadList(); } catch (e) {}
   }
+  /* buat ruas ber-STA otomatis untuk semua ruas yang belum punya (bertahap, simpan sekali) */
+  var busy = false;
+  function ensureAllSta(done) {
+    var todo = [];
+    G.forEach(function (g) { g.items.forEach(function (it) { if (!roadFor(g, it)) todo.push({ g: g, it: it }); }); });
+    if (!todo.length) return done(0);
+    if (typeof W.renderRoadLayer !== "function") return toast("Fitur ruas belum siap, coba lagi sebentar", true);
+    if (!confirm("Buat titik STA (tiap 100 m) otomatis untuk " + todo.length + " ruas yang belum ber-STA?\nProses bisa memakan waktu beberapa saat.")) return done(-1);
+    busy = true;
+    var rs = getRoads(), made = 0, i = 0, info = document.getElementById("jkInfo"), stamp = Date.now().toString(36);
+    var slug = typeof W.slugify === "function" ? W.slugify : function (v) { return String(v).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "ruas"; };
+    function step() {
+      var t0 = Date.now();
+      while (i < todo.length && Date.now() - t0 < 120) {
+        var x = todo[i++], g = x.g, it = x.it, pts = sampleSta(it);
+        if (pts.length < 2) continue;
+        var multi = G.filter(function (y) { return y.items.some(function (z) { return z.key === it.key; }); }).length > 1;
+        var nm = multi ? it.name + " (" + g.name.replace(/^Kabupaten /, "Kab. ") + ")" : it.name, pal = null;
+        try { pal = typeof PALETTE !== "undefined" ? PALETTE : null; } catch (e) {}
+        var r = { id: slug(nm) + "-" + stamp + (i % 1296).toString(36) + Math.random().toString(36).slice(2, 4), name: nm, sourceFile: "Jalan Nasional (PETAQU)", points: pts, color: pal ? pal[rs.length % pal.length] : it.color, visible: true, kabupaten: g.name, isManualDrawing: false };
+        rs.push(r); linkMap[g.ki + "|" + it.key] = r.id; made++;
+        try { W.renderRoadLayer(r); } catch (e) { console.error(e); }
+      }
+      if (info) info.textContent = "Membuat STA… " + i + " / " + todo.length;
+      if (i < todo.length) return setTimeout(step, 20);
+      ls(LS_LINK, linkMap);
+      try { W.persist(); } catch (e) { toast("Penyimpanan penuh: sebagian ruas hanya tersimpan sementara", true); }
+      try { W.renderRoadList(); if (W.updateStats) W.updateStats(); } catch (e) {}
+      busy = false; done(made);
+    }
+    step();
+  }
   function setStaAll(on) {
-    var list = staItems();
-    if (!list.length) return toast("Belum ada ruas ber-STA. Tekan \"+ STA\" pada ruas dulu.", true);
-    list.forEach(function (x) { setItem(x.g, x.it, on, false); });
-    roadVis(list, on);
-    toast((on ? "Dihidupkan: " : "Dimatikan: ") + list.length + " ruas ber-STA");
-    render();
+    if (busy) return toast("Sedang membuat STA, tunggu sebentar…", true);
+    if (!on) {
+      var l0 = staItems();
+      if (!l0.length) return toast("Belum ada ruas ber-STA", true);
+      l0.forEach(function (x) { setItem(x.g, x.it, false, false); });
+      roadVis(l0, false); toast("Dimatikan: " + l0.length + " ruas ber-STA"); return render();
+    }
+    ensureAllSta(function (made) {
+      if (made < 0) return render();
+      var list = staItems();
+      list.forEach(function (x) { setItem(x.g, x.it, true, false); });
+      roadVis(list, true);
+      toast("Dihidupkan: " + list.length + " ruas ber-STA" + (made ? " (" + made + " baru dibuat)" : ""));
+      render();
+    });
   }
   function setAllLines(on) {
     (G || []).forEach(function (g) { setKab(g, on, true); });
