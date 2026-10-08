@@ -250,13 +250,13 @@
   }
   function setAllN(on) {
     ns.off = {}; if (!on) D.forEach(function (r, i) { ns.off[i] = 1; });
-    save(); render(); try { if (typeof toast === 'function') toast(on ? 'STA Jalan Nasional Jateng-DIY: Semua ON' : 'STA Jalan Nasional Jateng-DIY: Semua OFF'); } catch (e) {}
+    save(); render(); try { if (typeof toast === 'function') toast(on ? 'STA Jalan Nasional: Semua ON' : 'STA Jalan Nasional: Semua OFF'); } catch (e) {}
   }
   function decorate() {
     var panel = $('jnPanel'), ch = $('jnChips'); if (!panel || !ch) return;
     if (!$('pqStaNBar')) {
       var bar = document.createElement('div'); bar.id = 'pqStaNBar'; bar.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0;padding:7px 9px;border:1px solid var(--line,#2a3550);border-radius:10px;background:var(--panel-2,rgba(255,255,255,.04));font:600 11px var(--mono,monospace);color:var(--text,#e5e9f5)';
-      bar.innerHTML = '<div style="flex:1 1 100%;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>📍 STA Otomatis Jateng + DIY</span><button id="pqStaNSw" style="width:34px;height:19px;border-radius:20px;border:none;cursor:pointer;position:relative;flex-shrink:0" class="on"></button></div>' +
+      bar.innerHTML = '<div style="flex:1 1 100%;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>📍 STA Otomatis</span><button id="pqStaNSw" style="width:34px;height:19px;border-radius:20px;border:none;cursor:pointer;position:relative;flex-shrink:0" class="on"></button></div>' +
         '<button class="pq-mini" data-a="on" style="padding:4px 9px;border-radius:8px;border:1px solid var(--line,#2a3550);background:transparent;color:inherit;font:700 10.5px var(--mono,monospace);cursor:pointer">Semua ON</button>' +
         '<button class="pq-mini" data-a="off" style="padding:4px 9px;border-radius:8px;border:1px solid var(--line,#2a3550);background:transparent;color:inherit;font:700 10.5px var(--mono,monospace);cursor:pointer">Semua OFF</button>' +
         '<span id="pqStaNInfo" style="color:var(--text-dim,#8a96b0);font-weight:500;font-size:10px"></span>';

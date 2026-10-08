@@ -42,7 +42,7 @@
     const out1 = pts.filter(p => !inBox(p.lat, p.lng));
     if (out1.length) {
       const swapped = out1.filter(p => inBox(p.lng, p.lat)).length;
-      add("err", "wilayah", "Koordinat di luar Jateng–DIY",
+      add("err", "wilayah", "Koordinat di luar wilayah data",
         out1.length + " titik di luar wilayah" + (swapped ? " (" + swapped + " kemungkinan lat/lng tertukar)" : "") + ".", out1[0]);
     }
     const ok = pts.filter(p => inBox(p.lat, p.lng));
@@ -105,7 +105,7 @@
       if (b.nomor) (byNo[b.nomor] = byNo[b.nomor] || []).push(b);
       if (!fin(b.lat) || !fin(b.lng)) { add("err", "koordinat", "Jembatan tanpa koordinat", "Tidak bisa tampil di peta."); return; }
       const p = { lat: +b.lat, lng: +b.lng };
-      if (!inBox(p.lat, p.lng)) { add("err", "wilayah", "Koordinat jembatan di luar Jateng–DIY", inBox(p.lng, p.lat) ? "Lat/lng kemungkinan tertukar." : "Periksa kembali koordinatnya."); return; }
+      if (!inBox(p.lat, p.lng)) { add("err", "wilayah", "Koordinat jembatan di luar wilayah data", inBox(p.lng, p.lat) ? "Lat/lng kemungkinan tertukar." : "Periksa kembali koordinatnya."); return; }
       if (fin(b.panjang) && (+b.panjang <= 0 || +b.panjang > 2000)) add("warn", "dimensi", "Panjang jembatan tidak wajar", b.panjang + " m.");
       if (fin(b.tahun) && (+b.tahun < 1800 || +b.tahun > new Date().getFullYear())) add("warn", "dimensi", "Tahun bangun tidak wajar", String(b.tahun));
       // ruas terdekat

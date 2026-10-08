@@ -118,12 +118,12 @@
     if (isR) {
       let out = 0, jump = [];
       data.forEach(r => { const p = r.points || [], o = p.filter(x => !inBB(x.lat, x.lng)).length; out += o; let j = false; for (let i = 1; i < p.length; i++) if (hav(p[i - 1], p[i]) > 3000) { jump.push(r.name); j = true; break; } if (o || j) bad++; });
-      if (out) issues.push(["warn", fmt(out) + " titik STA berada di luar wilayah Jateng–DIY — cek tanda koma/minus pada lat/lng"]);
+      if (out) issues.push(["warn", fmt(out) + " titik STA berada di luar wilayah data — cek tanda koma/minus pada lat/lng"]);
       if (jump.length) issues.push(["warn", "Loncatan >3 km antar titik STA pada " + jump.length + " ruas (" + jump.slice(0, 3).join("; ") + ") — kemungkinan salah ketik koordinat"]);
     } else {
       const nol = data.filter(b => b.lat == null || b.lng == null).length, out = data.filter(b => b.lat != null && b.lng != null && !inBB(b.lat, b.lng));
       if (nol) issues.push(["warn", nol + " jembatan tanpa koordinat — disimpan, tetapi tidak tampil di peta"]);
-      if (out.length) { issues.push(["warn", out.length + " jembatan di luar Jateng–DIY" + (clip ? " dilewati: " : ": ") + out.slice(0, 3).map(b => b.nama).join("; ")]); if (clip) data = data.filter(b => !out.includes(b)); }
+      if (out.length) { issues.push(["warn", out.length + " jembatan di luar wilayah data" + (clip ? " dilewati: " : ": ") + out.slice(0, 3).map(b => b.nama).join("; ")]); if (clip) data = data.filter(b => !out.includes(b)); }
       const seen = new Set(); let dup = 0; data.forEach(b => { const k = slug(b.nama) + "|" + (+b.lat).toFixed(4) + "|" + (+b.lng).toFixed(4); seen.has(k) ? dup++ : seen.add(k); });
       bad = nol + out.length + dup; if (dup) issues.push(["warn", dup + " baris ganda (nama & koordinat sama) dalam file ini"]);
     }
@@ -220,7 +220,7 @@
     box.innerHTML = '<div class="pqd-card"><div class="pqd-h"><b><i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Perbarui Data</b><button id="pqdX" aria-label="Tutup">×</button></div><div class="pqd-b">' +
       '<div id="pqdMem" class="pqd-it pqd-m"></div><div id="pqdDrop" class="pqd-drop"><b>Seret file Excel / CSV ke sini</b> atau <u>pilih file</u><small>Ruas jalan (kolom Ruas, STA, Latitude, Longitude) dan/atau jembatan (Nama, Latitude, Longitude). Jenis data dikenali otomatis; boleh banyak file sekaligus. Bisa juga tempel (Ctrl+V) langsung dari Excel.</small><input id="pqdFile" type="file" multiple accept=".xlsx,.xls,.csv" hidden></div>' +
       '<div class="pqd-row">Mode: <label><input type="radio" name="pqdM" value="merge" checked> Gabung (tambah &amp; perbarui)</label><label><input type="radio" name="pqdM" value="replace"> Ganti semua</label>' +
-      '<label><input type="checkbox" id="pqdClip" checked> Lewati jembatan di luar Jateng–DIY</label><label><input type="checkbox" id="pqdFix" checked> Perbaiki koordinat otomatis</label><label>Jenis: <select id="pqdKind"><option value="auto">Otomatis</option><option value="ruas">Ruas jalan</option><option value="jembatan">Jembatan</option></select></label></div>' +
+      '<label><input type="checkbox" id="pqdClip" checked> Lewati jembatan di luar wilayah data</label><label><input type="checkbox" id="pqdFix" checked> Perbaiki koordinat otomatis</label><label>Jenis: <select id="pqdKind"><option value="auto">Otomatis</option><option value="ruas">Ruas jalan</option><option value="jembatan">Jembatan</option></select></label></div>' +
       '<div id="pqdRes"></div><div class="pqd-row"><button id="pqdGo" class="pqd-btn pri" disabled>Terapkan ke peta</button><button id="pqdPv" class="pqd-btn" disabled>Lihat pratinjau di peta</button><button class="pqd-btn" data-t="ruas">Template ruas</button><button class="pqd-btn" data-t="jembatan">Template jembatan</button></div>' +
       '<details id="pqdHd"><summary>Cadangan &amp; urungkan</summary><div id="pqdHist"></div></details>' +
       '<details><summary>Simpan permanen / ekspor</summary><div style="color:#9db3c9;font-size:12px;margin-top:6px">Perubahan di atas tersimpan di perangkat ini. Agar semua pengguna ikut ter-update, unduh file .js lalu ' + (window.__pqIsAdmin ? "unggah ke GitHub (ganti file lama)." : "berikan ke admin untuk menggantikan file lama.") + '</div><div class="pqd-g">' +

@@ -106,7 +106,7 @@
 
   /* ---------- UI ---------- */
   var HTML =
-    '<header><div style="flex:1"><b>Jembatan per Kabupaten Jateng–DIY</b><small id="jbStat"></small></div>' +
+    '<header><div style="flex:1"><b>Jembatan per Kabupaten</b><small id="jbStat"></small></div>' +
     '<label class="kb-sw" title="Tampilkan / sembunyikan"><input type="checkbox" id="jbOn"><span></span></label>' +
     '<button class="x" id="jbX" aria-label="Tutup">×</button></header>' +
     '<div class="body"><div class="kb-chips" id="jbChips"></div>' +

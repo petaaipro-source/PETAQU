@@ -1,6 +1,6 @@
 /* PETAQU — Semua Ruas Semua Kabupaten di panel Ruas Jalan.
    Masalah: daftar "Ruas Jalan" hanya memuat 46 ruas (Banyumas & Cilacap), padahal data Jalan Nasional
-   Jateng–DIY di aplikasi memuat 296 ruas di 40 kabupaten/kota.
+   di aplikasi memuat 296 ruas di 40 kabupaten/kota.
    Solusi: bagian baru di bawah daftar ruas, dikelompokkan per kabupaten/kota (data yang SAMA dengan panel
    "Jalan Nasional" & "Kabupaten", tanpa menggandakan data):
      • Satu bagian "Jalan Nasional · Semua Kabupaten" — filter provinsi, urutan A–Z / terpanjang, ON/OFF semua.
@@ -355,7 +355,7 @@
     var shown = Object.keys(uniq).length;
     var filtered = !!(q || kabSel() || st.prov);
     var html = '<div class="sr-h" data-sr-open="1"><i class="fa-solid fa-road"></i><div><b>Jalan Nasional · Semua Kabupaten</b><small>' +
-      (filtered ? num(shown) + " dari " + num(TOTAL_RUAS) + " ruas · " + num(km) + " km" : num(TOTAL_RUAS) + " ruas · " + num(TOTAL_KM) + " km · " + GROUPS.length + " kab/kota Jateng–DIY") +
+      (filtered ? num(shown) + " dari " + num(TOTAL_RUAS) + " ruas · " + num(km) + " km" : num(TOTAL_RUAS) + " ruas · " + num(TOTAL_KM) + " km · " + GROUPS.length + " kab/kota") +
       '</small></div><i class="fa-solid fa-chevron-right sr-chev"></i></div><div class="sr-body">';
     html += '<div class="sr-bar">' +
       '<button type="button" class="sr-chip ' + (!st.prov ? "on" : "") + '" data-sr-prov="">Semua</button>' +
@@ -366,7 +366,7 @@
       '<button type="button" class="sr-chip ' + (st.sort === "km" ? "on" : "") + '" data-sr-sort="km">Terpanjang</button></div>';
     html += '<div class="sr-bar"><button type="button" class="sr-btn" data-sr-all="on"><i class="fa-solid fa-eye"></i> Tampilkan semua' + (filtered ? " (hasil)" : "") + '</button>' +
       '<button type="button" class="sr-btn" data-sr-all="off"><i class="fa-solid fa-eye-slash"></i> Sembunyikan</button></div>';
-    html += '<div class="sr-note">Sumber: data Jalan Nasional Jateng–DIY di PETAQU. Ruas bertanda <span class="sr-ok">STA</span> sudah punya titik STA di daftar atas. Tombol <b>+ STA</b> menjadikan ruas bisa dikelola penuh (ekspor, PDF, IRI, animasi).</div>';
+    html += '<div class="sr-note">Sumber: data Jalan Nasional di PETAQU. Ruas bertanda <span class="sr-ok">STA</span> sudah punya titik STA di daftar atas. Tombol <b>+ STA</b> menjadikan ruas bisa dikelola penuh (ekspor, PDF, IRI, animasi).</div>';
 
     if (!vg.length) html += '<div class="sr-none">Tidak ada ruas yang cocok dengan pencarian / filter.</div>';
     vg.forEach(function (x) {
@@ -443,7 +443,7 @@
     if (e) { ev.stopPropagation(); try { gmap().closePopup(); } catch (x) {} addEntries([e], e.id); }
   }, true);  /* fase capture: Leaflet menghentikan klik di dalam popup */
 
-  /* ---------- dropdown kabupaten: SEMUA kab/kota Jateng & DIY ---------- */
+  /* ---------- dropdown kabupaten: SEMUA kab/kota ---------- */
   function renderAllKabOptions() {
     var sel = $("kabupatenFilterSelect"); if (!sel) return;
     var cnt = {}, km = {}, tot = 0;
