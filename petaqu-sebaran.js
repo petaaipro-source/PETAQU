@@ -282,7 +282,10 @@
       try {
         if (map) { map.remove(); map = null; }
         map = L.map(mc, { zoomControl: true, rotate: false, rotateControl: false, attributionControl: false, minZoom: 3 }).setView([-2.5, 118], 4);
-        L.tileLayer("https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, maxNativeZoom: 16 }).addTo(map);
+        var tl = L.tileLayer("https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, maxNativeZoom: 16 }).addTo(map), gagal = 0;
+        tl.on("tileerror", function () {   // cadangan otomatis ke OpenStreetMap bila tile Esri gagal dimuat
+          if (++gagal === 4) { map.removeLayer(tl); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map); }
+        });
         mapLayer = L.layerGroup().addTo(map);
         var pts = [];
         Object.keys(kel).forEach(function (k) {
