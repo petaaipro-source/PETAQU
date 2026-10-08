@@ -1383,7 +1383,7 @@ function B(t){const e=X(t);return L.divIcon({className:"",html:`<div class="pq-p
           <button style="background:var(--panel-2); color:var(--text);" onclick="pqDownloadPhoto(${t.id})"><i class="fa-solid fa-download"></i> Unduh</button>
           <button class="pq-btn-del" onclick="pqDeletePhoto(${t.id})"><i class="fa-solid fa-trash-can"></i> Hapus Foto</button>
         </div>
-      </div>`}const PQ_GROUP_M=10;
+      </div>`}const PQ_GROUP_M=50;
 function pqTs(t){const v=t.time;if(!v)return t.id||0;const q=/^\d{4}:\d{2}:\d{2}/.test(v)?v.replace(/^(\d{4}):(\d{2}):(\d{2})/,"$1-$2-$3"):v,n=Date.parse(q);return isNaN(n)?(t.id||0):n}
 function pqDistM(a,b,c,d){const k=Math.cos((a+c)*Math.PI/360);return Math.hypot((d-b)*111320*k,(c-a)*110574)}
 function pqThr(){try{const z=map.getZoom(),c=Math.cos(map.getCenter().lat*Math.PI/180),mpp=156543.03392*c/Math.pow(2,z);return Math.max(PQ_GROUP_M,Math.min(600,mpp*66))}catch(e){return PQ_GROUP_M}}
