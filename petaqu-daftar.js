@@ -10,6 +10,12 @@
   window.__pqDaftar = 1;
 
   var ADMIN_WA = "";            // isi nomor WhatsApp admin format 62812xxxxxxx -> muncul tombol "Hubungi admin"
+  /* ===== PEMBAYARAN (isi sesuai data Anda) =====
+     tarifBulan : tarif per bulan dalam rupiah (0 = belum diisi -> nominal dikonfirmasi admin)
+     harga      : harga paket khusus per lama langganan (bulan), menimpa tarifBulan x bulan. Contoh: { 12: 1000000, 24: 1800000 }
+     bank       : daftar rekening tujuan transfer, contoh: [{ nama: "BRI", no: "1234567890", an: "Nama Pemilik Rekening" }]
+     qris       : nama file gambar QRIS (taruh di folder yang sama dengan index.html); "" = tidak dipakai */
+  var PAY = { tarifBulan: 0, harga: {}, bank: [], qris: "qris.png" };
   var PK = "pq_daftar_info";    // penanda pendaftaran yang sedang menunggu (hanya di perangkat ini)
   var $ = function (id) { return document.getElementById(id); };
   var cfg = function () { return window.PETAQU_CFG; };
@@ -111,6 +117,8 @@
   function fmtTgl(d) { return pad2(d.getDate()) + " " + BLN[d.getMonth()] + " " + d.getFullYear(); }
   function isoOf(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
   function labelPlan(m) { return m % 12 === 0 ? m / 12 + " tahun" : m + " bulan"; }
+  function totalHarga(m) { var h = PAY.harga && PAY.harga[m]; return h > 0 ? h : (PAY.tarifBulan > 0 ? PAY.tarifBulan * m : 0); }
+  function rp(n) { return "Rp " + Math.round(n).toLocaleString("id-ID"); }
   function statInfo(v) { for (var i = 0; i < STATUS.length; i++) if (STATUS[i].v === v) return STATUS[i]; return null; }
 
   /* ---------- tampilan ---------- */
@@ -121,7 +129,7 @@
     "#pqDaftar input[type=date],#pqDaftar input[type=text],#pqDaftar input[type=email],#pqDaftar input[type=tel],#pqDaftar input[type=password],#pqDaftar textarea{width:100%;box-sizing:border-box;background:var(--bg,#080b12);border:1px solid var(--line,#1e2938);color:var(--text,#e6edf5);padding:10px 11px;border-radius:9px;font:14px var(--mono,system-ui,sans-serif);outline:0}" +
     "#pqDaftar input:focus,#pqDaftar textarea:focus{border-color:var(--cyan,#22d3ee);box-shadow:0 0 0 3px #22d3ee1f}#pqDaftar input.bad{border-color:#f43f5e}#pqDaftar input.good{border-color:#34d399}" +
     "#pqDaftar .pqd-hint{font-size:11px;margin-top:4px;line-height:1.45;color:var(--text-dim,#7c8aa0);min-height:14px}#pqDaftar .pqd-hint.err{color:#f87171}#pqDaftar .pqd-hint.ok{color:#34d399}" +
-    "#pqDaftar .pqd-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:9px;border:0;font:700 14px var(--mono,system-ui,sans-serif);cursor:pointer;margin-top:14px;background:linear-gradient(135deg,var(--cyan-dim,#0e7490),var(--blue,#3b82f6));color:#fff}" +
+    "#pqDaftar .pqd-btn{width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:9px;border:0;font:700 14px var(--mono,system-ui,sans-serif);cursor:pointer;margin-top:14px;background:linear-gradient(135deg,var(--cyan-dim,#0e7490),var(--blue,#3b82f6));color:#fff}" +
     "#pqDaftar .pqd-btn:disabled{opacity:.45;cursor:not-allowed}#pqDaftar .pqd-btn.sec{background:transparent;border:1px solid var(--line,#1e2938);color:var(--text,#e6edf5);margin-top:8px}" +
     "#pqDaftar .pqd-x{position:absolute;top:10px;right:12px;background:0;border:0;color:var(--text-dim,#7c8aa0);font-size:20px;cursor:pointer;padding:4px 8px}" +
     "#pqDaftar .pqd-pill{display:flex;align-items:center;gap:7px;font-size:11px;padding:7px 10px;border-radius:9px;border:1px solid var(--line,#1e2938);margin-bottom:6px;background:#ffffff08}" +
@@ -131,6 +139,10 @@
     "#pqDaftar .pqd-seg{display:grid;grid-template-columns:1fr 1fr;gap:7px}#pqDaftar .pqd-opt{display:flex;align-items:center;gap:8px;padding:10px;border-radius:10px;border:1px solid var(--line,#1e2938);background:#ffffff06;color:var(--text,#e6edf5);font:600 12px var(--mono,system-ui,sans-serif);cursor:pointer;text-align:left;line-height:1.3}#pqDaftar .pqd-opt i{color:var(--text-dim,#7c8aa0);font-size:15px;width:18px;text-align:center}#pqDaftar .pqd-opt.on{border-color:var(--cyan,#22d3ee);background:#22d3ee14;box-shadow:0 0 0 2px #22d3ee22}#pqDaftar .pqd-opt.on i{color:var(--cyan,#22d3ee)}" +
     "#pqDaftar .pqd-plans{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}#pqDaftar .pqd-plan{position:relative;padding:10px 4px 8px;border-radius:10px;border:1px solid var(--line,#1e2938);background:#ffffff06;color:var(--text,#e6edf5);font:700 13px var(--mono,system-ui,sans-serif);cursor:pointer;text-align:center;line-height:1.25}#pqDaftar .pqd-plan small{display:block;font-weight:400;font-size:10px;color:var(--text-dim,#7c8aa0);margin-top:2px;text-transform:none;letter-spacing:0}#pqDaftar .pqd-plan.on{border-color:var(--cyan,#22d3ee);background:#22d3ee14;box-shadow:0 0 0 2px #22d3ee22}#pqDaftar .pqd-plan em{position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#22d3ee;color:#04202a;font:800 9px var(--mono,system-ui,sans-serif);font-style:normal;padding:1px 7px;border-radius:8px;white-space:nowrap}" +
     "#pqDaftar .pqd-range{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;padding:10px 12px;border-radius:10px;border:1px solid #22d3ee44;background:#22d3ee0d;font-size:12px;line-height:1.4}#pqDaftar .pqd-range b{display:block;font-size:13px;color:var(--text,#e6edf5)}#pqDaftar .pqd-range span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim,#7c8aa0)}#pqDaftar .pqd-range .ar{color:var(--cyan,#22d3ee);font-size:16px}" +
+    "#pqDaftar .pqd-total{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:10px;background:#34d3991a;border:1px solid #34d39966;font-size:12px}#pqDaftar .pqd-total b{font-size:16px;color:#34d399}#pqDaftar .pqd-total small{display:block;font-size:10px;color:var(--text-dim,#7c8aa0)}" +
+    "#pqDaftar .pqd-pay{margin:12px 0 4px;padding:12px;border:1px solid var(--line,#1e2938);border-radius:12px;background:#ffffff06}#pqDaftar .pqd-pay h4{margin:0 0 8px;font-size:13px;color:var(--cyan,#22d3ee);letter-spacing:.5px}" +
+    "#pqDaftar .pqd-qris{text-align:center;margin:10px 0}#pqDaftar .pqd-qris a{display:inline-block;background:#fff;border-radius:12px;padding:8px}#pqDaftar .pqd-qris img{display:block;width:210px;max-width:100%;height:auto}#pqDaftar .pqd-qris small{display:block;margin-top:6px;font-size:11px;color:var(--text-dim,#7c8aa0)}" +
+    "#pqDaftar .pqd-bank{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:9px;border:1px solid var(--line,#1e2938);margin-top:6px;font-size:12px;line-height:1.4}#pqDaftar .pqd-bank b{display:block;font-size:13px;letter-spacing:.5px}#pqDaftar .pqd-bank span{color:var(--text-dim,#7c8aa0)}#pqDaftar .pqd-copy{flex:none;border:1px solid #22d3ee66;background:transparent;color:var(--cyan,#22d3ee);border-radius:8px;padding:6px 10px;font:700 11px var(--mono,system-ui,sans-serif);cursor:pointer}" +
     "#pqDaftar .pqd-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:0;border:0;color:var(--text-dim,#7c8aa0);cursor:pointer;padding:6px}" +
     "#pqDaftar .pqd-step{display:flex;gap:10px;align-items:flex-start;margin:9px 0;font-size:12.5px;line-height:1.5}#pqDaftar .pqd-step b{flex:none;width:22px;height:22px;border-radius:50%;background:#22d3ee22;border:1px solid #22d3ee66;color:#22d3ee;display:flex;align-items:center;justify-content:center;font-size:11px}" +
     "#pqDaftarEntry button.pqd-open{width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px;border-radius:9px;border:1px dashed var(--cyan-dim,#0e7490);background:transparent;color:var(--cyan,#22d3ee);font:700 13.5px var(--mono,system-ui,sans-serif);cursor:pointer}" +
@@ -143,6 +155,11 @@
     var ov = el("div"); ov.id = "pqDaftar"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true");
     box = el("div"); box.className = "pqd-box"; ov.appendChild(box);
     ov.addEventListener("mousedown", function (e) { if (e.target === ov) tutup(); });
+    ov.addEventListener("click", function (e) {
+      var c = e.target.closest && e.target.closest(".pqd-copy"); if (!c) return;
+      var v = c.getAttribute("data-copy"), ok = function () { c.textContent = "Tersalin ✓"; setTimeout(function () { c.textContent = "Salin"; }, 1800); };
+      try { navigator.clipboard.writeText(v).then(ok, function () { window.prompt("Salin nomor:", v); }); } catch (x) { window.prompt("Salin nomor:", v); }
+    });
     document.body.appendChild(ov);
   }
   function tutup() { var o = $("pqDaftar"); if (o) o.classList.remove("show"); }
@@ -169,10 +186,11 @@
       '<label for="pqdPw">Password</label><div style="position:relative"><input type="password" id="pqdPw" autocomplete="new-password" maxlength="72" placeholder="Minimal 8 karakter" style="padding-right:40px"><button type="button" class="pqd-eye" id="pqdEye" aria-label="Lihat password"><i class="fa-solid fa-eye"></i></button></div><div class="pqd-bar" id="pqdBar"><i></i><i></i><i></i><i></i></div><div class="pqd-hint" id="hPw"></div>' +
       '<label for="pqdPw2">Ulangi password</label><input type="password" id="pqdPw2" autocomplete="new-password" maxlength="72" placeholder="Ketik ulang password"><div class="pqd-hint" id="hPw2"></div>' +
       '<label>Lama langganan</label><div class="pqd-plans" id="pqdPlans" role="radiogroup" aria-label="Lama langganan">' +
-      PLANS.map(function (o) { return '<button type="button" class="pqd-plan" role="radio" aria-checked="false" data-m="' + o.m + '">' + (o.tag ? '<em>' + o.tag + '</em>' : '') + o.t + '<small>' + o.s + '</small></button>'; }).join("") + '</div>' +
+      PLANS.map(function (o) { return '<button type="button" class="pqd-plan" role="radio" aria-checked="false" data-m="' + o.m + '">' + (o.tag ? '<em>' + o.tag + '</em>' : '') + o.t + '<small>' + (totalHarga(o.m) ? rp(totalHarga(o.m)) : o.s) + '</small></button>'; }).join("") + '</div>' +
       '<label for="pqdMulai">Mulai tanggal</label><input type="date" id="pqdMulai" min="' + isoTgl(0) + '" max="' + isoTgl(60) + '" value="' + isoTgl(0) + '"><div class="pqd-hint" id="hMulai"></div>' +
       '<div class="pqd-range" id="pqdRange"></div>' +
-      '<div class="pqd-hint" style="margin-top:6px">Tarif &amp; pembayaran dikonfirmasi admin via WhatsApp. Masa aktif dihitung dari tanggal mulai di atas.</div>' +
+      '<div id="pqdTotal" style="margin-top:8px"></div>' +
+      '<div class="pqd-hint" style="margin-top:6px">' + (PAY.tarifBulan > 0 || Object.keys(PAY.harga || {}).length ? "Pembayaran lewat transfer bank atau QRIS setelah pendaftaran terkirim." : "Tarif &amp; cara bayar (transfer / QRIS) dikonfirmasi setelah pendaftaran terkirim.") + " Masa aktif dihitung dari tanggal mulai di atas." + '</div>' +
       '<label for="pqdTuj">Keperluan akses <small>(opsional)</small></label><textarea id="pqdTuj" rows="2" maxlength="160" placeholder="mis. surveyor ruas Cilacap, pengawas paket…"></textarea>' +
       '<input type="text" id="pqdWeb" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">' +
       '<label class="pqd-chk" for="pqdOk"><input type="checkbox" id="pqdOk"> <span>Saya mengerti akun baru aktif setelah disetujui admin dan data di atas benar.</span></label>' +
@@ -199,6 +217,7 @@
       if (tM && plan) { var akh = tambahBulan(mulaiD, plan), hr = Math.round((akh - mulaiD) / 864e5); rg.style.display = "flex"; rg.innerHTML = '<div><span>Mulai</span><b>' + fmtTgl(mulaiD) + '</b></div><i class=\"fa-solid fa-arrow-right ar\"></i><div style=\"text-align:right\"><span>Sampai dengan</span><b>' + fmtTgl(akh) + '</b></div>'; rg.title = labelPlan(plan) + " · " + hr + " hari"; }
       else { rg.style.display = "none"; rg.innerHTML = ""; }
     }
+    var tt = $("pqdTotal"); if (tt) tt.innerHTML = plan && totalHarga(plan) ? '<div class="pqd-total"><span>Total pembayaran</span><b>' + rp(totalHarga(plan)) + '</b></div>' : "";
     if (hp) { mark("pqdHp", hpN ? "good" : "bad"); hint("hHp", hpN ? "Dipakai sebagai +" + hpN : "Nomor tidak valid. Contoh: 081234567890", hpN ? "ok" : "err"); } else hint("hHp", "");
     if (em) {
       mark("pqdEmail", tE ? "good" : "bad");
@@ -290,7 +309,7 @@
       var u = j.user || j;
       if (u && Array.isArray(u.identities) && u.identities.length === 0) return sudahAda(d.em);   // GoTrue menyamarkan email yang sudah ada
       if (j.access_token) { fetch(c.url + "/auth/v1/logout?scope=local", { method: "POST", headers: { apikey: c.anon, Authorization: "Bearer " + j.access_token } }).catch(function () { }); }   // belum disetujui: jangan simpan sesi
-      var info = { em: d.em, nama: d.nama, ts: Date.now(), konfirmasi: !j.access_token };
+      var info = { em: d.em, nama: d.nama, ts: Date.now(), konfirmasi: !j.access_token, statT: statInfo(d.stat).t, inst: d.inst, plan: d.plan, mulai: fmtTgl(d.mulai), sampai: fmtTgl(d.sampai), total: totalHarga(d.plan) };
       lsSet(PK, info);
       sukses(info, d);
       renderEntry();
@@ -308,21 +327,45 @@
     pesan("Email sudah terdaftar.");
   }
 
-  function waLink(info, d) {
+  function waLink(info) {
     if (!ADMIN_WA) return "";
-    var t = "Halo Admin PETAQU, saya baru mendaftar.\nNama: " + info.nama + "\nStatus: " + (d && d.stat ? statInfo(d.stat).t : "-") + (d && d.inst ? " (" + d.inst + ")" : "") + "\nLangganan: " + (d && d.plan ? labelPlan(d.plan) + ", " + fmtTgl(d.mulai) + " s/d " + fmtTgl(d.sampai) : "-") + "\nEmail: " + info.em + "\nMohon disetujui. Terima kasih.";
+    var t = "Halo Admin PETAQU, saya baru mendaftar.\nNama: " + info.nama + "\nStatus: " + (info.statT || "-") + (info.inst ? " (" + info.inst + ")" : "") +
+      "\nLangganan: " + (info.plan ? labelPlan(info.plan) + ", " + info.mulai + " s/d " + info.sampai : "-") + (info.total ? "\nTotal: " + rp(info.total) : "") +
+      "\nEmail: " + info.em + "\nSaya sudah bayar via transfer/QRIS, bukti terlampir. Mohon disetujui. Terima kasih.";
     return "https://wa.me/" + ADMIN_WA + "?text=" + encodeURIComponent(t);
   }
 
+  function payHtml(info) {
+    var tot = info.total, lines = [];
+    lines.push('<div class="pqd-pay"><h4><i class="fa-solid fa-wallet"></i> Pembayaran</h4>');
+    lines.push(tot ? '<div class="pqd-total"><span>Total' + (info.plan ? '<small>' + labelPlan(info.plan) + ' · ' + esc(info.mulai) + ' s/d ' + esc(info.sampai) + '</small>' : "") + '</span><b>' + rp(tot) + '</b></div>' : '<div class="pqd-hint">Nominal dikonfirmasi admin lewat WhatsApp.</div>');
+    if (PAY.qris) lines.push('<div class="pqd-qris"><a href="' + esc(PAY.qris) + '" target="_blank" rel="noopener" title="Ketuk untuk memperbesar / menyimpan"><img src="' + esc(PAY.qris) + '" alt="QRIS" onerror="this.parentNode.parentNode.style.display=\'none\'"></a><small>Scan QRIS dengan m-banking / e-wallet apa pun</small></div>');
+    (PAY.bank || []).forEach(function (b) {
+      lines.push('<div class="pqd-bank"><div><b>' + esc(b.nama) + ' · ' + esc(b.no) + '</b><span>a.n. ' + esc(b.an || "") + '</span></div><button type="button" class="pqd-copy" data-copy="' + esc(String(b.no).replace(/\s/g, "")) + '">Salin</button></div>');
+    });
+    lines.push('<div class="pqd-hint" style="margin-top:8px">Setelah membayar, kirim <b>bukti transfer / QRIS</b> ke admin lewat WhatsApp agar akun cepat diaktifkan.</div></div>');
+    return lines.join("");
+  }
+  function bukaBayar(info) {
+    build();
+    var wa = waLink(info);
+    box.innerHTML = '<button class="pqd-x" type="button" id="pqdX3" aria-label="Tutup">×</button><h3><i class="fa-solid fa-wallet"></i> Cara Bayar</h3><p class="pqd-sub">' + esc(mask(info.em)) + '</p>' + payHtml(info) +
+      (wa ? '<a class="pqd-btn" style="text-decoration:none;background:#16a34a" target="_blank" rel="noopener" href="' + wa + '"><i class="fa-brands fa-whatsapp"></i> Kirim bukti bayar via WhatsApp</a>' : "") +
+      '<button type="button" class="pqd-btn sec" id="pqdDone3">Tutup</button>';
+    $("pqDaftar").classList.add("show");
+    $("pqdX3").onclick = tutup; $("pqdDone3").onclick = tutup;
+  }
+
   function sukses(info, d) {
-    var wa = waLink(info, d);
+    var wa = waLink(info);
     box.innerHTML = '<button class="pqd-x" type="button" id="pqdX2" aria-label="Tutup">×</button>' +
       '<div style="text-align:center;margin:4px 0 10px"><div style="width:58px;height:58px;margin:0 auto 10px;border-radius:50%;background:#34d39922;border:1px solid #34d39988;display:flex;align-items:center;justify-content:center;font-size:24px;color:#34d399"><i class="fa-solid fa-check"></i></div>' +
       "<h3>Pendaftaran terkirim</h3><p class=\"pqd-sub\" style=\"margin:4px 0 0\">" + esc(mask(info.em)) + "</p></div>" +
       (info.konfirmasi ? '<div class="pqd-step"><b>1</b><div><b style="all:unset;font-weight:700">Konfirmasi email.</b> Buka email dari PETAQU lalu ketuk tautannya (cek folder Spam).</div></div>' : "") +
-      '<div class="pqd-step"><b>' + (info.konfirmasi ? "2" : "1") + '</b><div><b style="all:unset;font-weight:700">Menunggu admin.</b> Admin meninjau data Anda. Kabari admin lewat WhatsApp agar lebih cepat.</div></div>' +
-      '<div class="pqd-step"><b>' + (info.konfirmasi ? "3" : "2") + '</b><div><b style="all:unset;font-weight:700">Masuk.</b> Setelah disetujui, masuk lewat <i>Masuk dengan email / username</i> memakai email &amp; password tadi.</div></div>' +
-      (wa ? '<a class="pqd-btn" style="text-decoration:none;background:#16a34a" target="_blank" rel="noopener" href="' + wa + '"><i class="fa-brands fa-whatsapp"></i> Hubungi admin via WhatsApp</a>' : "") +
+      '<div class="pqd-step"><b>' + (info.konfirmasi ? "2" : "1") + '</b><div><b style="all:unset;font-weight:700">Bayar & kirim bukti.</b> Transfer atau scan QRIS di bawah, lalu kirim buktinya ke admin.</div></div>' +
+      '<div class="pqd-step"><b>' + (info.konfirmasi ? "3" : "2") + '</b><div><b style="all:unset;font-weight:700">Admin mengaktifkan.</b> Setelah pembayaran dicek dan akun disetujui, masuk lewat <i>Masuk dengan email / username</i>.</div></div>' +
+      payHtml(info) +
+      (wa ? '<a class="pqd-btn" style="text-decoration:none;background:#16a34a" target="_blank" rel="noopener" href="' + wa + '"><i class="fa-brands fa-whatsapp"></i> Kirim bukti bayar via WhatsApp</a>' : "") +
       (info.konfirmasi ? '<button type="button" class="pqd-btn sec" id="pqdResend"><i class="fa-solid fa-envelope"></i> <span>Kirim ulang email konfirmasi</span></button><div class="pqd-hint" id="pqdResendMsg" style="text-align:center"></div>' : "") +
       '<button type="button" class="pqd-btn sec" id="pqdDone">Kembali ke Login</button>';
     $("pqdX2").onclick = tutup; $("pqdDone").onclick = tutup;
@@ -346,10 +389,11 @@
     var w = $("pqDaftarEntry"); if (!w) return;
     var info = lsGet(PK), wait = "";
     if (info && info.em && Date.now() - info.ts < 30 * 864e5) {
-      wait = '<div class="pqd-wait"><i class="fa-solid fa-hourglass-half"></i> Pendaftaran <b>' + esc(mask(info.em)) + '</b> menunggu persetujuan admin. Setelah disetujui, masuk dengan email + password. <a id="pqdClear">Hapus pengingat</a></div>';
+      wait = '<div class="pqd-wait"><i class="fa-solid fa-hourglass-half"></i> Pendaftaran <b>' + esc(mask(info.em)) + '</b> menunggu persetujuan admin. Setelah disetujui, masuk dengan email + password. ' + (info.plan ? '<a id="pqdPay">Lihat cara bayar</a> · ' : "") + '<a id="pqdClear">Hapus pengingat</a></div>';
     }
     w.innerHTML = wait + '<button type="button" class="pqd-open" id="pqdOpen"><i class="fa-solid fa-user-plus"></i><span>Daftar Akun Baru</span></button>';
     $("pqdOpen").onclick = bukaForm;
+    var py = $("pqdPay"); if (py) py.onclick = function () { bukaBayar(info); };
     var cl = $("pqdClear"); if (cl) cl.onclick = function () { try { localStorage.removeItem(PK); } catch (e) { /* abaikan */ } renderEntry(); };
   }
   function inject() {
