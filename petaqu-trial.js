@@ -259,6 +259,14 @@
     var did = deviceId();
     try {
       var d = await rpc("claim_trial_g", { p_device: did, p_fp: await fingerprint() }, tok);
+      if (d && d.ok && window.__pqInfoPerangkat) {   /* riwayat admin: info perangkat + perkiraan kota (tanpa IP). Opsional, maks 2 dtk, kegagalan diabaikan */
+        try {
+          await Promise.race([
+            window.__pqInfoPerangkat().then(function (inf) { return rpc("catat_info_trial", { p_device: did, p_info: inf }, tok); }),
+            new Promise(function (res) { setTimeout(res, 2000); })
+          ]);
+        } catch (e) { /* abaikan */ }
+      }
       signOut(tok);
       if (!d || !d.ok) {
         if (d && d.reason === "expired") { save({ did: did, email: email, end: 0, used: DUR, done: true }); lockButton("Uji coba telah berakhir"); return formMsg("Uji coba perangkat ini sudah berakhir."); }
@@ -294,6 +302,7 @@
       '</div>';
     g.parentNode.insertBefore(w, g.nextSibling);
     $("pqTrialBtn").addEventListener("click", function () { var f = $("pqTrialForm"); f.style.display = f.style.display === "none" ? "" : "none"; });
+    $("pqTrialBtn").addEventListener("click", function () { try { window.__pqInfoPerangkat && window.__pqInfoPerangkat().catch(function () { }); } catch (e) { /* abaikan */ } }, { once: true });   /* siapkan lokasi (cache) sebelum pindah ke Google */
     $("pqTrialGo").addEventListener("click", keGoogle);
     g.addEventListener("click", function () { lsDel(FLAG); }, true);   /* login Google biasa tidak boleh dianggap uji coba */
     if (usedBefore()) lockButton();
