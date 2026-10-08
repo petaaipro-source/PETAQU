@@ -247,6 +247,7 @@
       } catch (e) { add(false, "Membaca tabel profiles", (e.msg || e.code || "gagal") + (e.status ? " (" + e.status + ")" : "")); }
       try {
         var d = await rpc("admin_daftar_pengguna");
+        rows = d; lastErr = null; render();   // perbarui jumlah tab & daftar di balik hasil diagnosa
         add(true, "Fungsi admin_daftar_pengguna", d.length + " pengguna terbaca" + (d.length && !("skor" in d[0]) ? " (versi lama — jalankan supabase-pendaftaran.sql)" : ""));
       } catch (e) { add(false, "Fungsi admin_daftar_pengguna", e.code === "nosql" ? "Belum ada — jalankan supabase-akses-admin.sql lalu supabase-pendaftaran.sql" : (e.msg || e.code || "gagal") + (e.status ? " (" + e.status + ")" : "")); }
       try { await rpc("admin_daftar_domain"); add(true, "Fungsi domain resmi & setujui banyak", "Terpasang"); }
@@ -262,7 +263,7 @@
       row.appendChild(t); box.appendChild(row);
     });
     var tut = el("button", btnCss("transparent", "#e6f1ff", "#ffffff40") + ";align-self:flex-start;margin-top:4px", "Tutup hasil");
-    tut.onclick = function () { diag = null; render(); }; box.appendChild(tut);
+    tut.onclick = function () { diag = null; render(); refresh(true); }; box.appendChild(tut);
   }
 
   function openPanel() {
