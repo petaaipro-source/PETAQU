@@ -305,9 +305,11 @@
     var judul = r.nama ? r.nama : (r.email || r.id);
     info.appendChild(el("div", "font-weight:700;overflow-wrap:anywhere", judul));
     if (r.nama && r.email) info.appendChild(el("div", "font-size:12px;color:#cbd5e1;overflow-wrap:anywhere", r.email + (r.email_terkonfirmasi === false ? " (email belum dikonfirmasi)" : "")));
-    var sub = [r.instansi, r.hp ? "+" + r.hp : ""].filter(Boolean).join(" · ");
+    var STX = { instansi: "Instansi pemerintah", perusahaan: "Perusahaan / konsultan", pelajar: "Pelajar / mahasiswa", umum: "Perorangan / lainnya" };
+    var sub = [r.status_pendaftar && STX[r.status_pendaftar], r.instansi && r.instansi !== STX[r.status_pendaftar] ? r.instansi : "", r.hp ? "+" + r.hp : ""].filter(Boolean).join(" · ");
     if (sub) info.appendChild(el("div", "font-size:12px;color:#cbd5e1;overflow-wrap:anywhere", sub));
     if (r.tujuan) info.appendChild(el("div", "margin-top:3px;font-size:11.5px;color:#94a3b8;font-style:italic;overflow-wrap:anywhere", "“" + r.tujuan + "”"));
+    if (r.paket_bulan && group(r) === "tunggu") info.appendChild(el("div", "margin-top:3px;font-size:11.5px;color:#67e8f9", "Minta langganan: " + (r.paket_bulan % 12 === 0 ? r.paket_bulan / 12 + " tahun" : r.paket_bulan + " bulan") + (r.mulai_tanggal ? ", mulai " + fmtTgl(r.mulai_tanggal) : "")));
     var chip = el("span", "display:inline-block;margin-right:8px;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid " + st[1] + ";color:" + st[1], st[0]);
     var meta = el("div", "margin-top:4px;font-size:11px;color:#94a3b8");
     meta.appendChild(chip);
@@ -329,7 +331,8 @@
     var dur = null;
     if (lgOk && group(r) === "tunggu") {
       dur = el("select", "background:#0f1521;color:#e6f1ff;border:1px solid #ffffff30;border-radius:8px;padding:6px");
-      [["", "Tanpa batas waktu"], ["1", "Aktif 1 bulan"], ["3", "Aktif 3 bulan"], ["6", "Aktif 6 bulan"], ["12", "Aktif 12 bulan"]].forEach(function (o) { var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; dur.appendChild(op); });
+      [["", "Tanpa batas waktu"], ["1", "Aktif 1 bulan"], ["3", "Aktif 3 bulan"], ["6", "Aktif 6 bulan"], ["12", "Aktif 1 tahun"], ["24", "Aktif 2 tahun"], ["36", "Aktif 3 tahun"]].forEach(function (o) { var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; if (r.paket_bulan && String(r.paket_bulan) === o[0]) op.selected = true; dur.appendChild(op); });
+      if (r.paket_bulan && [1, 3, 6, 12, 24, 36].indexOf(+r.paket_bulan) < 0) { var ox = document.createElement("option"); ox.value = String(r.paket_bulan); ox.textContent = "Aktif " + r.paket_bulan + " bulan (diminta)"; ox.selected = true; dur.appendChild(ox); }
       dur.title = "Masa aktif langganan sejak disetujui";
     }
     var ok = el("button", btnCss("#16a34a", "#fff"), r.role === "viewer" || r.role === "surveyor" ? "Simpan peran" : "Setujui");
