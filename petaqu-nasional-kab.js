@@ -123,11 +123,13 @@
     render();
   }
   var ACT = [
-    ["staEdit", "fa-arrow-right-arrow-left", "Atur / tukar STA awal–akhir, kalibrasi lapangan"], ["renameRoad", "fa-pen", "Ganti nama ruas"], ["playRouteAnimation", "fa-play", "Putar animasi rute"],
-    ["openDashcamUpload", "fa-video", "Sinkron video dashcam"], ["openIriAnalysis", "fa-chart-simple", "Analisis IRI"],
-    ["reIntervalRoad", "fa-ruler-combined", "Edit interval STA"], ["autoFillRoadKm", "fa-calculator", "Hitung otomatis KM"],
-    ["quickRoadPdf", "fa-file-pdf", "Unduh PDF ruas"], ["openExportModal", "fa-share-nodes", "Ekspor ruas"], ["deleteRoad", "fa-trash", "Hapus ruas"]
+    ["staEdit", "⇄ STA", "Atur / tukar STA awal–akhir, kalibrasi lapangan"], ["renameRoad", "✎ Nama", "Ganti nama ruas"],
+    ["playRouteAnimation", "▶ Animasi", "Putar animasi rute"], ["openDashcamUpload", "🎥 Video", "Sinkron video dashcam"],
+    ["openIriAnalysis", "📊 IRI", "Analisis IRI"], ["reIntervalRoad", "📏 Interval", "Edit interval STA"],
+    ["autoFillRoadKm", "🧮 KM", "Hitung otomatis KM"], ["quickRoadPdf", "📄 PDF", "Unduh PDF ruas"],
+    ["openExportModal", "⤴ Ekspor", "Ekspor ruas"], ["deleteRoad", "🗑 Hapus", "Hapus ruas"]
   ];
+  var BST = "display:inline-flex!important;visibility:visible!important;opacity:1!important;align-items:center;height:28px;padding:0 9px;margin:0;border-radius:8px;border:1px solid #2b3a52;background:#0b1220;color:#cfe0f0;font-size:11px;font-weight:600;cursor:pointer;width:auto!important;pointer-events:auto!important";
 
 
   /* ---------- Editor STA: tukar awal/akhir, ubah nilai, kalibrasi patok lapangan ---------- */
@@ -224,9 +226,9 @@
         h += '<div class="jk-l">';
         items.forEach(function (it) {
           var ii = g.items.indexOf(it), r = roadFor(g, it), a = "";
-          if (r) ACT.forEach(function (x) { a += '<button data-a="' + x[0] + '" title="' + x[2] + '"><i class="fa-solid ' + x[1] + '"></i></button>'; });
-          else a = '<button class="add" data-a="sta" title="Jadikan ruas terkelola penuh (titik STA tiap 100 m)">+ STA</button>';
-          h += '<div class="jk-r" data-i="' + ii + '"><div class="jk-rt" data-a="zoom"><i style="background:' + it.color + '"></i><div><b>' + esc(it.name) + "</b><small>No. " + esc(it.no || "-") + " · " + fmtKm(it.km) + " km</small></div>" + (r ? '<span class="jk-sta">STA</span>' : "") + '<button class="jk-sw' + (itemOn(g, it) ? " on" : "") + '" data-a="item" title="Tampil/sembunyi ruas ini"></button></div><div class="jk-ac">' + (r ? "" : "") + a + "</div></div>";
+          if (r) ACT.forEach(function (x) { a += '<button type="button" data-a="' + x[0] + '" title="' + x[2] + '" style="' + BST + (x[0] === "deleteRoad" ? ";color:#fb7185;border-color:#fb718566" : "") + '">' + x[1] + "</button>"; });
+          else a = '<button type="button" class="add" style="' + BST + ';color:#34d399;border-color:#34d39966" data-a="sta" title="Jadikan ruas terkelola penuh (titik STA tiap 100 m)">+ STA</button>';
+          h += '<div class="jk-r" data-i="' + ii + '"><div class="jk-rt" data-a="zoom"><i style="background:' + it.color + '"></i><div><b>' + esc(it.name) + "</b><small>No. " + esc(it.no || "-") + " · " + fmtKm(it.km) + " km</small></div>" + (r ? '<span class="jk-sta">STA</span>' : "") + '<button class="jk-sw' + (itemOn(g, it) ? " on" : "") + '" data-a="item" title="Tampil/sembunyi ruas ini"></button></div><div class="jk-ac" style="display:flex!important;flex-wrap:wrap;gap:5px;margin-top:7px">' + (r ? "" : "") + a + "</div></div>";
         });
         h += "</div>";
       }
@@ -246,8 +248,10 @@
     if (a === "sta") return addSta(g, it);
     var r = it && roadFor(g, it); if (!r) return;
     if (a === "staEdit") return openSta(r.id);
-    if (typeof W[a] !== "function") return toast("Fitur belum tersedia", true);
-    try { W[a](r.id); } catch (er) { console.error(er); }
+    var fn = typeof W[a] === "function" ? W[a] : null;
+    if (!fn) { try { fn = (0, eval)("typeof " + a + "==='function'?" + a + ":null"); } catch (er) {} }
+    if (!fn) return toast("Fitur " + a + " belum tersedia di versi ini", true);
+    try { fn(r.id); } catch (er) { console.error(er); toast("Gagal membuka fitur: " + (er && er.message), true); }
     if (a === "deleteRoad" || a === "renameRoad") setTimeout(render, 700);
   }
   function mount() {
