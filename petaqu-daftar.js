@@ -15,7 +15,7 @@
      harga      : harga paket khusus per lama langganan (bulan), menimpa tarifBulan x bulan. Contoh: { 12: 1000000, 24: 1800000 }
      bank       : daftar rekening tujuan transfer, contoh: [{ nama: "BRI", no: "1234567890", an: "Nama Pemilik Rekening" }]
      qris       : nama file gambar QRIS (taruh di folder yang sama dengan index.html); "" = tidak dipakai */
-  var PAY = { tarifBulan: 0, harga: {}, bank: [], qris: "qris.png" };
+  var PAY = { tarifBulan: 0, harga: {}, bank: [], qris: "qris.png", qrisNama: "PETAQU-E, DIGITAL & KREATIF" };
   var PK = "pq_daftar_info";    // penanda pendaftaran yang sedang menunggu (hanya di perangkat ini)
   var $ = function (id) { return document.getElementById(id); };
   var cfg = function () { return window.PETAQU_CFG; };
@@ -339,7 +339,7 @@
     var tot = info.total, lines = [];
     lines.push('<div class="pqd-pay"><h4><i class="fa-solid fa-wallet"></i> Pembayaran</h4>');
     lines.push(tot ? '<div class="pqd-total"><span>Total' + (info.plan ? '<small>' + labelPlan(info.plan) + ' · ' + esc(info.mulai) + ' s/d ' + esc(info.sampai) + '</small>' : "") + '</span><b>' + rp(tot) + '</b></div>' : '<div class="pqd-hint">Nominal dikonfirmasi admin lewat WhatsApp.</div>');
-    if (PAY.qris) lines.push('<div class="pqd-qris"><a href="' + esc(PAY.qris) + '" target="_blank" rel="noopener" title="Ketuk untuk memperbesar / menyimpan"><img src="' + esc(PAY.qris) + '" alt="QRIS" onerror="this.parentNode.parentNode.style.display=\'none\'"></a><small>Scan QRIS dengan m-banking / e-wallet apa pun</small></div>');
+    if (PAY.qris) lines.push('<div class="pqd-qris"><a href="' + esc(PAY.qris) + '" target="_blank" rel="noopener" title="Ketuk untuk memperbesar / menyimpan"><img src="' + esc(PAY.qris) + '" alt="QRIS" onerror="this.parentNode.parentNode.style.display=\'none\'"></a><small>Scan dengan m-banking / e-wallet apa pun · a.n. <b>' + esc(PAY.qrisNama || "PETAQU") + '</b>' + (tot ? '<br>Isi nominal manual: <b>' + rp(tot) + '</b>' : '') + '</small></div>');
     (PAY.bank || []).forEach(function (b) {
       lines.push('<div class="pqd-bank"><div><b>' + esc(b.nama) + ' · ' + esc(b.no) + '</b><span>a.n. ' + esc(b.an || "") + '</span></div><button type="button" class="pqd-copy" data-copy="' + esc(String(b.no).replace(/\s/g, "")) + '">Salin</button></div>');
     });
