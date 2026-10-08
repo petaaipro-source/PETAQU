@@ -281,8 +281,8 @@
     setTimeout(function () {
       try {
         if (map) { map.remove(); map = null; }
-        map = L.map(mc, { zoomControl: true, rotate: false, attributionControl: false, minZoom: 3 }).setView([-2.5, 118], 4);
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 18, subdomains: "abcd" }).addTo(map);
+        map = L.map(mc, { zoomControl: true, rotate: false, rotateControl: false, attributionControl: false, minZoom: 3 }).setView([-2.5, 118], 4);
+        L.tileLayer("https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, maxNativeZoom: 16 }).addTo(map);
         mapLayer = L.layerGroup().addTo(map);
         var pts = [];
         Object.keys(kel).forEach(function (k) {
@@ -290,7 +290,7 @@
           L.circleMarker(ll, { radius: Math.min(26, 8 + g.n * 3), color: g.on ? "#34d399" : "#22d3ee", weight: 2, fillColor: g.on ? "#34d399" : "#22d3ee", fillOpacity: .35 })
             .bindTooltip((g.l.kota || g.l.provinsi || "Lokasi") + " · " + g.n + " pengguna" + (g.on ? " (" + g.on + " online)" : "")).addTo(mapLayer);
         });
-        if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(.3), { maxZoom: 9 });
+        if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(.3), { maxZoom: 10 });
         map.invalidateSize();
       } catch (e) { mc.textContent = "Peta tidak dapat dimuat."; }
     }, 60);
