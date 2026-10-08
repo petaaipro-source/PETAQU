@@ -9,8 +9,8 @@
    ========================================================================== */
 (function () {
   "use strict";
-  var BB = { w: 108.45, s: -8.40, e: 111.80, n: -5.65 };
-  var STATE_OK = /jawa tengah|central java|yogyakarta/i;
+  var BB = { w: 94.9, s: -11.2, e: 141.1, n: 6.2 }; /* seluruh Indonesia */
+  var STATE_OK = /./; /* semua provinsi */
   var HIST_KEY = "petaqu_cari_riwayat_v1";
   var cache = {}, ctrl = null, timer = null, lastNom = 0, seq = 0;
   var items = [], lastAll = [], lastQ = "", filter = "all", active = -1, pin = null, rec = null;
@@ -247,7 +247,7 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     var chain = full ? nominatim(q, sig).then(function (r) { return r.length ? r : photon(q, sig); }, function () { return photon(q, sig); }) : photon(q, sig).catch(function () { return nominatim(q, sig); });
     chain.then(function (r) {
       if (my !== seq) return; cache[key] = r; lastAll = dedupe(base.concat(r));
-      if (!lastAll.length) { status('<i class="fa-solid fa-magnifying-glass-location"></i> Tidak ada hasil di Jawa Tengah &amp; DIY untuk “' + esc(q) + '”.' + (full ? "" : " Tekan Enter untuk pencarian lebih luas.")); dd.insertAdjacentHTML("beforeend", footer(q)); return; }
+      if (!lastAll.length) { status('<i class="fa-solid fa-magnifying-glass-location"></i> Tidak ada hasil di Indonesia untuk “' + esc(q) + '”.' + (full ? "" : " Tekan Enter untuk pencarian lebih luas.")); dd.insertAdjacentHTML("beforeend", footer(q)); return; }
       draw(); if (full && lastAll.length === 1) pick(lastAll[0]);
     }).catch(function (e) {
       if (my !== seq || (e && e.name === "AbortError" && !full) || base.length) return;
@@ -277,7 +277,7 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
       if (!navigator.geolocation) return status("Perangkat tidak mendukung GPS.");
       navigator.geolocation.getCurrentPosition(function (p) {
         var la = p.coords.latitude, ln = p.coords.longitude;
-        if (!inBox(la, ln)) { status('<i class="fa-solid fa-location-pin-lock"></i> Lokasi Anda di luar Jawa Tengah &amp; DIY.'); return; }
+        if (!inBox(la, ln)) { status('<i class="fa-solid fa-location-pin-lock"></i> Lokasi Anda di luar Indonesia.'); return; }
         if (window.PQ_WILAYAH) PQ_WILAYAH.nearest(la, ln); else pick({ kind: "coord", main: "Lokasi saya", sub: "Posisi GPS perangkat", lat: la, lng: ln }, true);
       }, function () { status('<i class="fa-solid fa-triangle-exclamation"></i> Izin lokasi ditolak.'); open(); }, { enableHighAccuracy: true, timeout: 10000 });
     }

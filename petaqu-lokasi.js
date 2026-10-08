@@ -73,6 +73,10 @@
       return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return a.label.localeCompare(b.label, "id", { numeric: true }); });
     }
     cat.prov = tally(function (i) { return i.prov; }, function (i) { return i.prov; });
+    // 38 provinsi Indonesia (tetap tampil di filter walau belum ada data)
+    var SEMUA_PROV = ["Aceh","Sumatera Utara","Sumatera Barat","Riau","Kepulauan Riau","Jambi","Sumatera Selatan","Kepulauan Bangka Belitung","Bengkulu","Lampung","DKI Jakarta","Banten","Jawa Barat","Jawa Tengah","DI Yogyakarta","Jawa Timur","Bali","Nusa Tenggara Barat","Nusa Tenggara Timur","Kalimantan Barat","Kalimantan Tengah","Kalimantan Selatan","Kalimantan Timur","Kalimantan Utara","Sulawesi Utara","Gorontalo","Sulawesi Tengah","Sulawesi Barat","Sulawesi Selatan","Sulawesi Tenggara","Maluku","Maluku Utara","Papua","Papua Barat","Papua Barat Daya","Papua Selatan","Papua Tengah","Papua Pegunungan"];
+    SEMUA_PROV.forEach(function (nm) { if (!cat.prov.some(function (c) { return c.key === nm; })) cat.prov.push({ key: nm, label: nm, n: 0, prov: nm }); });
+    cat.prov.sort(function (a, b) { return a.label.localeCompare(b.label, "id", { numeric: true }); });
     cat.kab = tally(function (i) { return i.kab; }, function (i) { return i.kab; });
     apply();
   }
