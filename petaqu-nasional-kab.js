@@ -292,12 +292,17 @@
     topEls().forEach(function (e) { e.classList.toggle("jn-hid", h); });
     if (btn) btn.innerHTML = h ? '<i class="fa-solid fa-eye"></i> Tampilkan data di atas' : '<i class="fa-solid fa-eye-slash"></i> Sembunyikan data di atas';
   }
+  var provOpen = {};
+  var PROV_ALL = ["Aceh","Sumatera Utara","Sumatera Barat","Riau","Kepulauan Riau","Jambi","Sumatera Selatan","Kepulauan Bangka Belitung","Bengkulu","Lampung","DKI Jakarta","Banten","Jawa Barat","Jawa Tengah","DI Yogyakarta","Jawa Timur","Bali","Nusa Tenggara Barat","Nusa Tenggara Timur","Kalimantan Barat","Kalimantan Tengah","Kalimantan Selatan","Kalimantan Timur","Kalimantan Utara","Sulawesi Utara","Gorontalo","Sulawesi Tengah","Sulawesi Barat","Sulawesi Selatan","Sulawesi Tenggara","Maluku","Maluku Utara","Papua","Papua Barat","Papua Barat Daya","Papua Selatan","Papua Tengah","Papua Pegunungan"];
+  var DIY_K = { "Kulon Progo": 1, Bantul: 1, Gunungkidul: 1, Sleman: 1, "Kota Yogyakarta": 1, Yogyakarta: 1 };
+  function provOf(g) { return (g.prov) || (DIY_K[g.n] ? "DI Yogyakarta" : "Jawa Tengah"); }
   function render() {
     var box = document.getElementById("jnKab"); if (!box || !G) return;
-    var q = filterQ.trim().toLowerCase(), h = "", shown = 0;
+    var q = filterQ.trim().toLowerCase(), h = "", shown = 0, B = {};
     G.forEach(function (g, gi) {
       var items = g.items.filter(function (it) { return !q || g.name.toLowerCase().indexOf(q) >= 0 || it.name.toLowerCase().indexOf(q) >= 0 || String(it.no).indexOf(q) >= 0; });
       if (!items.length) return; shown++;
+      var h0 = h; h = "";
       var o = openKab[gi] || !!q, on = kabOn(g);
       h += '<div class="jk-k' + (o ? " o" : "") + '" data-g="' + gi + '"><div class="jk-h" data-a="open"><i class="fa-solid fa-chevron-right"></i><div><b>' + esc(g.name) + "</b><small>" + g.items.length + " ruas · " + fmtKm(g.km) + ' km</small></div><button class="jk-sw' + (on ? " on" : "") + '" data-a="kab" title="Tampilkan semua ruas di peta"></button></div>';
       if (o) {
@@ -311,14 +316,24 @@
         h += "</div>";
       }
       h += "</div>";
+      var pv = provOf(g); (B[pv] = B[pv] || []).push(h); h = h0;
+    });
+    /* pengelompokan per provinsi (38 provinsi; yang belum ada datanya ditandai) */
+    var done = {}, order = Object.keys(B).sort().concat(PROV_ALL.filter(function (n) { return !B[n]; }).sort());
+    order.forEach(function (nm) {
+      var has = !!B[nm]; if (!has && q && nm.toLowerCase().indexOf(q) < 0) return;
+      var op = q ? true : (provOpen[nm] === undefined ? has : provOpen[nm]), cnt = has ? B[nm].length : 0;
+      h += '<div class="jk-p" data-a="prov" data-p="' + esc(nm) + '" style="display:flex;align-items:center;gap:8px;margin:10px 0 6px;padding:8px 10px;border-radius:10px;background:' + (has ? "#12304a" : "#141b29") + ';border:1px solid ' + (has ? "#38bdf866" : "#2b3a52") + ';cursor:pointer;color:' + (has ? "#e6f1fb" : "#8fa6bd") + '"><i class="fa-solid fa-chevron-' + (op ? "down" : "right") + '" style="font-size:11px"></i><b style="flex:1;font-size:12.5px">' + esc(nm) + '</b><small>' + (has ? cnt + " kab/kota" : "belum ada data") + "</small></div>";
+      if (op) h += has ? B[nm].join("") : '<small style="display:block;color:#8fa6bd;padding:2px 6px 8px">Data jalan nasional provinsi ini belum dimasukkan.</small>';
     });
     document.getElementById("jkList").innerHTML = h || '<small style="color:#8fa6bd">Tidak ada hasil.</small>';
-    document.getElementById("jkInfo").textContent = G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat) · " + staItems().length + " ber-STA";
+    document.getElementById("jkInfo").textContent = PROV_ALL.length + " provinsi (2 berisi data) · " + G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat) · " + staItems().length + " ber-STA";
   }
   function onClick(e) {
     var t = e.target.closest("[data-a]"); if (!t) return;
     var kEl = t.closest(".jk-k"), g = kEl && G[+kEl.dataset.g], rEl = t.closest(".jk-r"), it = rEl && g && g.items[+rEl.dataset.i], a = t.dataset.a;
     e.stopPropagation();
+    if (a === "prov") { var pn = t.dataset.p, cur = provOpen[pn]; if (cur === undefined) cur = G.some(function (x) { return provOf(x) === pn; }); provOpen[pn] = !cur; return render(); }
     if (a === "open") { openKab[kEl.dataset.g] = !openKab[kEl.dataset.g]; return render(); }
     if (a === "kab") { setKab(g, !kabOn(g)); return render(); }
     if (a === "item") { setItem(g, it, !itemOn(g, it), false); return render(); }
