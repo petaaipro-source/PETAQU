@@ -185,6 +185,29 @@
     show();
   }
 
+  /* ---------- Hidupkan / matikan semua ruas ber-STA ---------- */
+  function staItems() {
+    var out = [], seen = {};
+    (G || []).forEach(function (g) { g.items.forEach(function (it) { var r = roadFor(g, it); if (r) out.push({ g: g, it: it, r: r }); }); });
+    return out.filter(function (x) { var k = x.g.ki + "|" + x.it.key; if (seen[k]) return false; seen[k] = 1; return true; });
+  }
+  function setStaAll(on) {
+    var list = staItems();
+    if (!list.length) return toast("Belum ada ruas ber-STA. Tekan \"+ STA\" pada ruas dulu.", true);
+    var m = getMap(), ml = null;
+    try { ml = typeof layers !== "undefined" ? layers : W.layers; } catch (e) {}
+    list.forEach(function (x) {
+      setItem(x.g, x.it, on, false);
+      if (x.r.visible !== on) {
+        x.r.visible = on;
+        var l = ml && ml[x.r.id]; if (l && l.group && m) { if (on) { if (!m.hasLayer(l.group)) l.group.addTo(m); } else m.removeLayer(l.group); }
+      }
+    });
+    try { W.persist(); W.renderRoadList(); } catch (e) {}
+    toast((on ? "Dihidupkan: " : "Dimatikan: ") + list.length + " ruas ber-STA");
+    render();
+  }
+
   /* ---------- UI ---------- */
   function css() {
     if (document.getElementById("jnkab-css")) return;
@@ -202,7 +225,10 @@
       ".jk-rt i{width:9px;height:9px;border-radius:50%;flex:none}.jk-rt div{flex:1;min-width:0}.jk-rt b{display:block;font-size:11.5px;color:#dbe9f7;line-height:1.3}.jk-rt small{font-size:10.5px;color:#8fa6bd}" +
       ".jk-sta{font-size:9.5px;font-weight:800;color:#34d399;border:1px solid #34d39966;border-radius:6px;padding:1px 5px}" +
       ".jk-ac{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.jk-ac button{width:30px;height:28px;border-radius:8px;border:1px solid rgba(148,178,204,.25);background:#0b1220;color:#cfe0f0;cursor:pointer;font-size:12px}.jk-ac button.add{width:auto;padding:0 10px;font-weight:700;color:#34d399;border-color:#34d39966}" +
-      ".jk-hide{width:100%;margin:2px 0}.jn-hid{display:none!important}";
+      ".jk-hide{width:100%;margin:2px 0}.jn-hid{display:none!important}" +
+      "#jkSticky{position:sticky;top:0;z-index:20;display:flex;flex-direction:column;gap:8px;background:#0a0e17;padding:8px 0 8px;margin:0;box-shadow:0 6px 8px -6px rgba(0,0,0,.7)}" +
+      ".jk-sta2{display:grid;grid-template-columns:1fr 1fr;gap:6px}.jk-sta2 .jk-b{padding:7px 6px;font-weight:700;text-align:center}" +
+      ".jk-on{color:#34d399;border-color:#34d39988}.jk-off{color:#fb7185;border-color:#fb718588}.jk-b:hover{filter:brightness(1.25)}";
     document.head.appendChild(s);
   }
   function topEls() {
@@ -235,7 +261,7 @@
       h += "</div>";
     });
     document.getElementById("jkList").innerHTML = h || '<small style="color:#8fa6bd">Tidak ada hasil.</small>';
-    document.getElementById("jkInfo").textContent = G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat)";
+    document.getElementById("jkInfo").textContent = G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat) · " + staItems().length + " ber-STA";
   }
   function onClick(e) {
     var t = e.target.closest("[data-a]"); if (!t) return;
@@ -258,12 +284,17 @@
     var body = document.querySelector("#jnPanel .body"); if (!body || document.getElementById("jnKab") || !build()) return false;
     css();
     var box = document.createElement("div"); box.id = "jnKab";
-    box.innerHTML = '<button class="jk-b jk-hide" id="jkHide"></button><div class="jk-bar"><b>Per Kabupaten</b><button class="jk-b" id="jkAllOff">Matikan semua</button></div><small id="jkInfo" style="color:#8fa6bd;font-size:11px"></small>' +
-      '<input id="jkQ" type="search" placeholder="Cari kabupaten / ruas / No. Link…" autocomplete="off"><div id="jkList" style="display:flex;flex-direction:column;gap:8px"></div>';
+    box.innerHTML = '<button class="jk-b jk-hide" id="jkHide"></button>' +
+      '<div id="jkSticky"><div class="jk-bar"><b>Per Kabupaten</b><button class="jk-b" id="jkAllOff" title="Matikan semua ruas di peta">Matikan semua</button></div>' +
+      '<div class="jk-sta2"><button class="jk-b jk-on" id="jkStaOn" title="Tampilkan semua ruas yang sudah ber-STA">Hidupkan semua STA</button><button class="jk-b jk-off" id="jkStaOff" title="Sembunyikan semua ruas yang sudah ber-STA">Matikan semua STA</button></div>' +
+      '<small id="jkInfo" style="color:#8fa6bd;font-size:11px"></small>' +
+      '<input id="jkQ" type="search" placeholder="Cari kabupaten / ruas / No. Link…" autocomplete="off"></div><div id="jkList" style="display:flex;flex-direction:column;gap:8px"></div>';
     body.appendChild(box);
     try { linkMap = ls(LS_LINK) || {}; } catch (e) { linkMap = {}; }
     document.getElementById("jkHide").onclick = function () { ls(LS_HIDE, !ls(LS_HIDE)); applyTop(); };
     document.getElementById("jkAllOff").onclick = function () { G.forEach(function (g) { setKab(g, false); }); render(); };
+    document.getElementById("jkStaOn").onclick = function () { setStaAll(true); };
+    document.getElementById("jkStaOff").onclick = function () { setStaAll(false); };
     document.getElementById("jkQ").oninput = function () { filterQ = this.value; render(); };
     document.getElementById("jkList").addEventListener("click", onClick);
     var jb = document.getElementById("jnBtn"); if (jb) jb.addEventListener("click", function () { setTimeout(render, 50); });
