@@ -302,10 +302,25 @@
     renderEntry();
     return true;
   }
+  /* ---------- pemberitahuan di perangkat pendaftar: akun sudah disetujui ---------- */
+  function kabarSetuju() {
+    try {
+      var info = lsGet(PK), s = JSON.parse(localStorage.getItem("pq_cloud_session") || "null");
+      if (!info || !info.em || !s || !s.email) return;
+      if (String(s.email).toLowerCase() !== String(info.em).toLowerCase()) return;   // hanya untuk akun yang tadi mendaftar di perangkat ini
+      localStorage.removeItem(PK);
+      setTimeout(function () {
+        try { if (typeof window.toast === "function") window.toast("✓ Akun Anda telah disetujui admin. Selamat datang di PETAQU!"); } catch (e) { /* abaikan */ }
+        try { if ("Notification" in window && Notification.permission === "granted") new Notification("PETAQU", { body: "Akun Anda telah disetujui admin. Selamat datang!", icon: "icon-192.png" }); } catch (e) { /* abaikan */ }
+      }, 1800);
+    } catch (e) { /* abaikan */ }
+  }
+
   function boot() {
     var n = 0, iv = setInterval(function () { n++; if ((inject() && $("pqLoginAlt")) || n > 60) clearInterval(iv); }, 250);
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") tutup(); });
     window.addEventListener("pq-login", tutup);
+    window.addEventListener("pq-login", kabarSetuju);
   }
   window.PQ_DAFTAR = { buka: bukaForm, status: function () { return serverSettings(true); } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();

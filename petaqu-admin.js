@@ -8,7 +8,7 @@
   if (window.__pqAdmin) return;
   window.__pqAdmin = 1;
 
-  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null;
+  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null, notice = null;
   var $ = function (id) { return document.getElementById(id); };
   function sess() { try { return JSON.parse(localStorage.getItem(SK)); } catch (e) { return null; } }
   function cfg() { return window.PETAQU_CFG; }
@@ -93,6 +93,35 @@
     panel.addEventListener("click", function (e) { if (e.target === panel) panel.style.display = "none"; });
     document.body.appendChild(panel);
   }
+  /* ---------- pemberitahuan "akun disetujui" ke pendaftar ---------- */
+  function pesanSetuju(r) {
+    return "Halo " + (r.nama || "") + ", kabar baik! Akun PETAQU Anda (" + (r.email || "") + ") sudah DISETUJUI admin. " +
+      "Silakan buka " + location.origin + " lalu masuk dengan email & password yang Anda daftarkan. Terima kasih.";
+  }
+  function waSetuju(r) { return r.hp ? "https://wa.me/" + r.hp + "?text=" + encodeURIComponent(pesanSetuju(r)) : ""; }
+  function salin(txt, b) {
+    var ok = function () { var t = b.textContent; b.textContent = "Tersalin ✓"; setTimeout(function () { b.textContent = t; }, 1600); };
+    try { navigator.clipboard.writeText(txt).then(ok, function () { T("Gagal menyalin", true); }); } catch (e) { T("Gagal menyalin", true); }
+  }
+  function noticeBox() {
+    var c = el("div", "padding:10px 12px;border:1px solid #34d39966;border-radius:10px;background:#052e1c;line-height:1.5");
+    var jml = notice.rows.length;
+    var h = el("div", "display:flex;align-items:center;gap:8px");
+    h.appendChild(el("b", "flex:1;color:#6ee7b7", "✓ " + (jml === 1 ? "Akses disetujui" : jml + " akun disetujui") + " — beri tahu pendaftar:"));
+    var x = el("button", "background:transparent;border:0;color:#a7f3d0;font-size:18px;cursor:pointer;padding:0 4px", "×");
+    x.onclick = function () { notice = null; renderList(); }; h.appendChild(x); c.appendChild(h);
+    notice.rows.forEach(function (r) {
+      var row = el("div", "display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px");
+      row.appendChild(el("span", "flex:1 1 180px;min-width:0;overflow-wrap:anywhere", r.nama || r.email));
+      var w = waSetuju(r);
+      if (w) { var a = el("a", btnCss("#16a34a", "#fff") + ";text-decoration:none", "Kabari via WhatsApp"); a.href = w; a.target = "_blank"; a.rel = "noopener"; row.appendChild(a); }
+      var cp = el("button", btnCss("transparent", "#e6f1ff", "#ffffff40"), "Salin pesan"); cp.onclick = function () { salin(pesanSetuju(r), cp); }; row.appendChild(cp);
+      if (!w) row.appendChild(el("span", "font-size:11px;color:#94a3b8", "(tanpa nomor WhatsApp)"));
+      c.appendChild(row);
+    });
+    return c;
+  }
+
   function group(r) { return r.role === "pending" || r.role === "trial" ? "tunggu" : r.role === "blocked" ? "blok" : "aktif"; }
   function cocok(r) {
     if (!q) return true;
@@ -125,7 +154,7 @@
       var bk = el("button", btnCss("#16a34a", "#fff"), "Setujui " + saran.length + " yang disarankan");
       bk.onclick = function () {
         if (!confirm("Setujui " + saran.length + " akun dengan skor tinggi sebagai “Lihat saja”?\n\n" + saran.map(function (r) { return "• " + (r.nama || r.email); }).join("\n"))) return;
-        act(bk, "admin_setujui_banyak", { p_ids: saran.map(function (r) { return r.id; }), p_role: "viewer" }, saran.length + " akun disetujui");
+        act(bk, "admin_setujui_banyak", { p_ids: saran.map(function (r) { return r.id; }), p_role: "viewer" }, saran.length + " akun disetujui", saran);
       };
       tools.appendChild(bk);
     }
@@ -135,6 +164,7 @@
     var list = $("pqAdminList"); list.textContent = "";
     if (diag) { list.appendChild(diag); return; }
     if (lastErr && !rows.length) { list.appendChild(errCard(lastErr)); return; }
+    if (notice) list.appendChild(noticeBox());
     var sh = rows.filter(function (r) { return group(r) === tab && cocok(r); });
     if (!sh.length) list.appendChild(el("div", "color:#94a3b8;padding:18px 4px;text-align:center", q ? "Tidak ada yang cocok dengan pencarian." : tab === "tunggu" ? "Tidak ada akun yang menunggu persetujuan." : "Tidak ada data."));
     sh.forEach(function (r) { list.appendChild(card(r)); });
@@ -181,9 +211,10 @@
       if (o[0] === r.role) op.selected = true; sel.appendChild(op);
     });
     var ok = el("button", btnCss("#16a34a", "#fff"), r.role === "viewer" || r.role === "surveyor" ? "Simpan peran" : "Setujui");
-    ok.onclick = function () { act(ok, "admin_setujui", { p_id: r.id, p_role: sel.value }, "Akses disetujui: " + (r.nama || r.email)); };
+    ok.onclick = function () { act(ok, "admin_setujui", { p_id: r.id, p_role: sel.value }, "Akses disetujui: " + (r.nama || r.email), r.role === "pending" || r.role === "trial" ? [r] : null); };
     aks.append(sel, ok);
     var wa = r.hp ? "https://wa.me/" + r.hp + "?text=" + encodeURIComponent("Halo " + (r.nama || "") + ", ini admin PETAQU terkait pendaftaran akun Anda.") : "";
+    if (r.hp && group(r) === "aktif" && r.role !== "admin") { var a2 = el("a", btnCss("transparent", "#4ade80", "#4ade80") + ";text-decoration:none", "Kabari disetujui"); a2.href = waSetuju(r); a2.target = "_blank"; a2.rel = "noopener"; a2.title = "Kirim pesan WhatsApp: akun sudah disetujui"; aks.appendChild(a2); }
     if (wa && group(r) === "tunggu") { var a = el("a", btnCss("transparent", "#4ade80", "#4ade80") + ";text-decoration:none", "WhatsApp"); a.href = wa; a.target = "_blank"; a.rel = "noopener"; aks.appendChild(a); }
     if (r.role !== "blocked") {
       var bl = el("button", btnCss("transparent", "#f87171", "#f87171"), "Blokir");
@@ -199,11 +230,11 @@
     c.appendChild(aks);
     return c;
   }
-  async function act(b, fn, body, okMsg) {
+  async function act(b, fn, body, okMsg, who) {
     b.disabled = true; b.style.opacity = ".6";
     try {
       var d = await rpc(fn, body);
-      if (d && d.ok) { T(okMsg); await refresh(); }
+      if (d && d.ok) { T(okMsg); if (who && who.length) notice = { rows: who }; tab = who && who.length ? "aktif" : tab; await refresh(); }
       else { T("Ditolak server: " + ((d && d.reason) || "tidak diketahui"), true); b.disabled = false; b.style.opacity = ""; }
     } catch (e) { fail(e); b.disabled = false; b.style.opacity = ""; }
   }
@@ -267,7 +298,7 @@
   }
 
   function openPanel() {
-    build(); panel.style.display = "flex"; diag = null; render(); refresh();
+    build(); panel.style.display = "flex"; diag = null; notice = null; render(); refresh();
     try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission(); } catch (e) { /* abaikan */ }
   }
 
