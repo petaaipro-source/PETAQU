@@ -21,9 +21,10 @@ async function validasi(){   // sesi palsu / dicabut / akun belum disetujui admi
     if(u.status===401||u.status===403||u.status===404){hapus();location.reload();return}
     if(!u.ok)return;
     const id=(await u.json()).id;
-    const r=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(id),{headers:H});
-    if(!r.ok)return;const w=await r.json();
-    if(!w[0]||!PERAN_OK.includes(w[0].role)){hapus();location.reload()}   // izin dicabut / belum disetujui / profil hilang -> keluar
+    const w0=await profil(s.access_token,id);if(w0===undefined)return;
+    const pr=efek(w0);
+    if(!PERAN_OK.includes(pr)){try{sessionStorage.setItem("pq_kick",pesanTolak(pr))}catch{}hapus();location.reload();return}   // izin dicabut / langganan berakhir / belum disetujui / profil hilang -> keluar
+    ingatkan(w0)
   }catch{}
 }
 async function segarkan(){await perpanjang();await validasi()}
@@ -34,16 +35,31 @@ function mulaiSegarkan(){   // izin dicabut admin berlaku <=2 menit, atau seketi
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&localStorage.getItem(KEY)==="1")segarkan()});
 }
 const PERAN_OK=["admin","surveyor","viewer"];
+const hariIni=()=>new Date(Date.now()+7*36e5).toISOString().slice(0,10);   // tanggal WIB
+const efek=w=>!w?null:(["viewer","surveyor"].includes(w.role)&&w.aktif_sampai&&String(w.aktif_sampai).slice(0,10)<hariIni())?"expired":w.role;   // langganan lewat = 'expired' (database juga menolak lewat my_role())
+async function profil(tok,uid){   // {role,aktif_sampai}; bila kolom langganan belum dipasang, jatuh ke role saja
+  const H={apikey:CFG.anon,Authorization:"Bearer "+tok};
+  let r=await fetch(CFG.url+"/rest/v1/profiles?select=role,aktif_sampai&id=eq."+encodeURIComponent(uid),{headers:H});
+  if(!r.ok)r=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(uid),{headers:H});
+  if(!r.ok)return undefined;const w=await r.json();return w[0]||null}
+function ingatkan(w){   // pengguna: pesan sekali sehari bila masa aktif tinggal <=7 hari
+  try{if(!w||!w.aktif_sampai||!["viewer","surveyor"].includes(w.role))return;
+    const d=Math.round((Date.parse(String(w.aktif_sampai).slice(0,10))-Date.parse(hariIni()))/864e5);
+    if(d<0||d>7||localStorage.getItem("pq_exp_warn")===hariIni())return;
+    localStorage.setItem("pq_exp_warn",hariIni());
+    typeof window.toast==="function"&&window.toast(d===0?"Masa aktif akun berakhir HARI INI. Hubungi admin untuk perpanjang.":"Masa aktif akun tinggal "+d+" hari. Hubungi admin untuk perpanjang.")}catch{}}
 async function peranNama(tok,uid){   // nama peran dari server; null bila profil tidak ada / gagal cek
   try{if(!tok||!uid)return null;
-    const r=await fetch(CFG.url+"/rest/v1/profiles?select=role&id=eq."+encodeURIComponent(uid),{headers:{apikey:CFG.anon,Authorization:"Bearer "+tok}});
-    if(!r.ok)return null;const w=await r.json();return w[0]?w[0].role:null}catch{return null}
+    const w=await profil(tok,uid);if(!w)return null;
+    if(PERAN_OK.includes(efek(w)))ingatkan(w);
+    return efek(w)}catch{return null}
 }
 const peranOk=async(tok,uid)=>PERAN_OK.includes(await peranNama(tok,uid));   // true hanya untuk admin/surveyor/viewer. Gagal cek apa pun = DITOLAK (fail-closed)
 const PESAN_TOLAK={
   pending:"Akun kamu sudah terdaftar tetapi MASIH MENUNGGU PERSETUJUAN ADMIN. Kamu bisa masuk setelah admin mengizinkan.",
   trial:"Masa uji coba gratis telah berakhir. Hubungi admin untuk akses penuh.",
   blocked:"Akun ini diblokir oleh admin. Hubungi admin.",
+  expired:"Masa aktif langganan akun ini sudah BERAKHIR. Hubungi admin untuk perpanjang, lalu masuk kembali.",
   none:"Akun ini belum terdaftar. Hubungi admin untuk mendapatkan akses."};
 const pesanTolak=r=>PESAN_TOLAK[r]||PESAN_TOLAK.none;
 async function periksaMasuk(tok,uid){   // {ok} bila diizinkan; bila tidak, sesi dibuang & pesan sesuai status akun
@@ -59,6 +75,7 @@ function pesan(m,ok){const e=$("loginError"),c=$("loginCard");e.querySelector("s
 window.PQ_AUTH_INIT=function(){
   const scr=$("loginScreen"),form=$("loginForm"),em=$("loginUser"),otpF=$("loginOtpField"),otp=$("loginOtp"),btn=$("loginBtn"),rs=$("loginResend");
   let tahap=1,cd=0,tm=null;
+  try{const kk=sessionStorage.getItem("pq_kick");if(kk){sessionStorage.removeItem("pq_kick");setTimeout(()=>pesan(kk),0)}}catch{}
   // --- Login Google: tangkap token yang dikembalikan Supabase lewat URL ---
   const h=new URLSearchParams(location.hash.slice(1)),q=new URLSearchParams(location.search);
   const galatUrl=h.get("error_description")||q.get("error_description");

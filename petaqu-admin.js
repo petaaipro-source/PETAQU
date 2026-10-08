@@ -8,7 +8,7 @@
   if (window.__pqAdmin) return;
   window.__pqAdmin = 1;
 
-  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null, notice = null;
+  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null, notice = null, lgOk = true, edOpen = {};
   var $ = function (id) { return document.getElementById(id); };
   function sess() { try { return JSON.parse(localStorage.getItem(SK)); } catch (e) { return null; } }
   function cfg() { return window.PETAQU_CFG; }
@@ -122,22 +122,122 @@
     return c;
   }
 
-  function group(r) { return r.role === "pending" || r.role === "trial" ? "tunggu" : r.role === "blocked" ? "blok" : "aktif"; }
+  /* ---------- langganan: masa aktif & jatuh tempo ---------- */
+  var BLN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  function hariIni() { return new Date(Date.now() + 7 * 36e5).toISOString().slice(0, 10); }   // tanggal WIB
+  function selisih(t) { return t ? Math.round((Date.parse(String(t).slice(0, 10)) - Date.parse(hariIni())) / 864e5) : null; }   // hari dari hari ini (negatif = sudah lewat)
+  function fmtTgl(t) { if (!t) return "—"; var p = String(t).slice(0, 10).split("-"); return +p[2] + " " + BLN[+p[1] - 1] + " " + p[0]; }
+  function rupiah(n) { return n == null ? "—" : "Rp " + Number(n).toLocaleString("id-ID"); }
+  function pelanggan(r) { return r.role === "viewer" || r.role === "surveyor"; }
+  function berakhir(r) { return pelanggan(r) && !!r.aktif_sampai && selisih(r.aktif_sampai) < 0; }
+  function segera(r) { var d = selisih(r.aktif_sampai); return pelanggan(r) && d != null && d >= 0 && d <= 7; }
+  function telatBayar(r) { var d = selisih(r.jatuh_tempo); return pelanggan(r) && !berakhir(r) && d != null && d < 0; }
+  function chipLg(txt, warna) { return el("span", "display:inline-block;margin:4px 6px 0 0;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid " + warna + "88;color:" + warna, txt); }
+  function infoLangganan(r) {
+    var w = el("div", "display:flex;flex-wrap:wrap"), d = selisih(r.aktif_sampai);
+    if (!r.aktif_sampai) w.appendChild(chipLg("Masa aktif: tanpa batas", "#94a3b8"));
+    else if (d < 0) w.appendChild(chipLg("Berakhir " + fmtTgl(r.aktif_sampai) + " · " + (-d) + " hari lalu", "#f87171"));
+    else w.appendChild(chipLg("Aktif s/d " + fmtTgl(r.aktif_sampai) + " · " + (d === 0 ? "berakhir hari ini" : d + " hari lagi"), d <= 7 ? "#fb923c" : d <= 30 ? "#fbbf24" : "#34d399"));
+    if (r.jatuh_tempo) {
+      var j = selisih(r.jatuh_tempo);
+      w.appendChild(chipLg("Jatuh tempo bayar " + fmtTgl(r.jatuh_tempo) + (j < 0 ? " · telat " + (-j) + " hari" : j === 0 ? " · hari ini" : " · " + j + " hari lagi"), j < 0 ? "#f87171" : j <= 7 ? "#fbbf24" : "#94a3b8"));
+    }
+    if (r.paket || r.tarif != null) w.appendChild(chipLg([r.paket, r.tarif != null ? rupiah(r.tarif) + "/bln" : ""].filter(Boolean).join(" · "), "#94a3b8"));
+    if (r.terakhir_bayar) w.appendChild(chipLg("Bayar terakhir " + fmtTgl(r.terakhir_bayar), "#94a3b8"));
+    return w;
+  }
+  function pesanTagihan(r) {
+    var d = selisih(r.aktif_sampai), j = r.jatuh_tempo ? fmtTgl(r.jatuh_tempo) : null;
+    return "Halo " + (r.nama || "") + ", ini admin PETAQU. " +
+      (d != null && d < 0 ? "Masa aktif akun Anda (" + (r.email || "") + ") sudah berakhir pada " + fmtTgl(r.aktif_sampai) + ". Akses ditutup sampai ada perpanjangan."
+        : "Masa aktif akun Anda (" + (r.email || "") + ") " + (d === 0 ? "berakhir hari ini" : "berakhir " + fmtTgl(r.aktif_sampai) + " (" + d + " hari lagi)") + (j ? ", jatuh tempo pembayaran " + j : "") + ".") +
+      " Mohon lakukan perpanjangan agar akses tidak terputus. Terima kasih.";
+  }
+  function ringkasan() {
+    if (!rows.length) return null;
+    if (!lgOk) return el("div", "padding:8px 12px;border:1px solid #fbbf2455;border-radius:10px;background:#2a2008;color:#fde68a;font-size:12px", "Fitur masa aktif & pembayaran belum aktif di database — jalankan supabase-langganan.sql di Supabase > SQL Editor, lalu tekan Segarkan.");
+    var s = rows.filter(segera).length, t = rows.filter(telatBayar).length, b = rows.filter(berakhir).length;
+    if (!s && !t && !b) return null;
+    var w = el("div", "display:flex;flex-wrap:wrap;gap:6px;align-items:center");
+    function p(txt, warna, tujuan) { var x = el("button", "border-radius:14px;padding:3px 10px;cursor:pointer;font:700 11.5px system-ui;background:" + warna + "22;color:" + warna + ";border:1px solid " + warna + "88", txt); x.onclick = function () { tab = tujuan; render(); }; w.appendChild(x); }
+    if (s) p(s + " berakhir ≤ 7 hari", "#fb923c", "aktif");
+    if (t) p(t + " lewat jatuh tempo bayar", "#f87171", "aktif");
+    if (b) p(b + " sudah berakhir", "#f87171", "berakhir");
+    return w;
+  }
+  function editorLangganan(r) {
+    var css = "background:#0f1521;color:#e6f1ff;border:1px solid #ffffff30;border-radius:8px;padding:6px;font:12px system-ui;color-scheme:dark;min-width:0;width:100%;box-sizing:border-box";
+    var p = el("div", "flex:1 1 100%;border-top:1px dashed #ffffff22;padding-top:10px;display:" + (edOpen[r.id] ? "flex" : "none") + ";flex-direction:column;gap:10px");
+    function fld(lbl, inp, grow) { var f = el("label", "display:flex;flex-direction:column;gap:3px;font-size:11px;color:#94a3b8;flex:" + (grow || "1 1 130px")); f.append(lbl, inp); return f; }
+    function inp(type, val, ph) { var i = el("input", css); i.type = type; if (val != null) i.value = val; if (ph) i.placeholder = ph; return i; }
+    // a) perpanjang + catat pembayaran
+    var jml = inp("number", "", r.tarif != null ? "otomatis " + rupiah(r.tarif) + " × bulan" : "Rp (opsional)"), met = inp("text", "", "mis. transfer BRI");
+    jml.min = "0"; jml.step = "1000";
+    var rowA = el("div", "display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end");
+    rowA.append(fld("Jumlah dibayar", jml), fld("Metode / catatan", met));
+    var qb = el("div", "display:flex;gap:6px;flex-wrap:wrap");
+    [1, 3, 6, 12].forEach(function (n) {
+      var b = el("button", btnCss("#0e7490", "#fff"), "+" + n + " bln");
+      b.title = "Perpanjang " + n + " bulan & catat pembayaran";
+      b.onclick = function () {
+        var jm = jml.value === "" ? null : Math.round(+jml.value);
+        if (!confirm("Perpanjang " + n + " bulan untuk " + (r.nama || r.email) + (jm != null ? " — dibayar " + rupiah(jm) : r.tarif != null ? " — " + rupiah(r.tarif * n) : "") + "?")) return;
+        act(b, "admin_perpanjang", { p_id: r.id, p_bulan: n, p_jumlah: jm, p_metode: met.value.trim() || null }, "Diperpanjang " + n + " bulan: " + (r.nama || r.email));
+      };
+      qb.appendChild(b);
+    });
+    rowA.appendChild(qb);
+    p.appendChild(el("div", "font-weight:700;font-size:12px", "Perpanjang & catat pembayaran"));
+    p.appendChild(rowA);
+    p.appendChild(el("div", "font-size:11px;color:#94a3b8;margin-top:-4px", "Sisa masa aktif tidak hangus: perpanjangan dihitung dari tanggal berakhir (atau dari hari ini bila sudah lewat). Jatuh tempo otomatis ikut tanggal berakhir baru."));
+    // b) atur tanggal manual
+    var ak = inp("date", r.aktif_sampai ? String(r.aktif_sampai).slice(0, 10) : ""), jt = inp("date", r.jatuh_tempo ? String(r.jatuh_tempo).slice(0, 10) : "");
+    var pk = inp("text", r.paket || "", "mis. Dinas / Basic"), tf = inp("number", r.tarif != null ? r.tarif : "", "Rp / bulan"); tf.min = "0";
+    var rowB = el("div", "display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end");
+    rowB.append(fld("Aktif sampai (hari terakhir)", ak), fld("Jatuh tempo pembayaran", jt), fld("Paket", pk), fld("Tarif / bulan", tf));
+    var sv = el("button", btnCss("#16a34a", "#fff"), "Simpan tanggal");
+    sv.onclick = function () { act(sv, "admin_atur_langganan", { p_id: r.id, p_aktif_sampai: ak.value || null, p_jatuh_tempo: jt.value || null, p_paket: pk.value.trim() || null, p_tarif: tf.value === "" ? null : Math.round(+tf.value) }, "Langganan disimpan: " + (r.nama || r.email)); };
+    var nb = el("button", btnCss("transparent", "#e6f1ff", "#ffffff40"), "Tanpa batas waktu");
+    nb.onclick = function () { if (confirm("Jadikan " + (r.nama || r.email) + " tanpa batas waktu (tidak pernah kedaluwarsa)?")) act(nb, "admin_atur_langganan", { p_id: r.id, p_aktif_sampai: null, p_jatuh_tempo: null, p_paket: pk.value.trim() || null, p_tarif: tf.value === "" ? null : Math.round(+tf.value) }, "Diubah ke tanpa batas: " + (r.nama || r.email)); };
+    var bx = el("div", "display:flex;gap:6px;flex-wrap:wrap"); bx.append(sv, nb); rowB.appendChild(bx);
+    p.appendChild(el("div", "font-weight:700;font-size:12px", "Atur manual"));
+    p.appendChild(rowB);
+    // c) riwayat
+    var hs = el("div", "display:flex;flex-direction:column;gap:3px;font-size:12px");
+    var hb = el("button", btnCss("transparent", "#e6f1ff", "#ffffff40") + ";align-self:flex-start", "Riwayat pembayaran");
+    hb.onclick = async function () {
+      hs.textContent = "Memuat…";
+      try {
+        var h = await rpc("admin_riwayat_bayar", { p_id: r.id }); hs.textContent = "";
+        if (!h.length) { hs.appendChild(el("div", "color:#94a3b8", "Belum ada pembayaran tercatat.")); return; }
+        h.forEach(function (x) { hs.appendChild(el("div", "padding:4px 8px;border-radius:6px;background:#ffffff08", fmtTgl(x.tanggal) + " · " + rupiah(x.jumlah) + " · " + (x.bulan || "?") + " bln → s/d " + fmtTgl(x.sampai) + (x.metode ? " · " + x.metode : ""))); });
+      } catch (e) { hs.textContent = ""; fail(e); }
+    };
+    p.append(hb, hs);
+    return p;
+  }
+
+  function group(r) { return r.role === "pending" || r.role === "trial" ? "tunggu" : r.role === "blocked" ? "blok" : berakhir(r) ? "berakhir" : "aktif"; }
   function cocok(r) {
     if (!q) return true;
-    var s = [r.email, r.nama, r.instansi, r.hp].join(" ").toLowerCase();
+    var s = [r.email, r.nama, r.instansi, r.hp, r.paket].join(" ").toLowerCase();
     return q.split(/\s+/).every(function (k) { return s.indexOf(k) >= 0; });
   }
   function render() {
     build();
-    var cnt = { tunggu: 0, aktif: 0, blok: 0 };
+    var cnt = { tunggu: 0, aktif: 0, berakhir: 0, blok: 0 };
+    lgOk = !rows.length || rows.some(function (r) { return "aktif_sampai" in r; });
     rows.forEach(function (r) { cnt[group(r)]++; });
-    setBadge(cnt.tunggu);
+    var perhatian = lgOk ? rows.filter(function (r) { return segera(r) || telatBayar(r); }) : [];
+    setBadge(cnt.tunggu + perhatian.length);
+    try {   // pengingat harian untuk admin
+      if (perhatian.length && localStorage.getItem("pq_exp_notif") !== hariIni()) { localStorage.setItem("pq_exp_notif", hariIni()); T(perhatian.length + " langganan akan berakhir / lewat jatuh tempo bayar"); }
+    } catch (e) { /* abaikan */ }
     if (prevTunggu >= 0 && cnt.tunggu > prevTunggu) notif(cnt.tunggu - prevTunggu);
     prevTunggu = cnt.tunggu;
 
     var tabs = $("pqAdminTabs"); tabs.textContent = "";
-    [["tunggu", "Menunggu"], ["aktif", "Aktif"], ["blok", "Diblokir"]].forEach(function (t) {
+    [["tunggu", "Menunggu"], ["aktif", "Aktif"], ["berakhir", "Berakhir"], ["blok", "Diblokir"]].forEach(function (t) {
       var b = el("button", "border-radius:16px;padding:5px 12px;cursor:pointer;font:600 12px system-ui;border:1px solid " + (tab === t[0] ? "#22d3ee" : "#ffffff30") +
         ";background:" + (tab === t[0] ? "#22d3ee" : "transparent") + ";color:" + (tab === t[0] ? "#04121a" : "#e6f1ff"), t[1] + " (" + cnt[t[0]] + ")");
       b.onclick = function () { tab = t[0]; render(); };
@@ -158,15 +258,30 @@
       };
       tools.appendChild(bk);
     }
+    if (tab === "berakhir" && lgOk && cnt.berakhir) {
+      var hm = el("button", btnCss("transparent", "#fca5a5", "#7f1d1d"), "Hapus yang sudah lama berakhir…");
+      hm.title = "Hapus permanen akun yang berakhir lebih dari N hari";
+      hm.onclick = function () {
+        var h = parseInt(prompt("Hapus akun yang sudah berakhir lebih dari berapa hari?\n(minimal 7 hari)", "30"), 10);
+        if (!h) return;
+        if (h < 7) { T("Minimal 7 hari", true); return; }
+        var el2 = rows.filter(function (r) { return berakhir(r) && -selisih(r.aktif_sampai) > h; });
+        if (!el2.length) { T("Tidak ada akun yang berakhir lebih dari " + h + " hari"); return; }
+        if (!confirm("HAPUS PERMANEN " + el2.length + " akun yang berakhir > " + h + " hari?\n\n" + el2.map(function (r) { return "• " + (r.nama || r.email) + " (berakhir " + fmtTgl(r.aktif_sampai) + ")"; }).join("\n") + "\n\nFoto proyek mereka dipindah ke akun admin; riwayat pembayaran tetap tersimpan.")) return;
+        act(hm, "admin_hapus_kedaluwarsa", { p_hari: h }, el2.length + " akun kedaluwarsa dihapus");
+      };
+      tools.appendChild(hm);
+    }
     renderList();
   }
   function renderList() {
     var list = $("pqAdminList"); list.textContent = "";
     if (diag) { list.appendChild(diag); return; }
     if (lastErr && !rows.length) { list.appendChild(errCard(lastErr)); return; }
+    var rk = (tab === "aktif" || tab === "berakhir") ? ringkasan() : null; if (rk) list.appendChild(rk);
     if (notice) list.appendChild(noticeBox());
     var sh = rows.filter(function (r) { return group(r) === tab && cocok(r); });
-    if (!sh.length) list.appendChild(el("div", "color:#94a3b8;padding:18px 4px;text-align:center", q ? "Tidak ada yang cocok dengan pencarian." : tab === "tunggu" ? "Tidak ada akun yang menunggu persetujuan." : "Tidak ada data."));
+    if (!sh.length) list.appendChild(el("div", "color:#94a3b8;padding:18px 4px;text-align:center", q ? "Tidak ada yang cocok dengan pencarian." : tab === "tunggu" ? "Tidak ada akun yang menunggu persetujuan." : tab === "berakhir" ? "Tidak ada akun dengan langganan berakhir." : "Tidak ada data."));
     sh.forEach(function (r) { list.appendChild(card(r)); });
   }
   function errCard(e) {
@@ -184,7 +299,7 @@
     return c;
   }
   function card(r) {
-    var st = STATUS[r.role] || [r.role, "#94a3b8"];
+    var st = berakhir(r) ? ["Langganan berakhir", "#f87171"] : (STATUS[r.role] || [r.role, "#94a3b8"]);
     var c = el("div", "display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border:1px solid #ffffff18;border-radius:10px;background:#0b1120");
     var info = el("div", "flex:1 1 240px;min-width:0");
     var judul = r.nama ? r.nama : (r.email || r.id);
@@ -202,6 +317,7 @@
     }
     meta.appendChild(document.createTextNode("daftar " + rel(r.created_at) + " · masuk terakhir " + rel(r.last_sign_in_at) + (r.provider ? " · " + r.provider : "") + (r.trial_dipakai ? " · sudah pakai uji coba" : "")));
     info.appendChild(meta);
+    if (lgOk && pelanggan(r)) info.appendChild(infoLangganan(r));
     c.appendChild(info);
     if (r.role === "admin") return c;
     var aks = el("div", "display:flex;flex-wrap:wrap;gap:6px;align-items:center");
@@ -210,24 +326,44 @@
       var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1];
       if (o[0] === r.role) op.selected = true; sel.appendChild(op);
     });
+    var dur = null;
+    if (lgOk && group(r) === "tunggu") {
+      dur = el("select", "background:#0f1521;color:#e6f1ff;border:1px solid #ffffff30;border-radius:8px;padding:6px");
+      [["", "Tanpa batas waktu"], ["1", "Aktif 1 bulan"], ["3", "Aktif 3 bulan"], ["6", "Aktif 6 bulan"], ["12", "Aktif 12 bulan"]].forEach(function (o) { var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; dur.appendChild(op); });
+      dur.title = "Masa aktif langganan sejak disetujui";
+    }
     var ok = el("button", btnCss("#16a34a", "#fff"), r.role === "viewer" || r.role === "surveyor" ? "Simpan peran" : "Setujui");
-    ok.onclick = function () { act(ok, "admin_setujui", { p_id: r.id, p_role: sel.value }, "Akses disetujui: " + (r.nama || r.email), r.role === "pending" || r.role === "trial" ? [r] : null); };
-    aks.append(sel, ok);
+    ok.onclick = function () { var bd = { p_id: r.id, p_role: sel.value }; if (dur && dur.value) bd.p_bulan = +dur.value; act(ok, "admin_setujui", bd, "Akses disetujui: " + (r.nama || r.email), r.role === "pending" || r.role === "trial" ? [r] : null); };
+    if (dur) aks.append(sel, dur, ok); else aks.append(sel, ok);
     var wa = r.hp ? "https://wa.me/" + r.hp + "?text=" + encodeURIComponent("Halo " + (r.nama || "") + ", ini admin PETAQU terkait pendaftaran akun Anda.") : "";
-    if (r.hp && group(r) === "aktif" && r.role !== "admin") { var a2 = el("a", btnCss("transparent", "#4ade80", "#4ade80") + ";text-decoration:none", "Kabari disetujui"); a2.href = waSetuju(r); a2.target = "_blank"; a2.rel = "noopener"; a2.title = "Kirim pesan WhatsApp: akun sudah disetujui"; aks.appendChild(a2); }
+    if (lgOk && r.hp && (segera(r) || telatBayar(r) || berakhir(r))) { var a3 = el("a", btnCss("transparent", "#fbbf24", "#fbbf24") + ";text-decoration:none", "Ingatkan bayar"); a3.href = "https://wa.me/" + r.hp + "?text=" + encodeURIComponent(pesanTagihan(r)); a3.target = "_blank"; a3.rel = "noopener"; a3.title = "Kirim pengingat perpanjangan via WhatsApp"; aks.appendChild(a3); }
+    else if (r.hp && group(r) === "aktif" && r.role !== "admin") { var a2 = el("a", btnCss("transparent", "#4ade80", "#4ade80") + ";text-decoration:none", "Kabari disetujui"); a2.href = waSetuju(r); a2.target = "_blank"; a2.rel = "noopener"; a2.title = "Kirim pesan WhatsApp: akun sudah disetujui"; aks.appendChild(a2); }
     if (wa && group(r) === "tunggu") { var a = el("a", btnCss("transparent", "#4ade80", "#4ade80") + ";text-decoration:none", "WhatsApp"); a.href = wa; a.target = "_blank"; a.rel = "noopener"; aks.appendChild(a); }
+    var ed = null;
+    if (lgOk && pelanggan(r)) {
+      ed = editorLangganan(r);
+      var lb = el("button", btnCss(edOpen[r.id] ? "#0e7490" : "transparent", "#e6f1ff", "#22d3ee88"), "Langganan");
+      lb.title = "Masa aktif, jatuh tempo, pembayaran";
+      lb.onclick = function () { edOpen[r.id] = !edOpen[r.id]; if (!edOpen[r.id]) delete edOpen[r.id]; ed.style.display = edOpen[r.id] ? "flex" : "none"; lb.style.background = edOpen[r.id] ? "#0e7490" : "transparent"; };
+      aks.appendChild(lb);
+    }
     if (r.role !== "blocked") {
       var bl = el("button", btnCss("transparent", "#f87171", "#f87171"), "Blokir");
       bl.onclick = function () { if (confirm("Blokir " + (r.email || "akun ini") + "? Akun akan keluar dari semua perangkat.")) act(bl, "admin_blokir", { p_id: r.id }, "Akun diblokir: " + r.email); };
       aks.appendChild(bl);
     }
     if (group(r) !== "aktif") {
-      var hp = el("button", btnCss("transparent", "#fca5a5", "#7f1d1d"), "Tolak & hapus");
-      hp.title = "Hapus pendaftar ini sepenuhnya (bisa mendaftar ulang)";
-      hp.onclick = function () { if (confirm("Tolak & hapus " + (r.email || "akun ini") + "? Akun dihapus permanen; pemilik bisa mendaftar ulang.")) act(hp, "admin_hapus_pendaftar", { p_id: r.id }, "Pendaftar dihapus: " + r.email); };
+      var tidakLangganan = group(r) === "berakhir";
+      var hp = el("button", btnCss("transparent", "#fca5a5", "#7f1d1d"), tidakLangganan ? "Hapus akun" : "Tolak & hapus");
+      hp.title = tidakLangganan ? "Hapus akun yang sudah tidak berlangganan" : "Hapus pendaftar ini sepenuhnya (bisa mendaftar ulang)";
+      hp.onclick = function () {
+        var msg = tidakLangganan ? "Hapus akun " + (r.email || "") + " yang langganannya berakhir " + fmtTgl(r.aktif_sampai) + "?\n\nAkun dihapus permanen. Foto proyeknya dipindah ke akun admin; riwayat pembayaran tetap tersimpan." : "Tolak & hapus " + (r.email || "akun ini") + "? Akun dihapus permanen; pemilik bisa mendaftar ulang.";
+        if (confirm(msg)) act(hp, tidakLangganan ? "admin_hapus_akun" : "admin_hapus_pendaftar", { p_id: r.id }, (tidakLangganan ? "Akun dihapus: " : "Pendaftar dihapus: ") + r.email);
+      };
       aks.appendChild(hp);
     }
     c.appendChild(aks);
+    if (ed) c.appendChild(ed);
     return c;
   }
   async function act(b, fn, body, okMsg, who) {
@@ -239,7 +375,7 @@
     } catch (e) { fail(e); b.disabled = false; b.style.opacity = ""; }
   }
   function fail(e) {
-    T(e && e.code === "nosql" ? "Jalankan supabase-pendaftaran.sql di Supabase dulu"
+    T(e && e.code === "nosql" ? "Jalankan supabase-langganan.sql / supabase-pendaftaran.sql di Supabase dulu"
       : e && e.code === "denied" ? "Hanya admin yang boleh melakukan ini"
       : navigator.onLine === false ? "Tidak ada koneksi internet" : "Gagal menghubungi server" + (e && e.status ? " (" + e.status + ")" : ""), true);
   }
@@ -275,6 +411,8 @@
         var p = await api("/rest/v1/profiles?select=role,skor,nama&id=eq." + encodeURIComponent(s.uid));
         add(!!(p && p[0] && p[0].role === "admin"), "Peran akun ini = admin", p && p[0] ? "Peran: " + p[0].role : "Profil tidak ditemukan di tabel profiles");
         add(!!(p && p[0] && "skor" in p[0]), "Kolom pendaftaran (supabase-pendaftaran.sql)", p && p[0] && "skor" in p[0] ? "Terpasang" : "Belum — jalankan supabase-pendaftaran.sql");
+        try { await api("/rest/v1/profiles?select=aktif_sampai&limit=1"); add(true, "Fitur langganan (supabase-langganan.sql)", "Masa aktif, jatuh tempo & riwayat bayar terpasang"); }
+        catch (e2) { add(false, "Fitur langganan (supabase-langganan.sql)", "Belum — jalankan supabase-langganan.sql untuk masa aktif & jatuh tempo"); }
       } catch (e) { add(false, "Membaca tabel profiles", (e.msg || e.code || "gagal") + (e.status ? " (" + e.status + ")" : "")); }
       try {
         var d = await rpc("admin_daftar_pengguna");
@@ -313,7 +451,7 @@
       var r = await api("/rest/v1/profiles?select=role&id=eq." + encodeURIComponent(s.uid));
       if (r && r[0] && r[0].role === "admin") {
         adminOk = true; setFlag(true); addButton(); refresh();
-        if (!poll) poll = setInterval(function () { if (adminOk && document.visibilityState === "visible") refresh(); }, 6e4);   // lencana + notifikasi pendaftar baru tiap menit
+        if (!poll) poll = setInterval(function () { if (adminOk && document.visibilityState === "visible" && !Object.keys(edOpen).length) refresh(); }, 6e4);   // lencana + notifikasi pendaftar baru tiap menit
       }
     } catch (e) { /* bukan admin / offline: tidak ada tombol */ }
   }
