@@ -275,7 +275,7 @@
       ".jk-l{display:none;border-top:1px solid rgba(148,178,204,.15)}.jk-k.o .jk-l{display:block}" +
       ".jk-r{padding:8px 12px;border-bottom:1px solid rgba(148,178,204,.1)}.jk-r:last-child{border-bottom:0}.jk-rt{display:flex;align-items:center;gap:8px;cursor:pointer}" +
       ".jk-rt i{width:9px;height:9px;border-radius:50%;flex:none}.jk-rt div{flex:1;min-width:0}.jk-rt b{display:block;font-size:11.5px;color:#dbe9f7;line-height:1.3}.jk-rt small{font-size:10.5px;color:#8fa6bd}" +
-      ".jk-sta{font-size:9.5px;font-weight:800;color:#34d399;border:1px solid #34d39966;border-radius:6px;padding:1px 5px}" +
+      ".jk-sta{font-size:9.5px;font-weight:800;color:#34d399;background:transparent;border:1px solid #34d39966;border-radius:6px;padding:2px 6px;cursor:pointer}.jk-sta:hover{background:#34d39922}.jk-sta.off{color:#64748b;border-color:#64748b66;text-decoration:line-through}" +
       ".jk-ac{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.jk-ac button{width:30px;height:28px;border-radius:8px;border:1px solid rgba(148,178,204,.25);background:#0b1220;color:#cfe0f0;cursor:pointer;font-size:12px}.jk-ac button.add{width:auto;padding:0 10px;font-weight:700;color:#34d399;border-color:#34d39966}" +
       ".jk-hide{width:100%;margin:2px 0}.jn-hid{display:none!important}" +
       "#jkSticky{position:sticky;top:0;z-index:20;display:flex;flex-direction:column;gap:8px;background:#0a0e17;padding:8px 0 8px;margin:0;box-shadow:0 6px 8px -6px rgba(0,0,0,.7)}" +
@@ -306,7 +306,7 @@
           var ii = g.items.indexOf(it), r = roadFor(g, it), a = "";
           if (r) ACT.forEach(function (x) { a += '<button type="button" data-a="' + x[0] + '" title="' + x[2] + '" style="' + BST + (x[0] === "deleteRoad" ? ";color:#fb7185;border-color:#fb718566" : "") + '">' + x[1] + "</button>"; });
           else a = '<button type="button" class="add" style="' + BST + ';color:#34d399;border-color:#34d39966" data-a="sta" title="Jadikan ruas terkelola penuh (titik STA tiap 100 m)">+ STA</button>';
-          h += '<div class="jk-r" data-i="' + ii + '"><div class="jk-rt" data-a="zoom"><i style="background:' + it.color + '"></i><div><b>' + esc(it.name) + "</b><small>No. " + esc(it.no || "-") + " · " + fmtKm(it.km) + " km</small></div>" + (r ? '<span class="jk-sta">STA</span>' : "") + '<button class="jk-sw' + (itemOn(g, it) ? " on" : "") + '" data-a="item" title="Tampil/sembunyi ruas ini"></button></div><div class="jk-ac" style="display:flex!important;flex-wrap:wrap;gap:5px;margin-top:7px">' + (r ? "" : "") + a + "</div></div>";
+          h += '<div class="jk-r" data-i="' + ii + '"><div class="jk-rt" data-a="zoom"><i style="background:' + it.color + '"></i><div><b>' + esc(it.name) + "</b><small>No. " + esc(it.no || "-") + " · " + fmtKm(it.km) + " km</small></div>" + (r ? '<button type="button" class="jk-sta' + (r.visible === false ? " off" : "") + '" data-a="staTog" title="' + (r.visible === false ? "Titik STA ruas ini mati — klik untuk menghidupkan" : "Titik STA ruas ini hidup — klik untuk mematikan") + '">STA</button>' : "") + '<button class="jk-sw' + (itemOn(g, it) ? " on" : "") + '" data-a="item" title="Tampil/sembunyi ruas ini"></button></div><div class="jk-ac" style="display:flex!important;flex-wrap:wrap;gap:5px;margin-top:7px">' + (r ? "" : "") + a + "</div></div>";
         });
         h += "</div>";
       }
@@ -325,6 +325,7 @@
     if (a === "zoom") { setItem(g, it, true, true); return render(); }
     if (a === "sta") return addSta(g, it);
     var r = it && roadFor(g, it); if (!r) return;
+    if (a === "staTog") { roadVis([{ r: r }], r.visible === false); return render(); }
     if (a === "staEdit") return openSta(r.id);
     var fn = typeof W[a] === "function" ? W[a] : null;
     if (!fn) { try { fn = (0, eval)("typeof " + a + "==='function'?" + a + ":null"); } catch (er) {} }
