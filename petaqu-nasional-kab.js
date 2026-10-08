@@ -13,7 +13,7 @@
   var W = typeof window !== "undefined" ? window : globalThis;
   if (W.PQ_JNKAB) return;
   var LS_LINK = "pq_jnkab_link", LS_HIDE = "pq_jn_top_hidden";
-  var K = null, R = null, SAT = [], G = null, layers = {}, openKab = {}, linkMap = {}, filterQ = "";
+  var K = null, R = null, SAT = [], G = null, kLayers = {}, openKab = {}, linkMap = {}, filterQ = "";
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function fmtKm(v) { return (Math.round(v * 10 + 1e-6) / 10).toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
@@ -71,22 +71,22 @@
     return '<div style="font-size:12px"><b>' + esc(it.name) + "</b><br>No. Link " + esc(it.no || "-") + "<br>" + esc(g.name) + " · " + fmtKm(it.km) + " km</div>";
   }
   function lyr(g, it) {
-    var id = g.ki + "|" + it.key; if (layers[id]) return layers[id];
+    var id = g.ki + "|" + it.key; if (kLayers[id]) return kLayers[id];
     var m = getMap(); if (!m || !W.L) return null;
     var grp = L.featureGroup();
     it.lines.forEach(function (s) { L.polyline(decode(s), { color: it.color, weight: 5, opacity: .95 }).bindPopup(popupHtml(g, it)).addTo(grp); });
-    return (layers[id] = grp);
+    return (kLayers[id] = grp);
   }
   function setItem(g, it, on, fit) {
     var m = getMap(), l = lyr(g, it); if (!m || !l) return;
     if (on) { if (!m.hasLayer(l)) l.addTo(m); if (fit) try { m.fitBounds(l.getBounds(), { padding: [40, 40], maxZoom: 14 }); } catch (e) {} }
     else m.removeLayer(l);
   }
-  function itemOn(g, it) { var m = getMap(), l = layers[g.ki + "|" + it.key]; return !!(m && l && m.hasLayer(l)); }
+  function itemOn(g, it) { var m = getMap(), l = kLayers[g.ki + "|" + it.key]; return !!(m && l && m.hasLayer(l)); }
   function kabOn(g) { return g.items.some(function (it) { return itemOn(g, it); }); }
-  function setKab(g, on) {
+  function setKab(g, on, noFit) {
     g.items.forEach(function (it) { setItem(g, it, on, false); });
-    if (on) { var m = getMap(), b = null; g.items.forEach(function (it) { var l = layers[g.ki + "|" + it.key]; if (l) b = b ? b.extend(l.getBounds()) : L.latLngBounds(l.getBounds().getSouthWest(), l.getBounds().getNorthEast()); }); if (m && b) try { m.fitBounds(b, { padding: [30, 30] }); } catch (e) {} }
+    if (on && !noFit) { var m = getMap(), b = null; g.items.forEach(function (it) { var l = kLayers[g.ki + "|" + it.key]; if (l) b = b ? b.extend(l.getBounds()) : L.latLngBounds(l.getBounds().getSouthWest(), l.getBounds().getNorthEast()); }); if (m && b) try { m.fitBounds(b, { padding: [30, 30] }); } catch (e) {} }
   }
 
   /* ---------- "+ STA": jadikan ruas terkelola penuh ---------- */
@@ -191,20 +191,31 @@
     (G || []).forEach(function (g) { g.items.forEach(function (it) { var r = roadFor(g, it); if (r) out.push({ g: g, it: it, r: r }); }); });
     return out.filter(function (x) { var k = x.g.ki + "|" + x.it.key; if (seen[k]) return false; seen[k] = 1; return true; });
   }
+  function roadVis(list, on) {
+    var m = getMap(), ml = null;
+    try { ml = typeof layers !== "undefined" ? layers : W.layers; } catch (e) {}  /* layers milik aplikasi utama */
+    list.forEach(function (x) {
+      x.r.visible = on;
+      var l = ml && ml[x.r.id];
+      if (!l && on) { try { W.renderRoadLayer(x.r); l = ml && ml[x.r.id]; } catch (e) {} }
+      if (l && l.group && m) { if (on) { if (!m.hasLayer(l.group)) l.group.addTo(m); } else if (m.hasLayer(l.group)) m.removeLayer(l.group); }
+    });
+    try { W.persist(); W.renderRoadList(); } catch (e) {}
+  }
   function setStaAll(on) {
     var list = staItems();
     if (!list.length) return toast("Belum ada ruas ber-STA. Tekan \"+ STA\" pada ruas dulu.", true);
-    var m = getMap(), ml = null;
-    try { ml = typeof layers !== "undefined" ? layers : W.layers; } catch (e) {}
-    list.forEach(function (x) {
-      setItem(x.g, x.it, on, false);
-      if (x.r.visible !== on) {
-        x.r.visible = on;
-        var l = ml && ml[x.r.id]; if (l && l.group && m) { if (on) { if (!m.hasLayer(l.group)) l.group.addTo(m); } else m.removeLayer(l.group); }
-      }
-    });
-    try { W.persist(); W.renderRoadList(); } catch (e) {}
+    list.forEach(function (x) { setItem(x.g, x.it, on, false); });
+    roadVis(list, on);
     toast((on ? "Dihidupkan: " : "Dimatikan: ") + list.length + " ruas ber-STA");
+    render();
+  }
+  function setAllLines(on) {
+    (G || []).forEach(function (g) { setKab(g, on, true); });
+    roadVis(staItems(), on);
+    var m = getMap();
+    if (on && m) { var b = null; Object.keys(kLayers).forEach(function (k) { var l = kLayers[k]; if (l && m.hasLayer(l)) { try { var lb = l.getBounds(); b = b ? b.extend(lb) : L.latLngBounds(lb.getSouthWest(), lb.getNorthEast()); } catch (e) {} } }); if (b) try { m.fitBounds(b, { padding: [30, 30] }); } catch (e) {} }
+    toast(on ? "Semua ruas dihidupkan" : "Semua ruas dimatikan");
     render();
   }
 
@@ -285,14 +296,15 @@
     css();
     var box = document.createElement("div"); box.id = "jnKab";
     box.innerHTML = '<button class="jk-b jk-hide" id="jkHide"></button>' +
-      '<div id="jkSticky"><div class="jk-bar"><b>Per Kabupaten</b><button class="jk-b" id="jkAllOff" title="Matikan semua ruas di peta">Matikan semua</button></div>' +
+      '<div id="jkSticky"><div class="jk-bar"><b>Per Kabupaten</b><button class="jk-b jk-on" id="jkAllOn" title="Tampilkan semua ruas di peta">Hidupkan semua</button><button class="jk-b jk-off" id="jkAllOff" title="Matikan semua ruas di peta">Matikan semua</button></div>' +
       '<div class="jk-sta2"><button class="jk-b jk-on" id="jkStaOn" title="Tampilkan semua ruas yang sudah ber-STA">Hidupkan semua STA</button><button class="jk-b jk-off" id="jkStaOff" title="Sembunyikan semua ruas yang sudah ber-STA">Matikan semua STA</button></div>' +
       '<small id="jkInfo" style="color:#8fa6bd;font-size:11px"></small>' +
       '<input id="jkQ" type="search" placeholder="Cari kabupaten / ruas / No. Link…" autocomplete="off"></div><div id="jkList" style="display:flex;flex-direction:column;gap:8px"></div>';
     body.appendChild(box);
     try { linkMap = ls(LS_LINK) || {}; } catch (e) { linkMap = {}; }
     document.getElementById("jkHide").onclick = function () { ls(LS_HIDE, !ls(LS_HIDE)); applyTop(); };
-    document.getElementById("jkAllOff").onclick = function () { G.forEach(function (g) { setKab(g, false); }); render(); };
+    document.getElementById("jkAllOff").onclick = function () { setAllLines(false); };
+    document.getElementById("jkAllOn").onclick = function () { setAllLines(true); };
     document.getElementById("jkStaOn").onclick = function () { setStaAll(true); };
     document.getElementById("jkStaOff").onclick = function () { setStaAll(false); };
     document.getElementById("jkQ").oninput = function () { filterQ = this.value; render(); };
