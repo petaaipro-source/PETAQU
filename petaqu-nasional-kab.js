@@ -123,11 +123,65 @@
     render();
   }
   var ACT = [
-    ["renameRoad", "fa-pen", "Ganti nama ruas"], ["playRouteAnimation", "fa-play", "Putar animasi rute"],
+    ["staEdit", "fa-arrow-right-arrow-left", "Atur / tukar STA awal–akhir, kalibrasi lapangan"], ["renameRoad", "fa-pen", "Ganti nama ruas"], ["playRouteAnimation", "fa-play", "Putar animasi rute"],
     ["openDashcamUpload", "fa-video", "Sinkron video dashcam"], ["openIriAnalysis", "fa-chart-simple", "Analisis IRI"],
     ["reIntervalRoad", "fa-ruler-combined", "Edit interval STA"], ["autoFillRoadKm", "fa-calculator", "Hitung otomatis KM"],
     ["quickRoadPdf", "fa-file-pdf", "Unduh PDF ruas"], ["openExportModal", "fa-share-nodes", "Ekspor ruas"], ["deleteRoad", "fa-trash", "Hapus ruas"]
   ];
+
+
+  /* ---------- Editor STA: tukar awal/akhir, ubah nilai, kalibrasi patok lapangan ---------- */
+  function parseSta(v) {
+    v = String(v == null ? "" : v).trim().replace(",", "."); if (!v) return NaN;
+    var m = v.match(/^(\d+)\s*\+\s*(\d{1,3}(?:\.\d+)?)$/); if (m) return (+m[1]) * 1000 + (+m[2]);
+    return /^\d+(\.\d+)?$/.test(v) ? parseFloat(v) * 1000 : NaN;
+  }
+  function fmtSta(m) { m = Math.max(0, Math.round(m)); var k = Math.floor(m / 1000); return k + "+" + String(m - k * 1000).padStart(3, "0"); }
+  function cumOf(pts) { var c = [0]; for (var i = 1; i < pts.length; i++) c.push(c[i - 1] + hav([+pts[i - 1].lat, +pts[i - 1].lng], [+pts[i].lat, +pts[i].lng])); return c; }
+  function openSta(id) {
+    var r = getRoads().filter(function (x) { return x.id === id; })[0]; if (!r || !r.points || r.points.length < 2) return toast("Ruas butuh minimal 2 titik STA", true);
+    var old = document.getElementById("jkStaM"); if (old) old.remove();
+    var pts = r.points, backup = pts.map(function (p) { return p.sta; }), snap = pts.slice();
+    var cum = cumOf(pts), len = cum[cum.length - 1];
+    var st = { a: parseSta(pts[0].sta), desc: false };
+    if (isNaN(st.a)) st.a = 0;
+    var lastV = parseSta(pts[pts.length - 1].sta); if (!isNaN(lastV) && lastV < st.a) st.desc = true;
+    var m = document.createElement("div"); m.id = "jkStaM";
+    m.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:14px";
+    var inp = "width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #2b3a52;background:#0b1220;color:#e6f1fb;font-size:13px", bt = "padding:8px 10px;border-radius:9px;border:1px solid #2b3a52;background:#101a2c;color:#cfe0f0;font-size:12px;cursor:pointer";
+    m.innerHTML = '<div style="background:#0f1726;border:1px solid #2b3a52;border-radius:14px;padding:14px;width:min(380px,100%);max-height:90vh;overflow:auto;color:#cfe0f0;font-size:12px;display:flex;flex-direction:column;gap:9px">' +
+      '<b style="font-size:14px;color:#e6f1fb">Atur STA — ' + esc(r.name) + '</b><small style="color:#8fa6bd">Panjang ' + (len / 1000).toFixed(2) + " km · " + pts.length + ' titik. Format STA: 10+500</small>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label>STA awal<input id="jsA" style="' + inp + '"></label><label>STA akhir<input id="jsB" style="' + inp + '"></label></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap"><button id="jsSw" style="' + bt + '">⇄ Tukar nilai awal↔akhir</button><button id="jsRev" style="' + bt + '">↺ Balik arah ruas</button><button id="jsZero" style="' + bt + '">STA awal = 0+000</button></div>' +
+      '<div style="border-top:1px dashed #2b3a52;padding-top:8px"><b style="color:#e6f1fb">Kalibrasi patok lapangan</b><small style="display:block;color:#8fa6bd;margin:2px 0 6px">Titik ke-N di peta = STA patok sebenarnya; sisanya menyesuaikan.</small><div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end"><label>Titik ke-<input id="jsN" type="number" min="1" max="' + pts.length + '" value="1" style="' + inp + '"></label><label>STA lapangan<input id="jsV" style="' + inp + '" placeholder="mis. 8+200"></label><button id="jsCal" style="' + bt + '">Terapkan</button></div></div>' +
+      '<div id="jsPrev" style="color:#8fa6bd"></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end"><button id="jsX" style="' + bt + '">Batal</button><button id="jsRst" style="' + bt + '">Kembalikan asli</button><button id="jsOk" style="' + bt + ';background:#06b6d4;color:#04121a;font-weight:700;border-color:#06b6d4">Simpan</button></div></div>';
+    document.body.appendChild(m);
+    function val(i) { return st.a + (st.desc ? -1 : 1) * cum[i]; }
+    function show() {
+      var b = val(pts.length - 1), A = document.getElementById("jsA"), B = document.getElementById("jsB");
+      if (document.activeElement !== A) A.value = fmtSta(st.a); if (document.activeElement !== B) B.value = fmtSta(b);
+      document.getElementById("jsPrev").textContent = "Pratinjau: " + fmtSta(st.a) + " → " + fmtSta(b) + (st.desc ? " (menurun)" : " (menaik)") + (b < 0 || st.a < 0 ? " ⚠ ada STA negatif" : "");
+    }
+    function $(i) { return document.getElementById(i); }
+    $("jsA").onchange = function () { var v = parseSta(this.value); if (!isNaN(v)) st.a = v; show(); };
+    $("jsB").onchange = function () { var v = parseSta(this.value); if (isNaN(v)) return show(); st.desc = v < st.a; if (!st.desc) { /* awal tetap, akhir diminta: sesuaikan awal agar panjang konsisten */ st.a = v - len; } else st.a = v + len; if (st.a < 0) st.a = Math.max(0, st.a); show(); };
+    $("jsSw").onclick = function () { var b = val(pts.length - 1); st.desc = !st.desc; st.a = b < 0 ? 0 : b; show(); };
+    $("jsRev").onclick = function () { pts = pts.slice().reverse(); cum = cumOf(pts); show(); toast("Arah ruas dibalik (belum disimpan)"); };
+    $("jsZero").onclick = function () { st.a = 0; st.desc = false; show(); };
+    $("jsCal").onclick = function () { var n = Math.round(+$("jsN").value) - 1, v = parseSta($("jsV").value); if (n < 0 || n >= pts.length || isNaN(v)) return toast("Isi nomor titik & STA lapangan dengan benar", true); st.a = v - (st.desc ? -1 : 1) * cum[n]; show(); };
+    $("jsX").onclick = function () { r.points = snap; m.remove(); };
+    $("jsRst").onclick = function () { pts = snap.slice(); cum = cumOf(pts); pts.forEach(function (p, i) { p.sta = backup[snap.indexOf(p)]; }); st.a = parseSta(backup[0]) || 0; st.desc = false; var lv = parseSta(backup[backup.length - 1]); if (!isNaN(lv) && lv < st.a) st.desc = true; show(); };
+    $("jsOk").onclick = function () {
+      if (val(pts.length - 1) < 0 || st.a < 0) return toast("STA tidak boleh negatif, ubah STA awal", true);
+      pts.forEach(function (p, i) { p.sta = fmtSta(val(i)); });
+      r.points = pts;
+      try { W.persist(); W.renderRoadLayer(r); W.renderRoadList(); if (W.updateStats) W.updateStats(); } catch (e) { console.error(e); }
+      m.remove(); toast("STA \"" + r.name + "\" disimpan: " + fmtSta(val(0)) + " → " + fmtSta(val(pts.length - 1))); render();
+    };
+    m.addEventListener("click", function (e) { if (e.target === m) $("jsX").click(); });
+    show();
+  }
 
   /* ---------- UI ---------- */
   function css() {
@@ -191,6 +245,7 @@
     if (a === "zoom") { setItem(g, it, true, true); return render(); }
     if (a === "sta") return addSta(g, it);
     var r = it && roadFor(g, it); if (!r) return;
+    if (a === "staEdit") return openSta(r.id);
     if (typeof W[a] !== "function") return toast("Fitur belum tersedia", true);
     try { W[a](r.id); } catch (er) { console.error(er); }
     if (a === "deleteRoad" || a === "renameRoad") setTimeout(render, 700);
@@ -210,7 +265,7 @@
     var jb = document.getElementById("jnBtn"); if (jb) jb.addEventListener("click", function () { setTimeout(render, 50); });
     applyTop(); render(); return true;
   }
-  W.PQ_JNKAB = { build: build, decode: decode, render: render };
+  W.PQ_JNKAB = { openSta: openSta, build: build, decode: decode, render: render };
   if (typeof document !== "undefined" && document.addEventListener) {
     var n = 0, t = setInterval(function () { if (mount() || ++n > 40) clearInterval(t); }, 500);
   }
