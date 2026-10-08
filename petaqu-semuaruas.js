@@ -370,7 +370,7 @@
 
     if (!vg.length) html += '<div class="sr-none">Tidak ada ruas yang cocok dengan pencarian / filter.</div>';
     vg.forEach(function (x) {
-      var g = x.g, open = !!st.groups[g.key] || !!q, empty = !g.entries.length;
+      var g = x.g, open = !!st.groups[g.key] || !!q || (!!kabSel() && kabSel() === g.name), empty = !g.entries.length;
       var kmShown = x.es.reduce(function (s, e) { return s + e.km; }, 0);
       var sw = groupSwitch(x.es);
       html += '<div class="sr-g ' + (open && !empty ? "open" : "") + (empty ? " empty" : "") + '"><div class="sr-gh" data-sr-grp="' + g.key + '">' +
@@ -443,6 +443,41 @@
     if (e) { ev.stopPropagation(); try { gmap().closePopup(); } catch (x) {} addEntries([e], e.id); }
   }, true);  /* fase capture: Leaflet menghentikan klik di dalam popup */
 
+  /* ---------- dropdown kabupaten: SEMUA kab/kota Jateng & DIY ---------- */
+  function renderAllKabOptions() {
+    var sel = $("kabupatenFilterSelect"); if (!sel) return;
+    var cnt = {}, km = {}, tot = 0;
+    roads.forEach(function (r) {
+      var k = r.kabupaten || "Kabupaten Cilacap", l = 0;
+      try { l = roadLengthKm(r); } catch (e) {}
+      cnt[k] = (cnt[k] || 0) + 1; km[k] = (km[k] || 0) + l; tot += l;
+    });
+    var known = {}; GROUPS.forEach(function (g) { known[g.name] = 1; });
+    function opt(name, prefix, g) {
+      var c = cnt[name] || 0, nat = g ? g.entries.length : 0;
+      var info = c ? c + " ruas · " + km[name].toFixed(1) + " km" : "0 ruas" + (nat ? " · " + nat + " nasional" : "");
+      return '<option value="' + esc(name) + '">' + (prefix || "") + esc(name) + " (" + info + ")</option>";
+    }
+    function grp(label, prov) {
+      return '<optgroup label="' + label + '">' + GROUPS.filter(function (g) { return g.prov === prov; })
+        .sort(function (a, b) { return a.name.localeCompare(b.name, "id"); })
+        .map(function (g) { return opt(g.name, "", g); }).join("") + "</optgroup>";
+    }
+    var other = Object.keys(cnt).filter(function (k) { return !known[k]; }).sort();
+    var km_ = typeof KONSTRUKSI_MANUAL_KABUPATEN !== "undefined" ? KONSTRUKSI_MANUAL_KABUPATEN : null;
+    var oh = other.length ? '<optgroup label="Lainnya">' + other.map(function (k) {
+      return opt(k, k === "Gambar Manual" ? "\u270F\uFE0F " : (k === km_ ? "\u{1F6A7} " : ""));
+    }).join("") + "</optgroup>" : "";
+    var cur = sel.value, all = Object.keys(known).concat(other);
+    sel.innerHTML = '<option value="">Semua Kabupaten (' + roads.length + " ruas · " + tot.toFixed(1) + " km)</option>" +
+      grp("Jawa Tengah (" + GROUPS.filter(function (g) { return g.prov === "jt"; }).length + " kab/kota)", "jt") +
+      grp("DI Yogyakarta (" + GROUPS.filter(function (g) { return g.prov === "diy"; }).length + " kab/kota)", "diy") + oh;
+    var want = (typeof activeKabupatenFilter !== "undefined" && all.indexOf(activeKabupatenFilter) > -1) ? activeKabupatenFilter
+      : (cur && all.indexOf(cur) > -1 ? cur : "");
+    sel.value = want;
+    try { if (sel.value !== activeKabupatenFilter) activeKabupatenFilter = sel.value; } catch (e) {}
+  }
+
   /* ---------- sambungkan dengan daftar lama ---------- */
   function hook() {
     if (typeof renderRoadList === "function" && !renderRoadList.__pqSR) {
@@ -451,8 +486,16 @@
       wrapped.__pqSR = 1;
       try { window.renderRoadList = wrapped; } catch (e) {}
     }
+    if (typeof renderKabupatenFilterOptions === "function" && !renderKabupatenFilterOptions.__pqSR) {
+      renderAllKabOptions.__pqSR = 1;
+      try { window.renderKabupatenFilterOptions = renderAllKabOptions; } catch (e) {}
+      try { renderAllKabOptions(); } catch (e) { console.error("SemuaRuas dropdown", e); }
+    }
     var s = $("searchInput"); if (s && !s.__pqSR) { s.__pqSR = 1; s.addEventListener("input", schedule); }
-    var k = $("kabupatenFilterSelect"); if (k && !k.__pqSR) { k.__pqSR = 1; k.addEventListener("change", schedule); }
+    var k = $("kabupatenFilterSelect"); if (k && !k.__pqSR) { k.__pqSR = 1; k.addEventListener("change", function () {
+      schedule();
+      setTimeout(function () { try { if (k.value && root) root.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) {} }, 120);
+    }); }
   }
 
   /* pulihkan ruas yang tadi dinyalakan */
