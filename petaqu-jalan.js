@@ -1,18 +1,6 @@
-/* PETAQU — Lapisan Jalan Tol (Trans Jawa), Tol Konstruksi/Rencana & Jalan Provinsi Jawa Tengah.  v3
-   PRIORITAS SUMBER RESMI (berurutan, otomatis turun ke sumber berikutnya bila gagal):
-
-   TOL (operasi · konstruksi · rencana)
-     1) Bina Marga / BPJT – Kementerian PU  : ArcGIS REST  gisportal.binamarga.pu.go.id  (folder "Tol"; ditemukan otomatis)
-     2) BIG Rupabumi Indonesia (RBI)         : atribut TOLRJL & status STARJL
-     3) OpenStreetMap (Overpass)             : hanya cadangan terakhir / pelengkap bila diaktifkan
-
-   JALAN PROVINSI JAWA TENGAH
-     1) Geoportal Borobudur/Palapa (Satu Peta Jateng, Dinas PU BM-CK) : overlay WMS
-        "Jalan Provinsi Kewenangan Provinsi Jawa Tengah Skala 1:50000" (nama layer dicari otomatis dari GetCapabilities)
-     2) Bina Marga – Kementerian PU (folder "Hosted", layer jalan provinsi)  : garis yang bisa diklik
-     3) BIG RBI (AUTRJL=2)                                                   : garis yang bisa diklik
-
-   Tambahan: impor GeoJSON sendiri (BPJT / PUPR / SHP Dinas PU yang dikonversi), uji koneksi sumber, tautan peta resmi.
+/* PETAQU — Lapisan Jalan Tol (Trans Jawa), Tol Konstruksi/Rencana & Jalan Provinsi Jawa Tengah.  v4
+   Sumber data diambil otomatis dan berurutan; bila satu sumber gagal, sistem turun ke sumber berikutnya.
+   Fitur: pintasan tampilan, cari ruas, statistik panjang, ketebalan garis, ekspor GeoJSON, impor GeoJSON, uji koneksi.
    Data di-cache per kotak 0,5° (localStorage). Tombol #tlBtn disembunyikan; dibuka lewat menu folder (petaqu-folder.js). */
 (function () {
   "use strict";
@@ -30,23 +18,17 @@
   var BIG_F = "NAMRJL,KONRJL,FGSRJL,KLSRJL,JPARJL,STARJL,KLLRJL,TOLRJL,AUTRJL";
 
   var SRCN = {
-    bm: "Bina Marga / BPJT – Kementerian PU",
-    big: "BIG – Rupabumi Indonesia",
+    bm: "Data jaringan tol",
+    big: "Data jaringan jalan",
     osm: "OpenStreetMap",
-    sp: "Satu Peta Jateng (WMS)",
+    sp: "Peta jalan provinsi (WMS)",
     imp: "Impor GeoJSON"
   };
 
-  /* tautan resmi untuk dibuka di tab baru */
-  var LINKS = [
-    ["Geoportal Borobudur – Satu Peta Jateng", "https://satupeta.jatengprov.go.id/main/peta"],
-    ["WebGIS Jalan – Dinas PU BM-CK Jateng", "https://dpubinmarcipka.jatengprov.go.id/webgis/index.php"],
-    ["Peta Jalan Provinsi (Open Data Jateng)", "https://data.jatengprov.go.id/dataset/peta-jalan-provinsi-jawa-tengah-tahun-2024"],
-    ["Peta Jalan Tol – BPJT / Kementerian PU", "https://gis.bpjt.pu.go.id"],
-    ["Bina Marga GIS Portal (ArcGIS REST)", "https://gisportal.binamarga.pu.go.id/arcgis/rest/services"]
-  ];
+  /* (tautan eksternal tidak ditampilkan) */
+  var LINKS = [];
 
-  /* kategori. chain = urutan sumber; big = filter SQL layer BIG; q = filter Overpass; z = zoom minimum */
+  /* kategori. chain = urutan sumber; big = filter SQL layer jaringan jalan; q = filter Overpass; z = zoom minimum */
   var CAT = {
     tol:  { n: "Jalan Tol (operasi)",  c: "#f59e0b", w: 4, z: 8,  d: "",    big: "TOLRJL=1 AND STARJL=1", chain: ["bm", "big", "osm"], q: '[highway~"^(motorway|motorway_link)$"]' },
     kons: { n: "Tol Dalam Konstruksi", c: "#ef4444", w: 4, z: 8,  d: "9 6", big: "TOLRJL=1 AND STARJL=3", chain: ["bm", "big", "osm"], q: '[highway=construction][construction~"^(motorway|motorway_link|trunk)$"]' },
@@ -55,7 +37,7 @@
   };
   var ORDER = ["tol", "kons", "renc", "prov"];
 
-  /* koridor tol untuk lompat cepat (status berubah; lihat BPJT) */
+  /* koridor tol untuk lompat cepat (status dapat berubah) */
   var PROYEK = [
     ["Trans Jawa: Brebes–Pemalang–Batang–Semarang", -6.93, 109.45, 9],
     ["Semarang ABC & Semarang–Demak", -6.97, 110.45, 11],
@@ -73,7 +55,7 @@
     JPARJL: { 1: "1 lajur", 2: "2 lajur", 3: "3 lajur" }
   };
 
-  var DEF = { on: false, show: { tol: true, kons: false, renc: false, prov: false }, op: 0.9, osmTol: false, osmProv: false, lbl: false, nm: true, sp: { on: false, layer: "", ep: "" } };
+  var DEF = { wt: 1, on: false, show: { tol: true, kons: false, renc: false, prov: false }, op: 0.9, osmTol: false, osmProv: false, lbl: false, nm: true, sp: { on: false, layer: "", ep: "" } };
   var st = JSON.parse(JSON.stringify(DEF));
   try {
     var sv = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -84,7 +66,7 @@
       Object.assign(st, sv); st.show = Object.assign({}, DEF.show, sv.show); st.sp = Object.assign({}, DEF.sp, sv.sp);
     }
   } catch (e) {}
-  st.show.prov = false; st.osmProv = false; /* jalan provinsi hanya dari peta resmi Geoportal (WMS); garis vektor dinonaktifkan */
+  st.show.prov = false; st.osmProv = false; /* jalan provinsi hanya dari layer WMS; garis vektor dinonaktifkan */
   var save = function () { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
 
   var spAll = [], rend, rendOsm, groups = {}, seen = {}, cells = {}, timer, cache = {}, imported = {}, spLayer = null, spNames = [];
@@ -152,14 +134,17 @@
     ".tl-c{display:flex;align-items:flex-start;gap:8px;padding:4px 2px;font-size:12px;cursor:pointer}.tl-c input{margin-top:2px}" +
     ".tl-src{display:inline-block;margin-top:4px;padding:1px 6px;border-radius:6px;background:#ffffff14;color:#9fb0c8;font-size:10px}" +
     ".tl-chip{display:flex;align-items:center;gap:7px;padding:3px 2px;font-size:11px}.tl-chip i{width:8px;height:8px;border-radius:50%;flex:none}.tl-chip span{flex:1}.tl-chip em{font-style:normal;color:#9fb0c8}" +
-    "#tlTestOut{margin-top:4px;font-size:11px;line-height:1.5;color:#c6d4e6}";
+    "#tlTestOut{margin-top:4px;font-size:11px;line-height:1.5;color:#c6d4e6}" +
+    ".tl-dt{margin-top:12px;border-top:1px solid #ffffff1a;padding-top:2px}.tl-dt>summary{cursor:pointer;font:700 10px/1 system-ui;letter-spacing:.8px;text-transform:uppercase;color:#8fa6bd;padding:10px 0;list-style:none}.tl-dt>summary::-webkit-details-marker{display:none}.tl-dt>summary:after{content:\" ▾\"}.tl-dt[open]>summary:after{content:\" ▴\"}" +
+    ".tl-p em{font-style:normal;float:right;font-size:10px;color:#9fb0c8;margin-left:8px}.tl-p i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:7px;vertical-align:middle}" +
+    "#tlExpSt{font-size:11px;color:#9fb0c8;margin-top:2px}";
 
   function build() {
     var s = document.createElement("style"); s.textContent = CSS; document.head.appendChild(s);
     var b = document.createElement("button"); b.id = "tlBtn"; b.type = "button"; document.body.appendChild(b);
     var p = document.createElement("div"); p.id = "tlPanel"; p.setAttribute("role", "dialog");
     var h = '<div class="tl-hd"><div style="flex:1"><h3>Tol & Jalan Provinsi</h3>' +
-      "<small>Sumber resmi: Kementerian PU (Bina Marga/BPJT) · Dinas PU BM-CK & Geoportal Jateng · BIG</small></div>" +
+      "<small>Tol Trans Jawa dan ruas jalan provinsi Jawa Tengah</small></div>" +
       '<label class="jn-sw" style="--a:#f59e0b;--b:#d97706" title="Tampilkan / sembunyikan"><input type="checkbox" id="tlToggle"><span></span></label>' +
       '<button class="tl-x" id="tlClose" aria-label="Tutup">×</button></div>';
 
@@ -167,33 +152,40 @@
       var c = CAT[k];
       return '<label class="tl-r" style="--c:' + c.c + '"><input type="checkbox" data-k="' + k + '"><span class="tl-sw" style="--ds:' + (c.d ? "dashed" : "solid") + '"></span><b>' + c.n + '</b><em id="tlN_' + k + '">0</em></label>';
     }
+    h += '<div class="tl-h">Pintasan tampilan</div><div>' +
+      '<button class="tl-b" type="button" data-pre="semua">Semua tol</button><button class="tl-b" type="button" data-pre="operasi">Hanya beroperasi</button><button class="tl-b" type="button" data-pre="off">Sembunyikan semua</button></div>';
+    h += '<div class="tl-h">Cari ruas</div><input type="text" id="tlFind" placeholder="Ketik nama ruas atau tol…" autocomplete="off"><div id="tlFindRes"></div>';
     h += '<div class="tl-h">Jalan tol · Trans Jawa & jaringan tol</div>' + row("tol") + row("kons") + row("renc");
     h += '<div class="tl-h">Jalan provinsi Jawa Tengah</div>' +
-      '<label class="tl-c"><input type="checkbox" id="tlSpOn"><span>Peta resmi <b>Jalan Provinsi Kewenangan Prov. Jateng</b> (Geoportal Borobudur · Dinas PU BM-CK)</span></label>' +
-      '<input type="text" id="tlSpLayer" list="tlSpList" placeholder="Nama layer WMS (otomatis dicari)"><datalist id="tlSpList"></datalist>' +
+      '<label class="tl-c"><input type="checkbox" id="tlSpOn"><span>Tampilkan peta <b>Jalan Provinsi Jawa Tengah</b></span></label>' +
+      '<input type="text" id="tlSpLayer" list="tlSpList" placeholder="Nama layer (otomatis dicari)"><datalist id="tlSpList"></datalist>' +
       '<button class="tl-b" id="tlSpFind" type="button">Cari layer otomatis</button><div id="tlSpSt" style="font-size:11px;color:#9fb0c8"></div><div id="tlSpCand"></div>' +
       '<small>Label nama ruas diambil dari layer yang sama (zoom ≥ 11).</small>';
-    h += '<div class="tl-h">Status sumber data</div><div id="tlSrc"></div>' +
-      '<button class="tl-b" id="tlTest" type="button">Uji koneksi sumber</button><div id="tlTestOut"></div>';
-    h += '<div class="tl-h">Sumber tambahan (belum tentu resmi)</div>' +
-      '<label class="tl-c"><input type="checkbox" id="tlOsmTol"><span>Lengkapi tol/konstruksi/rencana dengan OpenStreetMap (lebih baru; digambar tipis di bawah data resmi)</span></label>';
-    h += '<div class="tl-h">Impor GeoJSON (BPJT / PUPR / Dinas PU)</div>' +
-      '<select id="tlImpCat"><option value="tol">Jalan Tol (operasi)</option><option value="kons">Tol Dalam Konstruksi</option><option value="renc">Rencana Tol</option></select>' +
-      '<input type="file" id="tlImpFile" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
-      '<button class="tl-b" id="tlImpBtn" type="button">Pilih file GeoJSON…</button><button class="tl-b" id="tlImpClr" type="button">Hapus impor</button><div id="tlImpSt" style="font-size:11px;color:#9fb0c8"></div>';
-    h += '<div class="tl-h">Opasitas</div><input type="range" id="tlOp" min="3" max="10" step="1">';
-    h += '<label class="tl-c" style="margin-top:8px"><input type="checkbox" id="tlNm"><span>Label nama ruas pada garis (zoom ≥ 11; juga untuk layer WMS Geoportal lewat WFS)</span></label>';
-    h += '<label class="tl-c"><input type="checkbox" id="tlLbl"><span>Label nama tempat di atas semua layer (hanya basemap Google Hybrid)</span></label>';
+    h += '<div class="tl-h">Tampilan garis</div>' +
+      '<small>Opasitas</small><input type="range" id="tlOp" min="3" max="10" step="1">' +
+      '<small>Ketebalan</small><input type="range" id="tlWt" min="5" max="20" step="1">' +
+      '<label class="tl-c" style="margin-top:8px"><input type="checkbox" id="tlNm"><span>Label nama ruas pada garis (zoom ≥ 11)</span></label>' +
+      '<label class="tl-c"><input type="checkbox" id="tlLbl"><span>Label nama tempat di atas semua layer (hanya basemap Google Hybrid)</span></label>';
     h += '<div class="tl-h">Lompat ke koridor tol</div>';
     PROYEK.forEach(function (x, i) { h += '<button class="tl-p" data-i="' + i + '">' + esc(x[0]) + "</button>"; });
-    h += '<div class="tl-h">Buka peta resmi (tab baru)</div>';
-    LINKS.forEach(function (x) { h += '<a class="tl-a" target="_blank" rel="noopener" href="' + x[1] + '">' + esc(x[0]) + " ↗</a>"; });
-    h += '<div id="tlSt"></div><small>Status tol berubah cepat; rujukan akhir tetap BPJT/Kementerian PU. Status ruas jalan provinsi mengikuti SK Gubernur Jateng No. 622/2 Tahun 2023.</small>';
+    h += '<div class="tl-h">Simpan data</div>' +
+      '<button class="tl-b" id="tlExp" type="button">Unduh GeoJSON (ruas yang termuat)</button><div id="tlExpSt"></div>';
+    h += '<details class="tl-dt"><summary>Pengaturan lanjutan</summary>' +
+      '<div class="tl-h">Status sumber data</div><div id="tlSrc"></div>' +
+      '<button class="tl-b" id="tlTest" type="button">Uji koneksi sumber</button><div id="tlTestOut"></div>' +
+      '<div class="tl-h">Sumber tambahan</div>' +
+      '<label class="tl-c"><input type="checkbox" id="tlOsmTol"><span>Lengkapi tol/konstruksi/rencana dengan OpenStreetMap (lebih baru; digambar tipis di bawah data utama)</span></label>' +
+      '<div class="tl-h">Impor GeoJSON</div>' +
+      '<select id="tlImpCat"><option value="tol">Jalan Tol (operasi)</option><option value="kons">Tol Dalam Konstruksi</option><option value="renc">Rencana Tol</option></select>' +
+      '<input type="file" id="tlImpFile" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
+      '<button class="tl-b" id="tlImpBtn" type="button">Pilih file GeoJSON…</button><button class="tl-b" id="tlImpClr" type="button">Hapus impor</button><div id="tlImpSt" style="font-size:11px;color:#9fb0c8"></div>' +
+      '</details>';
+    h += '<div id="tlSt"></div><small>Status ruas dapat berubah sewaktu-waktu; data bersifat informatif.</small>';
     p.innerHTML = h; document.body.appendChild(p);
 
     p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
     $("tlNm").checked = st.nm !== false; $("tlLbl").checked = st.lbl !== false; $("tlToggle").checked = !!st.on; $("tlOp").value = Math.round(st.op * 10);
-    $("tlOsmTol").checked = !!st.osmTol;
+    $("tlOsmTol").checked = !!st.osmTol; $("tlWt").value = Math.round((st.wt || 1) * 10);
     $("tlSpOn").checked = !!st.sp.on; $("tlSpLayer").value = st.sp.layer || "";
     chips();
     b.onclick = function () { p.classList.toggle("open"); };
@@ -219,11 +211,16 @@
       if (t.id === "tlImpFile") { impFile(t.files && t.files[0]); t.value = ""; }
     });
     $("tlOp").oninput = function () { st.op = this.value / 10; save(); each(function (l) { l.setStyle && l.setStyle({ opacity: opOf(l) }); }); if (spLayer) spLayer.setOpacity(st.op); };
+    $("tlWt").oninput = function () { st.wt = this.value / 10; save(); each(function (l) { if (l.setStyle && l.__bw) l.setStyle({ weight: l.__bw * st.wt }); }); };
+    $("tlFind").oninput = doFind;
+    $("tlExp").onclick = exportGeo;
     $("tlSpFind").onclick = function () { spDiscover(true); };
     $("tlTest").onclick = function () { testSources(); };
     $("tlImpBtn").onclick = function () { $("tlImpFile").click(); };
     $("tlImpClr").onclick = function () { clearImport(); };
     p.addEventListener("click", function (e) {
+      var pre = e.target.closest("[data-pre]"); if (pre) { preset(pre.dataset.pre); return; }
+      var fd = e.target.closest("[data-f]"); if (fd) { gotoFind(+fd.dataset.f); return; }
       var sq = e.target.closest("[data-sp]");
       if (sq) { var xx = spNames[+sq.dataset.sp]; if (xx) spPick(xx); return; }
       var q = e.target.closest(".tl-p"); if (!q || q.dataset.i == null) return;
@@ -231,6 +228,65 @@
       st.show.tol = st.show.kons = st.show.renc = true; p.querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
       save(); sync(); m.flyTo([x[1], x[2]], x[3], { duration: .8 });
     });
+  }
+
+  /* ---------- fitur tambahan: panjang, pintasan, cari, ekspor ---------- */
+  function plen(g) { var d = 0; for (var i = 1; i < g.length; i++) d += L.latLng(g[i - 1]).distanceTo(L.latLng(g[i])); return d; }
+  function fmtKm(m) { return m >= 1000 ? (m / 1000).toFixed(m >= 100000 ? 0 : 1) + " km" : Math.round(m) + " m"; }
+
+  function preset(n) {
+    if (n === "off") { ORDER.forEach(function (k) { st.show[k] = false; }); st.on = false; }
+    else { st.on = true; st.show.tol = true; st.show.kons = st.show.renc = (n === "semua"); }
+    $("tlToggle").checked = !!st.on;
+    $("tlPanel").querySelectorAll("input[data-k]").forEach(function (i) { i.checked = !!st.show[i.dataset.k]; });
+    save(); sync(); spSync(false); if (st.on) fetchView();
+  }
+
+  var findRes = [];
+  function doFind() {
+    var inp = $("tlFind"), box = $("tlFindRes"); if (!inp || !box) return;
+    var q = inp.value.trim().toLowerCase(), seenN = {}; findRes = [];
+    if (q.length < 2) { box.innerHTML = ""; return; }
+    ORDER.forEach(function (k) {
+      groups[k] && groups[k].eachLayer(function (pl) {
+        if (!pl.__nm || findRes.length >= 8) return;
+        var low = pl.__nm.toLowerCase(), key = k + "|" + low;
+        if (low.indexOf(q) < 0 || seenN[key]) return; seenN[key] = 1;
+        findRes.push({ nm: pl.__nm, k: k, pl: pl });
+      });
+    });
+    Object.keys(spFeat).forEach(function (id) {
+      var e = spFeat[id], low = e.nm.toLowerCase(), key = "prov|" + low;
+      if (findRes.length >= 8 || low.indexOf(q) < 0 || seenN[key]) return; seenN[key] = 1;
+      findRes.push({ nm: e.nm, k: "prov", g: e.g });
+    });
+    box.innerHTML = findRes.length ? findRes.map(function (r, i) {
+      return '<button class="tl-p" type="button" data-f="' + i + '"><i style="background:' + CAT[r.k].c + '"></i>' + esc(r.nm) + "<em>" + CAT[r.k].n + "</em></button>";
+    }).join("") : "<small>Belum ada ruas bernama itu pada data yang termuat. Geser atau perbesar peta, lalu coba lagi.</small>";
+  }
+  function gotoFind(i) {
+    var r = findRes[i], m = M(); if (!r || !m) return;
+    if (r.pl) {
+      m.fitBounds(r.pl.getBounds(), { maxZoom: 15, padding: [40, 40] });
+      if (m.hasLayer(groups[r.k])) r.pl.openPopup();
+    } else if (r.g) m.fitBounds(L.latLngBounds(r.g), { maxZoom: 15, padding: [40, 40] });
+  }
+
+  function exportGeo() {
+    var feats = [], o = $("tlExpSt");
+    ORDER.forEach(function (k) {
+      groups[k] && groups[k].eachLayer(function (pl) {
+        var ll = pl.getLatLngs(); if (!ll || ll.length < 2) return;
+        feats.push({ type: "Feature",
+          properties: { nama: pl.__nm || "", kategori: CAT[k].n, panjang_km: +((pl.__len || 0) / 1000).toFixed(3) },
+          geometry: { type: "LineString", coordinates: ll.map(function (p) { return [rnd(p.lng), rnd(p.lat)]; }) } });
+      });
+    });
+    if (!feats.length) { if (o) o.textContent = "Belum ada ruas yang termuat. Aktifkan lapisan dan tunggu data tampil dulu."; return; }
+    var blob = new Blob([JSON.stringify({ type: "FeatureCollection", features: feats })], { type: "application/geo+json" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "petaqu-jalan.geojson";
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    if (o) o.textContent = feats.length + " garis diunduh sebagai petaqu-jalan.geojson.";
   }
 
   /* ---------- peta ---------- */
@@ -273,7 +329,9 @@
   function count() {
     lblNames();
     ORDER.forEach(function (k) {
-      var e = $("tlN_" + k); if (e) e.textContent = groups[k].getLayers().filter(function (l) { return !l.__sub; }).length + " ruas";
+      var e = $("tlN_" + k); if (!e) return;
+      var ls = groups[k].getLayers(), len = 0; ls.forEach(function (l) { len += l.__len || 0; });
+      e.textContent = ls.filter(function (l) { return !l.__sub; }).length + " ruas" + (len ? " · " + fmtKm(len) : "");
     });
   }
 
@@ -288,7 +346,7 @@
   }
   var SKIP = /^(objectid|fid|shape|globalid|gdb_|created|last_edited|st_length|st_area|id$)/i;
 
-  function popup(k, src, t) {
+  function popup(k, src, t, len) {
     var c = CAT[k], nm = (src === "big" ? t.NAMRJL : pickName(t)) || t.name || t["name:id"] || t.ref || "(tanpa nama)";
     var r = "<b>" + esc(nm) + '</b><div style="color:' + c.c + ';font-weight:700">' + c.n + "</div>";
     var rows = [];
@@ -305,6 +363,7 @@
       });
     }
     rows.forEach(function (f) { if (f[1] !== "" && f[1] != null) r += "<div><span style='color:#9fb0c8'>" + esc(f[0]) + ":</span> " + esc(f[1]) + "</div>"; });
+    if (len) r += "<div><span style='color:#9fb0c8'>Panjang segmen:</span> " + fmtKm(len) + "</div>";
     return r + '<span class="tl-src">' + (SRCN[src] || src) + "</span>";
   }
 
@@ -388,7 +447,7 @@
     els.forEach(function (e) {
       var key = k + e.s + e.id; if (seen[key] || !e.g || e.g.length < 2) return; seen[key] = 1;
       var t = e.p || {}, nm = (e.s === "big" ? t.NAMRJL : pickName(t)) || t.name || t.ref || "";
-      var osm = e.s === "osm", w = osm ? Math.max(2, c.w - 1) : c.w;
+      var osm = e.s === "osm", bw = osm ? Math.max(2, c.w - 1) : c.w, w = bw * (st.wt || 1);
       splitJt(e.g).forEach(function (part, pi) {
         var pl = L.polyline(part.g, { color: c.c, weight: w, opacity: 1, dashArray: c.d || null, lineCap: "round", lineJoin: "round", renderer: osm ? rendOsm : rend, pane: osm ? "pqJalanOsm" : "pqJalanPane" });
         if (e.s === "imp") pl.__imp = 1;
@@ -397,9 +456,10 @@
         if (osm) pl.__osm = 1;
         if (part.out) pl.__out = 1;
         pl.setStyle({ opacity: opOf(pl) });
-        pl.bindPopup(popup(k, e.s, t));
+        pl.__bw = bw; pl.__len = plen(part.g);
+        pl.bindPopup(popup(k, e.s, t, pl.__len));
         if (nm) pl.bindTooltip(esc(nm), { sticky: true, className: "tl-tip" });
-        pl.on("mouseover", function () { pl.setStyle({ weight: w + 3 }); }).on("mouseout", function () { pl.setStyle({ weight: w }); });
+        pl.on("mouseover", function () { pl.setStyle({ weight: pl.__bw * (st.wt || 1) + 3 }); }).on("mouseout", function () { pl.setStyle({ weight: pl.__bw * (st.wt || 1) }); });
         pl.on("click", function () { lastLine = Date.now(); });
         groups[k].addLayer(pl);
       });
@@ -448,7 +508,7 @@
     } finally { clearTimeout(to); }
   }
 
-  /* ----- Bina Marga / BPJT (Kementerian PU): penemuan layer otomatis ----- */
+  /* ----- server data tol: penemuan layer otomatis ----- */
   function classify(s) {
     s = String(s || "").toLowerCase();
     if (/gerbang|gardu|rest.?area|simpang|interchange|junction|tarif|cctv|titik|point|label|buffer|batas|jembatan/.test(s)) return null;
@@ -487,7 +547,7 @@
         if (/^(MapServer|FeatureServer)$/.test(s.type) && /jalan.?prov|prov.*jalan|jln.?prov/i.test(s.name)) jobs.push([s, "prov"]);
       });
     } catch (e) { err = err || e; }
-    /* layanan yang terverifikasi ada di server Bina Marga: selalu disertakan bila belum terdaftar */
+    /* layanan yang terverifikasi ada di server: selalu disertakan bila belum terdaftar */
     [[{ name: "Tol/Jalan_Tol_Konstruksi", type: "MapServer" }, "kons"], [{ name: "Tol/rencana_umum_tol", type: "MapServer" }, "renc"], [{ name: "Hosted/Jalan_Provinsi_DIY", type: "FeatureServer" }, "prov"]].forEach(function (kn) {
       if (!jobs.some(function (j) { return j[0].name === kn[0].name; })) jobs.push(kn);
     });
@@ -498,7 +558,7 @@
       } catch (e) { err = err || e; }
     }
     d.ok = d.tol.length + d.kons.length + d.renc.length + d.prov.length;
-    if (!d.ok) throw err || new Error("tidak ada layer ditemukan di server Bina Marga");
+    if (!d.ok) throw err || new Error("tidak ada layer ditemukan di server data tol");
     try { localStorage.setItem(DK, JSON.stringify(d)); } catch (e) {}
     return (disc = d);
   }
@@ -537,14 +597,14 @@
 
   async function getBM(k, bb) {
     var d = await bmDiscover(), ls = d[k] || [];
-    if (!ls.length) throw new Error("server Bina Marga tidak punya layer untuk kategori ini");
+    if (!ls.length) throw new Error("server data tol tidak punya layer untuk kategori ini");
     var rs = await Promise.allSettled(ls.map(function (l) { return getArc(l, k, bb); })), out = [], bad = 0, why = "";
     rs.forEach(function (r) { if (r.status === "fulfilled") out = out.concat(r.value); else { bad++; why = explain(r.reason); } });
     if (bad === rs.length) throw new Error(why);
     return out;
   }
 
-  /* ----- BIG ----- */
+  /* ----- server data jaringan jalan ----- */
   async function getBig(k, bb) {
     var out = [], off = 0;
     for (var pg = 0; pg < 5; pg++) {
@@ -554,7 +614,7 @@
         maxAllowableOffset: "0.0001", resultOffset: String(off), resultRecordCount: "1000", f: "geojson"
       });
       var j = await getJSON(BIG + "?" + p.toString());
-      if (j.error) throw new Error(j.error.message || "BIG error");
+      if (j.error) throw new Error(j.error.message || "server error");
       var n = (j.features || []).length;
       out = out.concat(fromGeo(j, "big", "big", null));
       var more = j.exceededTransferLimit || (j.properties && j.properties.exceededTransferLimit);
@@ -603,7 +663,7 @@
         try {
           var els = await FETCH[src](k, bb);
           stat(src, true);
-          /* layer provinsi Bina Marga yang terverifikasi hanya DIY: kosong di Jateng ≠ tidak ada jalan → lanjut ke sumber berikut */
+          /* layer provinsi di server utama hanya mencakup DIY: kosong di Jateng ≠ tidak ada jalan → lanjut ke sumber berikut */
           if (!els.length && k === "prov" && i < chain.length - 1) { emptyOk = src; continue; }
           draw(els, k); res = { src: src, n: els.length };
           if (els.length < 1500) { cache[id] = { t: Date.now(), s: src, e: els }; saveCache(); }
@@ -658,13 +718,13 @@
     if (s && jobs.length) {
       var parts = Object.keys(used).map(function (u) { return SRCN[u] + " (" + used[u] + " kotak)"; });
       var msg = parts.length ? "Sumber: " + parts.join(", ") + "." : "Tidak ada data baru.";
-      if (used.osm && !used.bm) msg += " Data resmi Kementerian PU/BIG belum terjangkau; yang tampil dari OpenStreetMap sebagai cadangan.";
+      if (used.osm && !used.bm) msg += " Sumber utama belum terjangkau; yang tampil dari OpenStreetMap sebagai cadangan.";
       if (fail) msg += " " + fail + " kotak gagal dimuat (" + failMsg + "). Geser peta untuk mencoba lagi atau tekan “Uji koneksi sumber”.";
       s.textContent = msg;
     }
   }
 
-  /* ---------- WMS Satu Peta / Geoportal Borobudur Jateng ---------- */
+  /* ---------- WMS peta jalan provinsi ---------- */
   function spStatus(t) { var e = $("tlSpSt"); if (e) e.textContent = t || ""; }
 
   function spSync(discover) {
@@ -674,7 +734,7 @@
     if (!st.sp.on || !st.on) { spStatus(""); legend(); return; }
     if (!st.sp.layer) { if (discover) spDiscover(false); else spStatus("Isi nama layer, atau tekan “Cari layer otomatis”."); return; }
     mkPane(m, "pqJalanWms", 385);
-    spLayer = L.tileLayer.wms(st.sp.ep || SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Pemprov Jateng – Geoportal Borobudur (Palapa) · Dinas PU BM-CK" });
+    spLayer = L.tileLayer.wms(st.sp.ep || SP, { layers: st.sp.layer, styles: "", format: "image/png", transparent: true, version: "1.1.1", pane: "pqJalanWms", opacity: st.op, maxZoom: 22, attribution: "© Peta Jalan Provinsi Jateng" });
     spLayer.on("tileerror", function () { stat("sp", false, "tile gagal: periksa nama layer atau koneksi"); spStatus("Sebagian tile gagal dimuat. Periksa nama layer atau koneksi."); });
     spLayer.on("tileload", function () { stat("sp", true); });
     spLayer.addTo(m); spStatus("Layer: " + st.sp.layer); legend(); spWfs();
@@ -733,16 +793,16 @@
   }
 
   async function spDiscover() {
-    spStatus("Mencari layer di Geoportal Borobudur (Satu Peta Jateng)…");
+    spStatus("Mencari layer jalan provinsi…");
     try {
       await spCaps();
       var best = spNames[0];
-      if (!best) { spStatus("Dari " + spAll.length + " layer, tidak ada yang cocok sebagai ruas jalan provinsi. Ketik kata kunci (mis. “jalan”) di kolom nama layer untuk menelusuri semua layer, atau tempel nama layer dari Geoportal."); return; }
+      if (!best) { spStatus("Dari " + spAll.length + " layer, tidak ada yang cocok sebagai ruas jalan provinsi. Ketik kata kunci (mis. “jalan”) di kolom nama layer untuk menelusuri semua layer, atau tempel nama layer secara manual."); return; }
       spPick(best);
       spStatus("Dipakai: " + (best.title || best.name) + " (" + best.name + "). " + (spNames.length > 1 ? "Kandidat lain ada di bawah — klik untuk mengganti." : ""));
     } catch (e) {
       stat("sp", false, explain(e));
-      spStatus("Daftar layer tidak bisa dibaca dari browser (" + explain(e) + "). Isi nama layer manual: buka Geoportal Borobudur, pilih “Jalan Provinsi Kewenangan Provinsi Jawa Tengah Skala 1:50000”, salin nama layernya (mis. palapa:…), tempel di kolom di atas.");
+      spStatus("Daftar layer tidak bisa dibaca dari browser (" + explain(e) + "). Isi nama layer secara manual (mis. palapa:…) di kolom di atas.");
     }
   }
 
@@ -758,15 +818,15 @@
       show();
     }
     o.textContent = "Menguji…";
-    await t("Bina Marga / BPJT (Kementerian PU)", async function () {
+    await t("Server data tol", async function () {
       var d = await bmDiscover(true); stat("bm", true);
       return "layer tol " + d.tol.length + ", konstruksi " + d.kons.length + ", rencana " + d.renc.length + ", provinsi " + d.prov.length;
     });
-    await t("BIG Rupabumi", async function () {
+    await t("Server data jaringan jalan", async function () {
       var j = await getJSON(BIG + "?where=1%3D0&returnCountOnly=true&f=json");
       if (j.error) throw new Error(j.error.message || "error"); stat("big", true); return "terjangkau";
     });
-    await t("Satu Peta Jateng (GetCapabilities)", async function () { var n = await spCaps(); return n + " layer jalan terbaca"; });
+    await t("Peta jalan provinsi (daftar layer)", async function () { var n = await spCaps(); return n + " layer jalan terbaca"; });
     resetCells(); fetchView();
   }
 
@@ -813,7 +873,7 @@
 
   /* ---------- label nama ruas di sepanjang garis ----------
      Satu label per ruas (diputar mengikuti arah garis), dengan penyaringan tumpang-tindih. Hanya garis vektor yang punya nama;
-     gambar WMS Geoportal tidak memuat atribut sehingga tidak bisa diberi label. */
+     gambar WMS tidak memuat atribut sehingga tidak bisa diberi label. */
   var nmGroup = null, nmT = 0;
   function lblNames() { clearTimeout(nmT); nmT = setTimeout(nmDraw, 120); }
   function nmDraw() {
@@ -854,11 +914,11 @@
         tryLabel(pl.__nm, flat(pl.getLatLngs(), []));
       });
     });
-    /* garis WMS Geoportal: nama diambil lewat WFS (layer yang sama) */
+    /* garis WMS: nama diambil lewat WFS (layer yang sama) */
     if (st.sp.on && st.sp.layer) Object.keys(spFeat).forEach(function (id) { var e = spFeat[id]; tryLabel(e.nm, e.g); });
   }
 
-  /* ---------- nama ruas untuk layer WMS Geoportal (via WFS dari layer yang sama) ---------- */
+  /* ---------- nama ruas untuk layer WMS (via WFS dari layer yang sama) ---------- */
   var spFeat = {}, spWfsKey = "", spWfsBusy = false;
   async function spWfs() {
     var m = M();
