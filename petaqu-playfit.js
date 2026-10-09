@@ -6,7 +6,11 @@
    • Street View mode layar penuh: panel diangkat di atas Street View agar tombol tetap terjangkau.
    • Panel yang digeser manual tetap dijaga di dalam area terlihat (tidak lari ke bawah Street View).
    • Dua kali klik panel = kembali ke posisi otomatis (perilaku lama tetap).
-   • Ringan: tanpa timer; hanya ResizeObserver/MutationObserver + 1 rAF per perubahan. */
+   • PANAH/KENDARAAN RUTE ikut adaptif: saat kamera mengikuti, panah diletakkan di tengah area peta yang
+     benar-benar terlihat (di luar Street View, panel animasi, & toolbar kanan) — bukan di tengah seluruh
+     peta. Saat Street View dibuka/diubah ukurannya atau panel berpindah, panah otomatis digeser masuk
+     ke area terlihat (juga saat kamera-ikut dimatikan atau animasi dijeda).
+   • Ringan: tanpa timer polling; ResizeObserver/MutationObserver + 1 rAF per perubahan; rect di-cache 250 ms. */
 (function () {
   "use strict";
   if (window.__pqPlayFit) return;
@@ -41,8 +45,93 @@
     return free;
   }
 
+
+  /* ====== Panah/kendaraan rute: selalu di area terlihat ====== */
+  var vis = null, visT = 0, dirty = true, ensureTm = 0, PAD = 24;
+  function MAP() { try { return typeof map !== "undefined" ? map : null; } catch (e) { return null; } }
+  function RA() { try { return typeof routeAnim !== "undefined" ? routeAnim : null; } catch (e) { return null; } }
+
+  /* Murni: kurangi area bebas dengan panel animasi (atas/bawah) & toolbar kanan, lalu beri bantalan. */
+  function shrink(f, bar, tb, pad) {
+    var r = { left: f.left, right: f.right, top: f.top, bottom: f.bottom };
+    if (bar && bar.width > 0 && bar.right > r.left && bar.left < r.right && bar.bottom > r.top && bar.top < r.bottom) {
+      if ((bar.top + bar.bottom) / 2 >= (r.top + r.bottom) / 2) r.bottom = Math.min(r.bottom, bar.top - 8);
+      else r.top = Math.max(r.top, bar.bottom + 8);
+    }
+    if (tb && tb.width > 0 && tb.left > r.left + (r.right - r.left) * 0.5 && tb.left < r.right) r.right = tb.left - 8;
+    r.left += pad; r.right -= pad; r.top += pad; r.bottom -= pad;
+    return (r.right - r.left < 60 || r.bottom - r.top < 60) ? null : r;
+  }
+
+  function getVis() {
+    var now = Date.now();
+    if (!dirty && now - visT < 250) return vis;
+    var map = $("map"); if (!map) return (vis = null);
+    var mr = map.getBoundingClientRect(), ovEl = $("svOverlay"), ov = null;
+    if (ovEl && ovEl.classList.contains("show")) ov = ovEl.getBoundingClientRect();
+    var f = calcFree(mr, ov, window.innerWidth, window.innerHeight);
+    var bar = $("routePlayerBar"), tb = $("mapToolbar");
+    var br = bar && bar.classList.contains("show") ? bar.getBoundingClientRect() : null;
+    var tr = tb && tb.offsetWidth > 0 ? tb.getBoundingClientRect() : null;
+    vis = shrink(f, br, tr, PAD); if (vis) vis.mr = mr;
+    visT = now; dirty = false; return vis;
+  }
+
+  function same(a, b) { return a && b && Math.abs(a.lat - b.lat) < 1e-9 && Math.abs(a.lng - b.lng) < 1e-9; }
+
+  /* Geser pusat peta agar titik ll tampil di tengah area terlihat (memakai koordinat layar → aman saat peta berputar). */
+  function shifted(m, ll) {
+    var v = getVis(); if (!v) return ll;
+    var sz = m.getSize(), P = { x: (v.left + v.right) / 2 - v.mr.left, y: (v.top + v.bottom) / 2 - v.mr.top };
+    var dx = sz.x / 2 - P.x, dy = sz.y / 2 - P.y;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return ll;
+    var Vc = m.latLngToContainerPoint(ll);
+    return m.containerPointToLatLng(L.point(Vc.x + dx, Vc.y + dy));
+  }
+
+  function isVeh(ll) {
+    var a = RA(); if (!a || !a.followCamera || !a.marker || !ll) return false;
+    try { return same(L.latLng(ll), a.marker.getLatLng()); } catch (e) { return false; }
+  }
+
+  function patchMap() {
+    var m = MAP();
+    if (!m || !m.panTo || !window.L) return setTimeout(patchMap, 600);
+    if (m.__pqf) return; m.__pqf = 1;
+    var oPan = m.panTo, oFly = m.flyTo;
+    m.panTo = function (ll, o) {
+      try { if (isVeh(ll)) ll = shifted(this, L.latLng(ll)); } catch (e) {}
+      return oPan.call(this, ll, o);
+    };
+    m.flyTo = function (ll, z, o) {
+      try {
+        if (isVeh(ll)) {
+          var v = getVis(), zz = z == null ? this.getZoom() : z;
+          if (v) {
+            var sz = this.getSize(), px = this.project(L.latLng(ll), zz);
+            var P = { x: (v.left + v.right) / 2 - v.mr.left, y: (v.top + v.bottom) / 2 - v.mr.top };
+            ll = this.unproject(px.add([sz.x / 2 - P.x, sz.y / 2 - P.y]), zz);
+          }
+        }
+      } catch (e) {}
+      return oFly.call(this, ll, z, o);
+    };
+  }
+
+  /* Setelah tata letak berubah: pastikan panah terlihat (ikuti kamera → pusatkan; tidak ikut → geser seperlunya). */
+  function ensureMarker() {
+    var a = RA(), m = MAP(); if (!a || !a.marker || !m || !m.panBy) return;
+    var ll = a.marker.getLatLng(), v = getVis(); if (!v) return;
+    if (a.followCamera) { m.panTo(ll, { animate: true, duration: 0.3 }); return; }
+    var pt = m.latLngToContainerPoint(ll), x = pt.x + v.mr.left, y = pt.y + v.mr.top, dx = 0, dy = 0;
+    if (x < v.left) dx = x - v.left; else if (x > v.right) dx = x - v.right;
+    if (y < v.top) dy = y - v.top; else if (y > v.bottom) dy = y - v.bottom;
+    if (dx || dy) m.panBy([dx, dy], { animate: true, duration: 0.3 });
+  }
+  function queueEnsure() { dirty = true; clearTimeout(ensureTm); ensureTm = setTimeout(ensureMarker, 320); }
+
   var raf = 0;
-  function schedule() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; apply(); }); }
+  function schedule() { queueEnsure(); if (!raf) raf = requestAnimationFrame(function () { raf = 0; apply(); }); }
 
   function apply() {
     var bar = $("routePlayerBar"), map = $("map");
@@ -98,9 +187,9 @@
     }, true);
     // dua kali klik = kembali ke posisi otomatis (handler lama menghapus .dragged; kita hitung ulang)
     bar.addEventListener("dblclick", function () { setTimeout(schedule, 0); });
-    schedule();
+    schedule(); patchMap();
   }
 
-  window.__pqPlayFit = { calcFree: calcFree, apply: apply };
+  window.__pqPlayFit = { calcFree: calcFree, apply: apply, shrink: shrink };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
