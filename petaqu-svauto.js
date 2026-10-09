@@ -43,6 +43,15 @@
       "@keyframes pqSvLive{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}" +
       "#svInfoPanel .sv-info-row b.pq-sta{color:#22d3ee;font-family:var(--mono,monospace);font-variant-numeric:tabular-nums}" +
       "#svInfoPanel .sv-info-row b{font-variant-numeric:tabular-nums}" +
+      /* ringkas & minimalis: lebar mengikuti isi, label & nilai berdampingan, baris mengalir (tanpa ruang kosong) */
+      "#svInfoPanel{width:fit-content;max-width:min(300px,calc(100vw - 20px));padding:7px 10px 8px;gap:3px;border-radius:12px;max-height:min(220px,38vh)}" +
+      "#svInfoPanel #svInfoPanelTitle{font-size:11px;margin:0 0 1px;max-width:100%}" +
+      "#svInfoPanel #svInfoPanelBody{display:flex;flex-wrap:wrap;gap:1px 12px}" +
+      "#svInfoPanel .sv-info-row{display:inline-flex;justify-content:flex-start;gap:5px;font-size:10.5px;line-height:1.35;min-width:0;max-width:100%}" +
+      "#svInfoPanel .sv-info-row span{opacity:.75}" +
+      "#svInfoPanel .sv-info-row span:after{content:':'}" +
+      "#svInfoPanel .sv-info-row b{text-align:left}" +
+      "@media(max-width:639px){#svInfoPanel{left:8px;right:auto;width:fit-content;max-width:min(330px,calc(100% - 16px));bottom:calc(70px + env(safe-area-inset-bottom,0px))}}" +
       "@media(prefers-reduced-motion:reduce){#svInfoPanel.pq-live #svInfoPanelTitle:before{animation:none}}";
     document.head.appendChild(st);
   })();
@@ -112,8 +121,6 @@
     if (!t || !b || !p || !c) return;
     setTxt("svInfoPanelTitle", "STA " + c.sta + (c.kmpos ? " \u2022 KM " + c.kmpos : ""));
     var h = row("Ruas", esc(c.name)) +
-      row("STA", esc(c.sta), "pq-sta") +
-      row("KM", c.kmpos ? esc(c.kmpos) : "", "pq-sta") +
       row("Progres", esc(c.km) + " (" + c.pct + "%)") +
       row("Koordinat", c.lat.toFixed(6) + ", " + c.lng.toFixed(6), "", "font-size:10.5px;") +
       row("Arah pandang", c.h + "° " + dirName(c.h)) +
