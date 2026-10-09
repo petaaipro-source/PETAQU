@@ -90,11 +90,12 @@
       var rev = !!(a.queueMode && typeof routeAllQueue !== "undefined" && routeAllQueue && routeAllQueue[routeAllIndex] && routeAllQueue[routeAllIndex].reversed);
       pt = pts[rev ? n - 1 - k : k] || null;
     } catch (e) {}
-    var kmEl = $("routePlayerKm");
+    var kmEl = $("routePlayerKm"), kmpos = "";
+    try { kmpos = window.PQKm ? PQKm.routeText(a, o, s) : ""; } catch (e) {}
     return {
       lat: p.lat + (q.lat - p.lat) * s, lng: p.lng + (q.lng - p.lng) * s, h: h, rh: road_h,
       sta: String(sta), name: a.road.name || "Rute", kab: a.road.kabupaten || "",
-      km: kmEl ? kmEl.textContent : "",
+      km: kmEl ? kmEl.textContent : "", kmpos: kmpos,
       pct: a.totalDist ? Math.min(100, Math.max(0, Math.round((a.traveledDist || 0) / a.totalDist * 100))) : 0,
       pt: pt
     };
@@ -109,9 +110,10 @@
   function paintPanel(c, a) {
     var t = $("svInfoPanelTitle"), b = $("svInfoPanelBody"), p = $("svInfoPanel");
     if (!t || !b || !p || !c) return;
-    setTxt("svInfoPanelTitle", "STA " + c.sta);
+    setTxt("svInfoPanelTitle", "STA " + c.sta + (c.kmpos ? " \u2022 KM " + c.kmpos : ""));
     var h = row("Ruas", esc(c.name)) +
       row("STA", esc(c.sta), "pq-sta") +
+      row("KM", c.kmpos ? esc(c.kmpos) : "", "pq-sta") +
       row("Progres", esc(c.km) + " (" + c.pct + "%)") +
       row("Koordinat", c.lat.toFixed(6) + ", " + c.lng.toFixed(6), "", "font-size:10.5px;") +
       row("Arah pandang", c.h + "° " + dirName(c.h)) +
@@ -146,7 +148,7 @@
 
   /* ---------- sinkronkan SEMUA label Street View dengan posisi terkini ---------- */
   function paintDom(c, a) {
-    var label = "STA " + c.sta;
+    var label = "STA " + c.sta + (c.kmpos ? " \u2022 KM " + c.kmpos : "");
     setTxt("svRoadName", c.name);
     setHtml("svStaBadge", '<i class="fa-solid fa-location-dot"></i> ' + esc(label));
     var co = c.lat.toFixed(6) + ", " + c.lng.toFixed(6);
@@ -162,7 +164,7 @@
   }
   function paint(c, a) {
     var S = SV(); if (!S) return;
-    S.lat = c.lat; S.lng = c.lng; S.label = c.name + " • STA " + c.sta; S.live = c;
+    S.lat = c.lat; S.lng = c.lng; S.label = c.name + " • STA " + c.sta + (c.kmpos ? " • KM " + c.kmpos : ""); S.live = c;
     paintDom(c, a);
   }
   window.PQSvAuto = { paintDom: paintDom, info: info, reset: function () { loaded = null; pend = null; } };

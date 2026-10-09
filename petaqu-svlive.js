@@ -213,7 +213,8 @@
         var sta = staAt(road, q), km = roadKm(road, q), idx = q.t < .5 ? q.i : q.i + 1;
         c = { lat: lat, lng: lng, h: heading, sta: sta, name: road.name || "Ruas", kab: road.kabupaten || "",
               km: km.at.toFixed(2) + " / " + km.tot.toFixed(2) + " km", pct: km.tot ? Math.round(km.at / km.tot * 100) : 0,
-              pt: road.points[idx] || null, off: q.off };
+              pt: road.points[idx] || null, off: q.off,
+              kmpos: (window.PQKm ? PQKm.interpText(road, q.i, q.t) : "") };
         if (S.type === "road" && q.off < 80) S.index = idx;     /* tombol Sebelumnya/Berikutnya lanjut dari sini */
       }
     }
