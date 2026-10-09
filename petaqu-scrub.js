@@ -77,13 +77,12 @@
       "#routePlayerBar.pq-noseek .rp-progress-track{cursor:default}",
       "#routePlayerBar.pq-noseek .rp-progress-fill:after{display:none}",
       /* dua tombol ⏮ ⏭ menambah lebar → lebarkan pemutar sedikit & cegah teks STA / km turun baris */
-      "#routePlayerBar{width:min(700px,94vw)}",
-      "#routePlayerBar:not(.dragged){width:min(700px,var(--pqf-w,94vw))}",
-      "#routePlayerBar .rp-meta{flex-wrap:wrap;column-gap:10px;row-gap:1px}",
+      "#routePlayerBar{width:min(600px,94vw)}",
+      "#routePlayerBar:not(.dragged){width:min(600px,var(--pqf-w,94vw))}",
       "#routePlayerBar .rp-meta span{white-space:nowrap}",
       /* tombol STA sebelumnya / berikutnya */
-      ".rp-btn.pq-step{width:30px;height:30px;font-size:11px}",
-      "#routePlayerBar.pqf-xs .rp-btn.pq-step{width:28px;height:28px}",
+      ".rp-btn.pq-step{width:28px;height:28px;font-size:10.5px}",
+      "#routePlayerBar.pqf-xs .rp-btn.pq-step{width:26px;height:26px}",
       "#routePlayerBar.pq-noseek .rp-btn.pq-step{opacity:.9}",
       /* garis pemandu */
       "@media(prefers-reduced-motion:reduce){body.pq-sc-paused .pq-sc-hint{animation:none}}"
