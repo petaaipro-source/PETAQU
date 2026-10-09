@@ -146,6 +146,27 @@
       "#pqSvMenu .pq-warn{margin-top:8px;padding:7px 9px;border-radius:8px;background:#fbbf2418;border:1px solid #fbbf2455;color:#fde68a;font-weight:600;line-height:1.4;display:none}",
       "#pqSvMenu .pq-warn.show{display:block}",
       "#pqSvMenu .pq-foot{margin-top:9px;padding-top:8px;border-top:1px solid #ffffff14;color:#6b7f95;font:600 10px var(--mono,monospace)}",
+      /* ====== RAPIHKAN HUD ATAS: responsif terhadap lebar PANEL (bukan layar) ====== */
+      "#svFrameWrap{container:pqsv/inline-size}",
+      "#svHudTop{flex-wrap:wrap;align-items:center;gap:6px 8px;padding:10px 10px 20px;padding-top:calc(10px + env(safe-area-inset-top,0px))}",
+      "#svHudTop #svClose,#svHudTop #svExternalLink,#svHudTop #svHistoryBtn,#svHudTop #svInfoToggleBtn,#svHudTop #svMeasureBtn{width:34px;height:34px;border-radius:9px;font-size:13px}",
+      "#svHudTop #svModeSwitch{order:0;padding:2px;gap:2px;border-radius:10px}",
+      "#svHudTop .sv-mode-btn{height:28px;min-width:28px;border-radius:8px;font-size:12px}",
+      "#svHudTop #svModeSwitch .sv-mode-btn{width:28px}",
+      "#svHudTop #pqSvView{padding:2px;gap:2px;border-radius:10px}",
+      "#svHudTop #pqSvView .sv-mode-btn{padding:0 8px;gap:5px;font-size:10px}",
+      "#svHudTop #svHistoryBtn{margin-left:auto}",
+      /* baris info: nama ruas + STA/KM satu garis, tidak pernah pecah baris */
+      "#svHudTop #svHudInfo{order:10;flex:1 1 100%;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 8px;margin-top:-2px;min-width:0}",
+      "#svHudTop #svRoadName{flex:0 1 auto;min-width:0;max-width:100%}",
+      "#svHudTop #svStaBadge{flex:none;margin:0;padding:3px 10px;font-size:12px;white-space:nowrap}",
+      "#svHudTop #svHistoryActiveBadge{margin:0;flex:0 1 auto;min-width:0}",
+      "#svFrameWrap .pq-tag{top:calc(80px + env(safe-area-inset-top,0px));padding:3px 4px 3px 9px;font-size:10.5px}",
+      "@container pqsv (max-width:640px){#pqSvView .sv-mode-btn span{display:none}#svHudTop #pqSvView .sv-mode-btn{padding:0;width:28px}}",
+      "@container pqsv (max-width:420px){#svHudTop{gap:5px 4px;padding-left:8px;padding-right:8px}#svHudTop #svClose,#svHudTop #svExternalLink,#svHudTop #svHistoryBtn,#svHudTop #svInfoToggleBtn,#svHudTop #svMeasureBtn{width:32px;height:32px}#svHudTop .sv-mode-btn,#svHudTop #svModeSwitch .sv-mode-btn,#svHudTop #pqSvView .sv-mode-btn{width:26px;min-width:26px;height:26px}#svHudTop #svHudInfo{margin-top:0}#svFrameWrap .pq-tag{top:calc(76px + env(safe-area-inset-top,0px))}}",
+      "@container pqsv (max-width:350px){#svFrameWrap .pq-tag{top:calc(116px + env(safe-area-inset-top,0px))}}",
+      /* panel lebar: info kembali sejajar di tengah (satu baris) */
+      "@container pqsv (min-width:760px){#svHudTop #svHudInfo{order:0;flex:1 1 0;margin-top:0}#svHudTop #svHistoryBtn{margin-left:0}#svFrameWrap .pq-tag{top:calc(56px + env(safe-area-inset-top,0px))}}",
       "@media(prefers-reduced-motion:reduce){.pq-dot.load{animation:none}}"
     ].join("\n");
     document.head.appendChild(c);
