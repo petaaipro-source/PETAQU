@@ -191,18 +191,27 @@
     }
     var c = info(a); if (!c) return;
     var now = Date.now(), open = svOpen(), S = SV();
+    var SC = window.PQScrub, scrub = !!(SC && SC.active), commit = !!(SC && SC.commit);   /* panah sedang digeser / baru dilepas (petaqu-scrub.js) */
 
     /* 1) teks live: tiap tick, tanpa membebani (hanya menyentuh DOM bila berubah) */
     if (open && S && S.live) paint(c, a);
 
     /* 2) kapan memuat ulang foto Street View? */
     var need = false, moved = loaded ? meters(loaded, c) : Infinity;
-    if (!loaded) { need = !!a.playing; }
-    else if (a.playing) { pend = null; need = moved >= MIN_M && now - loadedT >= MIN_MS; }
+    if (!loaded) { need = !!a.playing || scrub || commit; }
+    else if (a.playing && !scrub && !commit) { pend = null; need = moved >= MIN_M && now - loadedT >= MIN_MS; }
+    else if (scrub) {                     /* panah sedang dipegang & digeser: ikuti cepat (Live ±0,2 dtk, Embed ±0,5 dtk) */
+      var live = false; try { live = !!(window.PQSvLive && window.PQSvLive.ready() && window.PQSvView && window.PQSvView.shown() !== "embed"); } catch (e) {}
+      pend = null; need = moved >= 3 && now - loadedT >= (live ? 200 : 500);
+    }
+    else if (commit) {                    /* baru dilepas: pastikan foto TEPAT di posisi akhir (sekali) */
+      SC.commit = false; pend = null; need = moved >= 1.5;
+    }
     else if (opened && open) {            /* dijeda lalu digeser/diseek: tunggu posisi tenang */
       if (!pend || meters(pend, c) > 1) pend = { lat: c.lat, lng: c.lng, t: now };
       else if (now - pend.t >= SETTLE_MS && moved >= MIN_M_PAUSED) need = true;
     }
+    if (commit && SC) SC.commit = false;
     if (!need) return;
 
     var key = ""; try { key = getApiKey(); } catch (e) {}
