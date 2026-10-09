@@ -10,6 +10,7 @@
      benar-benar terlihat (di luar Street View, panel animasi, & toolbar kanan) — bukan di tengah seluruh
      peta. Saat Street View dibuka/diubah ukurannya atau panel berpindah, panah otomatis digeser masuk
      ke area terlihat (juga saat kamera-ikut dimatikan atau animasi dijeda).
+   • LABEL STA di atas panah (STA berjalan + km), berdenyut tiap melewati titik STA, warnanya mengikuti warna ruas.
    • Ringan: tanpa timer polling; ResizeObserver/MutationObserver + 1 rAF per perubahan; rect di-cache 250 ms. */
 (function () {
   "use strict";
@@ -27,7 +28,13 @@
     "#routePlayerBar.pqf-xs .rp-btn{width:32px;height:32px;font-size:12px}",
     "#routePlayerBar.pqf-xs .rp-meta{font-size:12px}",
     "#routePlayerBar.pqf-xs .rp-speed-btn{padding:4px 6px}",
-    "#routePlayerBar.pqf-over{z-index:5100}"
+    "#routePlayerBar.pqf-over{z-index:5100}",
+    ".pqf-sta{position:absolute;left:50%;bottom:calc(100% + 7px);transform:translateX(-50%);pointer-events:none;white-space:nowrap;display:flex;flex-direction:column;align-items:center;z-index:6}",
+    ".pqf-sta b{position:relative;font:800 13px var(--mono,ui-monospace,monospace);letter-spacing:.3px;color:#22d3ee;background:#0b1220ee;border:1.5px solid var(--pqf-c,#22d3ee);border-radius:10px;padding:3px 9px;box-shadow:0 4px 14px #000a,0 0 12px #22d3ee40}",
+    ".pqf-sta b:after{content:'';position:absolute;left:50%;bottom:-6px;width:8px;height:8px;background:#0b1220;border-right:1.5px solid var(--pqf-c,#22d3ee);border-bottom:1.5px solid var(--pqf-c,#22d3ee);transform:translateX(-50%) rotate(45deg)}",
+    ".pqf-sta small{margin-top:3px;font:700 9.5px var(--mono,ui-monospace,monospace);color:#e2e8f0;text-shadow:0 0 3px #000,0 1px 2px #000}",
+    "@keyframes pqfPop{0%{transform:scale(1.2)}100%{transform:scale(1)}}",
+    ".pqf-sta b.pqf-pulse{animation:pqfPop .35s ease-out}"
   ].join("\n");
   var st = document.createElement("style");
   st.id = "pq-playfit-css"; st.textContent = css; document.head.appendChild(st);
@@ -73,7 +80,8 @@
     var bar = $("routePlayerBar"), tb = $("mapToolbar");
     var br = bar && bar.classList.contains("show") ? bar.getBoundingClientRect() : null;
     var tr = tb && tb.offsetWidth > 0 ? tb.getBoundingClientRect() : null;
-    vis = shrink(f, br, tr, PAD); if (vis) vis.mr = mr;
+    vis = shrink(f, br, tr, PAD);
+    if (vis) { if (vis.bottom - (vis.top + 36) >= 60) vis.top += 36; vis.mr = mr; }
     visT = now; dirty = false; return vis;
   }
 
@@ -89,11 +97,35 @@
     return m.containerPointToLatLng(L.point(Vc.x + dx, Vc.y + dy));
   }
 
+
+  /* ====== Label STA di atas panah (ikut bergerak, berdenyut tiap melewati titik STA) ====== */
+  var lastSta = "", lastKm = "", lastSeg = -1;
+  function staLabel() {
+    var a = RA(); if (!a || !a.marker) return;
+    var ic = a.marker._icon; if (!ic) return;
+    var box = ic.querySelector(".pqf-sta");
+    if (!box) {
+      box = document.createElement("div"); box.className = "pqf-sta";
+      box.innerHTML = "<b></b><small></small>"; ic.appendChild(box); lastSta = lastKm = ""; lastSeg = -1;
+    }
+    var sEl = $("routePlayerSta"), kEl = $("routePlayerKm");
+    var sta = sEl ? sEl.textContent : "", km = kEl ? kEl.textContent : "";
+    var b = box.firstChild, sm = box.lastChild;
+    if (sta !== lastSta) { b.textContent = sta; lastSta = sta; }
+    if (km !== lastKm) { sm.textContent = km; lastKm = km; }
+    if (a.color) box.style.setProperty("--pqf-c", a.color);
+    try {
+      var seg = typeof findSegmentAtDistance === "function" ? findSegmentAtDistance(a.cum, a.traveledDist) : -1;
+      if (lastSeg !== -1 && seg !== lastSeg) { b.classList.remove("pqf-pulse"); void b.offsetWidth; b.classList.add("pqf-pulse"); }
+      lastSeg = seg;
+    } catch (e) {}
+  }
+
   var inFrame = false;
   function wrapFrame() {   // jalur kedua: semua panTo selama satu frame animasi dianggap panTo kendaraan
     var o = window.updateRouteAnimVisual;
     if (typeof o !== "function" || o.__pqf) return;
-    var w = function () { inFrame = true; try { return o.apply(this, arguments); } finally { inFrame = false; } };
+    var w = function () { inFrame = true; var r; try { r = o.apply(this, arguments); } finally { inFrame = false; } try { staLabel(); } catch (e) {} return r; };
     w.__pqf = 1; window.updateRouteAnimVisual = w;
   }
   function isVeh(ll) {
@@ -107,7 +139,7 @@
     if (!m || !m.panTo || !window.L) return setTimeout(patchMap, 600);
     wrapFrame();
     if (m.__pqf) return; m.__pqf = 1;
-    try { console.info("[PETAQU] panel & panah animasi adaptif aktif (playfit v2)"); } catch (e) {}
+    try { console.info("[PETAQU] panel & panah animasi adaptif aktif (playfit v3)"); } catch (e) {}
     var oPan = m.panTo, oFly = m.flyTo;
     m.panTo = function (ll, o) {
       try { if (isVeh(ll)) ll = shifted(this, L.latLng(ll)); } catch (e) {}
@@ -200,6 +232,6 @@
     schedule(); patchMap();
   }
 
-  window.__pqPlayFit = { v: 2, calcFree: calcFree, apply: apply, shrink: shrink };
+  window.__pqPlayFit = { v: 3, calcFree: calcFree, apply: apply, shrink: shrink };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
