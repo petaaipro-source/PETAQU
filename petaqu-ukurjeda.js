@@ -1,25 +1,35 @@
-/* PETAQU — UKUR JEDA (v1): pengukuran Street View OTOMATIS saat dijeda, FOKUS 3 HAL SAJA:
-     1) LEBAR JALAN   2) LEBAR BAHU (kiri/kanan)   3) LEBAR DRAINASE (kiri/kanan)
+/* PETAQU — UKUR JEDA (v2 "supercerdas"): ukur otomatis dari Street View yang DIJEDA / berhenti, FOKUS 3 HAL SAJA:
+     1) LEBAR JALAN   2) LEBAR BAHU (kiri/kanan)   3) LEBAR DRAINASE (kiri/kanan, hanya bila ada)
    Tidak menampilkan hal lain (marka, posisi kendaraan, panjang saluran, dst.).
 
-   Kapan jalan?
-     • Animasi rute DIJEDA / digeser lalu berhenti ≥0,8 dtk di satu titik, atau
-     • tanpa animasi: Anda berhenti di satu titik Street View LIVE ≥1,3 dtk
-       (arah jalan dibaca dari tautan panorama tetangga, bukan dari arah pandang).
-     Saat animasi berjalan, modul ini diam (tidak membuang kuota) — HUD Dimensi biasa yang bekerja.
+   Yang baru di v2
+     • MEMBACA STREET VIEW YANG SEDANG TAMPIL: bila panorama LIVE aktif, yang diukur persis panorama itu (id panorama
+       yang sama dengan yang Anda lihat) — bukan sekadar titik terdekat di peta. Berlaku saat animasi rute dijeda,
+       saat animasi tidak ada, dan saat Anda berhenti/menggeser Street View ke titik lain.
+     • ARAH JALAN dikunci dari tautan panorama (maju + mundur dirata-ratakan), jadi foto kiri/kanan benar-benar
+       tegak lurus jalan walau Anda menoleh ke arah lain. Tanpa tautan → arah rute/arah pandang (ditandai).
+     • Mesin ukur baru (PQDim.core): KONSENSUS 5 KOLOM foto — mobil/pohon/orang yang hanya menutupi sebagian foto
+       tidak lagi memotong lebar jalan; BAYANGAN pohon di badan jalan dikenali (aspal ternaungi); objek biru
+       (mobil/atap) di tepi → tepi dinyatakan "tidak diketahui", bukan ditebak; bahu tanah tanpa batas luar
+       ditandai "≥".
+     • ERROR yang jelas, bukan "tidak ada foto": kunci API tak punya Street View Static API, referrer dibatasi,
+       kuota/limit Google habis, tanpa koneksi, foto gagal dimuat, CORS — masing-masing punya pesan & solusi.
+       Timeout 9–12 dtk agar tidak pernah "mengukur…" selamanya; gangguan jaringan sesaat dicoba ulang otomatis 1×.
+     • Kartu "siaga" selalu terlihat saat Street View terbuka + tombol "Ukur sekarang" (tanpa menunggu jeda).
 
-   Cerdas & HEMAT KUOTA (foto Static API = 1 kuota/foto; metadata gratis):
-     • ADAPTIF: 1 panorama (2 foto) dulu. Bila keyakinan ≥80% & kedua sisi terbaca → selesai.
-       Bila ragu/terhalang (mobil parkir, pohon, bayangan) → tambah panorama tetangga ±10 m,
-       lalu ±20 m (maks 3 panorama; tombol "Teliti" sampai 5). Berhenti dini begitu hasilnya konsisten.
-     • Gabung banyak sampel dengan MEDIAN (kebal terhadap sampel yang terhalang), hitung sebaran →
-       ± ketidakpastian jujur; sampel tidak konsisten → keyakinan diturunkan, bukan disembunyikan.
-     • Validasi kewajaran (lebar jalan 2,5–25 m); sisi yang tepinya di luar jangkauan tidak ditebak.
-     • Drainase dianggap "ada" hanya bila terdeteksi di ≥ separuh sampel yang valid.
-     • Cache per titik (tidak mengukur ulang titik yang sama), batal otomatis bila animasi diputar lagi /
-       posisi digeser sebelum selesai; berbagi batas kuota bulanan dengan modul Dimensi (pq_dim_cap).
-   Mesin ukur = PQDim.core (fotogrametri bidang-tanah). Ini ESTIMASI foto (tipikal ±0,3–0,8 m), bukan survei alat.
-   Kiri/kanan mengikuti ARAH ANIMASI (atau arah jalan terbaca dari tautan panorama). Tidak mengubah fitur lain. */
+   Kapan jalan otomatis?
+     • Animasi DIJEDA / digeser lalu berhenti ≥0,8 dtk di satu titik, atau
+     • tanpa animasi: berhenti di satu panorama Street View LIVE ≥1,3 dtk. Saat animasi berjalan modul diam
+       (tidak membuang kuota) — HUD Dimensi biasa yang bekerja.
+
+   Hemat kuota (foto Static API = 1 kuota/foto; metadata gratis):
+     • ADAPTIF: 1 panorama (2 foto) dulu. Bila keyakinan ≥80% & kedua sisi terbaca → selesai. Bila ragu/terhalang
+       → tambah panorama tetangga ±10 m, ±20 m (maks 3; 4 bila lebar belum terbaca; tombol "Teliti" sampai 5).
+     • Gabung banyak sampel dengan MEDIAN + buang yang menyimpang; sebaran → ± ketidakpastian jujur.
+     • Validasi kewajaran (lebar jalan 2,5–25 m). Drainase "ada" hanya bila terdeteksi di ≥ separuh sampel.
+     • Cache per titik; batal otomatis bila animasi diputar lagi / posisi bergeser; berbagi batas kuota bulanan
+       dengan modul Dimensi (pq_dim_cap).
+   Ini ESTIMASI foto (tipikal ±0,3–0,8 m), bukan survei alat. Tidak mengubah fitur lain. */
 (function () {
   "use strict";
   if (typeof window !== "undefined" && window.PQJeda) return;
@@ -32,12 +42,14 @@
   /* hasil CORE.measurePair → satu sampel ringkas (hanya 3 besaran + keyakinan) */
   function toEntry(res, k) {
     if (!res) return null; k = k || 1;
-    var L = res.L, R = res.R, okL = L && !L.hitMax, okR = R && !R.hitMax;
-    function bahu(S) { return S && !S.hitMax ? (S.bahuPaved + S.bahuLoose) * k : null; }
+    var L = res.L, R = res.R, okL = !!(L && !L.hitMax && !L.obstacle), okR = !!(R && !R.hitMax && !R.obstacle);
+    function bahu(S, ok) { return ok ? (S.bahuPaved + S.bahuLoose) * k : null; }
     function sal(S, ok) { if (!ok) return null; return S.sal && S.salConf >= 0.4 ? S.sal.w * k : 0; }   /* 0 = tidak ada; null = tak diketahui */
     return {
-      W: fin(res.W) ? res.W * k : null, bl: bahu(L), br: bahu(R), dl: sal(L, okL), dr: sal(R, okR),
-      conf: fin(res.conf) ? res.conf : 0, err: fin(res.err) ? res.err * k : null, okL: !!okL, okR: !!okR
+      W: fin(res.W) ? res.W * k : null, bl: bahu(L, okL), br: bahu(R, okR), dl: okL ? sal(L, okL) : null, dr: okR ? sal(R, okR) : null,
+      blo: !!(okL && L.bahuOpen), bro: !!(okR && R.bahuOpen),
+      conf: fin(res.conf) ? res.conf : 0, err: fin(res.err) ? res.err * k : null, okL: okL, okR: okR,
+      obs: !!((L && L.obstacle) || (R && R.obstacle)), shade: !!((L && L.shaded) || (R && R.shaded))
     };
   }
 
@@ -45,7 +57,8 @@
   function agg(S) {
     S = (S || []).filter(Boolean); var n = S.length; if (!n) return null;
     var Wv = vals(S, "W").filter(function (w) { return w >= 2.5 && w <= 25; });
-    var out = { n: n, W: null, err: null, conf: 0, spread: 0, warn: "", bl: null, br: null, dl: null, dr: null };
+    var out = { n: n, W: null, err: null, conf: 0, spread: 0, warn: "", bl: null, br: null, dl: null, dr: null, blo: false, bro: false, obs: 0, shade: 0 };
+    S.forEach(function (x) { if (x.obs) out.obs++; if (x.shade) out.shade++; });
     if (Wv.length) {
       var m0 = med(Wv), tol = Math.max(0.8, 0.12 * m0), inl = Wv.filter(function (w) { return Math.abs(w - m0) <= tol; });
       var cs = S.filter(function (x) { return fin(x.W) && x.W >= 2.5 && x.W <= 25; }).map(function (x) { return x.conf; });
@@ -60,17 +73,52 @@
       }
       out.conf = cf; out.err = Math.max(0.15, es, out.spread / 2);
     } else if (vals(S, "W").length) out.warn = "lebar di luar rentang wajar (2,5–25 m) — tidak dipakai";
+    else if (out.obs) out.warn = "tepi jalan tertutup kendaraan/objek — coba titik lain atau tekan Teliti";
     out.bl = med(vals(S, "bl")); out.br = med(vals(S, "br"));
-    function dr(key, okKey) {
+    function openOf(key) { var v = S.filter(function (x) { return fin(x[key === "bl" ? "bl" : "br"]); }); if (!v.length) return false; return v.filter(function (x) { return x[key === "bl" ? "blo" : "bro"]; }).length * 2 >= v.length; }
+    out.blo = openOf("bl"); out.bro = openOf("br");
+    function dr(key) {
       var v = vals(S, key); if (!v.length) return null;
       var det = v.filter(function (x) { return x > 0; });
       return det.length >= Math.ceil(v.length / 2) ? med(det) : 0;
     }
     out.dl = dr("dl"); out.dr = dr("dr");
+    if (out.shade && !out.warn) out.warn = "ada bayangan di jalan — diperhitungkan";
     return out;
   }
 
-  if (typeof module !== "undefined" && module.exports) { module.exports = { agg: agg, toEntry: toEntry, med: med }; }
+  /* arah jalan dari tautan panorama: cari tautan (maju/mundur) terdekat dgn arah yg diinginkan, rata-ratakan dgn lawannya */
+  function angDiff(a, b) { var d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
+  function axisFrom(links, want, maxDiff) {
+    if (!links || !links.length || !fin(want)) return null;
+    var D = Math.PI / 180, best = null, bd = 999;
+    links.forEach(function (h) {
+      var d = angDiff(h, want); if (d < bd) { bd = d; best = h; }
+      var r = (h + 180) % 360, d2 = angDiff(r, want); if (d2 < bd) { bd = d2; best = r; }
+    });
+    if (best == null || bd > (maxDiff || 40)) return null;
+    var rev = (best + 180) % 360, opp = null, od = 999;
+    links.forEach(function (h) { var d = angDiff(h, rev); if (d < od) { od = d; opp = h; } });
+    if (opp != null && od <= 25) {
+      var a = best * D, b = ((opp + 180) % 360) * D;
+      return (Math.atan2(Math.sin(a) + Math.sin(b), Math.cos(a) + Math.cos(b)) / D + 360) % 360;
+    }
+    return best;
+  }
+
+  /* pesan untuk status metadata Google */
+  function metaProblem(m) {
+    if (!m) return { msg: "Tidak ada jawaban dari Google", fatal: false, retry: true };
+    var st = m.status;
+    if (st === "OK" || st === "ZERO_RESULTS" || st === "NOT_FOUND") return null;
+    var em = m.error_message ? " (" + String(m.error_message).slice(0, 110) + ")" : "";
+    if (st === "REQUEST_DENIED") return { msg: "Google menolak: aktifkan \"Street View Static API\" pada kunci API (Maps JavaScript API saja belum cukup) & cek batasan referrer/situs kunci" + em, fatal: true };
+    if (st === "OVER_QUERY_LIMIT" || st === "OVER_DAILY_LIMIT") return { msg: "Kuota/limit Google habis — coba lagi nanti atau cek penagihan akun Google Cloud" + em, fatal: true };
+    if (st === "INVALID_REQUEST") return { msg: "Permintaan ke Google tidak valid" + em, fatal: false };
+    return { msg: "Layanan Google sedang bermasalah (" + st + ") — dicoba lagi" + em, fatal: false, retry: true };
+  }
+
+  if (typeof module !== "undefined" && module.exports) { module.exports = { agg: agg, toEntry: toEntry, med: med, axisFrom: axisFrom, metaProblem: metaProblem }; }
   if (typeof document === "undefined") return;
 
   /* ==================== BAGIAN 2 — BROWSER ==================== */
@@ -86,10 +134,9 @@
   function apiKey() { try { return typeof getApiKey === "function" ? getApiKey() : ""; } catch (e) { return ""; } }
   function CORE() { return window.PQDim && PQDim.core; }
   function offsetPt(c, d) { var r = Math.PI / 180, h = c.rh * r; return { lat: c.lat + d * Math.cos(h) / 111320, lng: c.lng + d * Math.sin(h) / (111320 * Math.cos(c.lat * r)) }; }
-  function angDiff(a, b) { var d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }
 
   var on = jget(K_ON, 1) !== 0, minimized = !!jget(K_MIN, 0);
-  var seq = 0, pend = null, cur = null, cache = {}, warnedCore = false, DB = jget(K_DB, []);
+  var seq = 0, pend = null, cur = null, cache = {}, warnedCore = false, DB = jget(K_DB, []), apiOK = null, hooks = { meta: null, img: null }, retryT = 0;
 
   /* ---- kuota (berbagi dengan modul Dimensi) ---- */
   function monthKey() { var d = new Date(); return d.getFullYear() + "-" + (d.getMonth() + 1); }
@@ -97,40 +144,86 @@
   function quotaAdd(n) { var q = quota(); q.n += n; jset(K_Q, q); return q; }
   function capOK() { return quota().n + 2 <= jget(K_CAP, 3000); }
 
-  /* ---- foto Street View Static ---- */
+  /* ---- jaringan dengan timeout ---- */
+  function netErr(msg, kind) { var e = new Error(msg); e.kind = kind; return e; }
   async function meta(lat, lng, radius) {
+    if (hooks.meta) return hooks.meta(lat, lng, radius);
     var u = "https://maps.googleapis.com/maps/api/streetview/metadata?location=" + lat.toFixed(6) + "," + lng.toFixed(6) + "&radius=" + radius + "&source=outdoor&key=" + encodeURIComponent(apiKey());
-    var r = await fetch(u); if (!r.ok) throw new Error("metadata HTTP " + r.status); return r.json();
+    var ctl = typeof AbortController !== "undefined" ? new AbortController() : null, tm = ctl ? setTimeout(function () { ctl.abort(); }, 9000) : 0, r;
+    try { r = await fetch(u, ctl ? { signal: ctl.signal } : undefined); }
+    catch (e) { throw netErr(e && e.name === "AbortError" ? "Google lambat merespons (timeout 9 dtk)" : "Tidak ada koneksi internet / diblokir jaringan", "net"); }
+    finally { if (tm) clearTimeout(tm); }
+    if (r.status === 403) { var j403 = null; try { j403 = await r.json(); } catch (e) {} return j403 && j403.status ? j403 : { status: "REQUEST_DENIED", error_message: "HTTP 403" }; }
+    if (r.status === 429) return { status: "OVER_QUERY_LIMIT" };
+    if (!r.ok) throw netErr("Metadata Google HTTP " + r.status, "net");
+    try { return await r.json(); } catch (e) { throw netErr("Jawaban Google tidak terbaca", "net"); }
   }
-  function loadImg(url) { return new Promise(function (res, rej) { var im = new Image(); im.crossOrigin = "anonymous"; im.onload = function () { res(im); }; im.onerror = function () { rej(new Error("gagal memuat foto")); }; im.src = url; }); }
+  function loadImg(url) {
+    return new Promise(function (res, rej) {
+      var im = new Image(), done = false, tm = setTimeout(function () { if (!done) { done = true; rej(netErr("Foto lambat dimuat (timeout 12 dtk)", "net")); } }, 12000);
+      im.crossOrigin = "anonymous";
+      im.onload = function () { if (!done) { done = true; clearTimeout(tm); res(im); } };
+      im.onerror = function () { if (!done) { done = true; clearTimeout(tm); rej(netErr("Foto Street View tidak bisa dimuat (tidak tersedia / kuota / jaringan)", "img")); } };
+      im.src = url;
+    });
+  }
   async function svImage(pano, heading) {
+    if (hooks.img) return hooks.img(pano, heading);
     var O = CORE().OPT;
     var u = "https://maps.googleapis.com/maps/api/streetview?size=" + O.size + "x" + O.size + "&pano=" + encodeURIComponent(pano) + "&heading=" + (((heading % 360) + 360) % 360).toFixed(1) + "&pitch=" + O.pitch + "&fov=" + O.fov + "&source=outdoor&return_error_code=true&key=" + encodeURIComponent(apiKey());
     var im = await loadImg(u), cv = document.createElement("canvas"); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
     var cx = cv.getContext("2d", { willReadFrequently: true }); cx.drawImage(im, 0, 0);
-    try { return cx.getImageData(0, 0, cv.width, cv.height); } catch (e) { var er = new Error("cors"); er.cors = true; throw er; }
+    try { return cx.getImageData(0, 0, cv.width, cv.height); } catch (e) { throw netErr("cors", "cors"); }
   }
   async function sample(pano, rh) {
     var k = jget(K_K, 1) || 1, left = await svImage(pano, rh - 90), right = await svImage(pano, rh + 90);
     return toEntry(CORE().measurePair(left, right, CORE().OPT), k);
   }
 
-  /* ---- konteks titik: animasi (dijeda) atau Street View LIVE yang berhenti ---- */
-  function liveCtx() {
+  /* ---- konteks titik: yang DITAMPILKAN Street View LIVE (utama) atau titik animasi ---- */
+  function liveInfo() {
     try {
       var L = window.PQSvLive; if (!L || !L.ready || !L.ready()) return null;
-      var p = L.pano(); if (!p) return null; var pos = p.getPosition(), pov = p.getPov(), links = p.getLinks() || [], rh = pov.heading, best = 999;
-      links.forEach(function (l) { var d = angDiff(l.heading, pov.heading); if (d < best) { best = d; rh = l.heading; } });
-      return { lat: pos.lat(), lng: pos.lng(), rh: Math.round(rh), pano: p.getPano(), sta: "", name: "", live: true };
+      var p = L.pano(); if (!p) return null; var pos = p.getPosition(); if (!pos) return null;
+      var pov = p.getPov() || { heading: 0 }, links = (p.getLinks() || []).map(function (l) { return l.heading; }).filter(fin);
+      return { pano: p.getPano(), lat: pos.lat(), lng: pos.lng(), pov: pov.heading, links: links };
     } catch (e) { return null; }
+  }
+  function resolveCtx(a) {
+    var base = null; try { base = a && window.PQSvAuto ? PQSvAuto.info(a) : null; } catch (e) { base = null; }
+    var lv = liveInfo(), c = null;
+    if (lv && (!base || meters(base, lv) <= 45)) {                       /* baca panorama yang sedang tampil */
+      var want = base ? base.rh : lv.pov, ax = axisFrom(lv.links, want, base ? 40 : 90);
+      c = { lat: lv.lat, lng: lv.lng, rh: Math.round(ax != null ? ax : want), pano: lv.pano, sta: base ? base.sta : "", name: base ? base.name : "", live: true, axis: ax != null ? "tautan" : (base ? "rute" : "pandang") };
+    } else if (lv) {                                                     /* menjauh dari rute: baca yang terlihat */
+      var ax2 = axisFrom(lv.links, lv.pov, 90);
+      c = { lat: lv.lat, lng: lv.lng, rh: Math.round(ax2 != null ? ax2 : lv.pov), pano: lv.pano, sta: "", name: "", live: true, axis: ax2 != null ? "tautan" : "pandang" };
+    } else if (base) {
+      c = { lat: base.lat, lng: base.lng, rh: base.rh, pano: null, sta: base.sta, name: base.name, live: false, axis: "rute" };
+    }
+    if (c) c.key = (c.pano || (c.lat.toFixed(5) + "," + c.lng.toFixed(5))) + "|" + Math.round(c.rh / 10);
+    return c;
   }
 
   /* ---- proses pengukuran satu titik ---- */
+  function fail(my, p) {
+    if (my !== seq || !cur) return;
+    cur.busy = false; cur.A = null; cur.note = p.msg; cur.fatal = !!p.fatal;
+    if (p.fatal) apiOK = false;
+    paint();
+    if (p.retry && !cur.retried) { var c0 = cur.c, key = cur.key; cur.retried = true; clearTimeout(retryT); retryT = setTimeout(function () { if (cur && cur.key === key && !cur.busy && !cur.A) { var keep = cur.retried; run(c0, false); if (cur) cur.retried = keep; } }, 4000); }
+  }
   async function run(c, deep) {
     var my = ++seq, S = [], seen = {}, offs = [0, 10, -10, 20, -20], maxN = deep ? 5 : 3, A = null;
-    cur = { key: c.key, c: c, A: null, busy: true, deep: !!deep, n: 0, note: "" };
+    clearTimeout(retryT);
+    cur = { key: c.key, c: c, A: null, busy: true, deep: !!deep, n: 0, note: "", fatal: false, retried: false };
     paint();
     try {
+      if (apiOK !== true) {                                              /* uji kunci API dulu (metadata gratis) → pesan error yang jelas */
+        var m0 = await meta(c.lat, c.lng, 25); if (my !== seq) return;
+        var pr0 = metaProblem(m0); if (pr0) { fail(my, pr0); return; }
+        apiOK = true;
+      }
       for (var i = 0; i < offs.length && S.length < maxN; i++) {
         if (my !== seq) return;
         var off = offs[i], pano = null;
@@ -138,33 +231,35 @@
         else {
           var p = off === 0 ? c : offsetPt(c, off), m = await meta(p.lat, p.lng, off === 0 ? 25 : 12);
           if (my !== seq) return;
+          var pr = metaProblem(m); if (pr) { fail(my, pr); return; }
           if (!m || m.status !== "OK" || !m.pano_id) { if (off === 0) { cur.busy = false; cur.note = "Tidak ada foto Street View di titik ini"; paint(); return; } continue; }
           if (off !== 0 && m.location && meters(p, { lat: m.location.lat, lng: m.location.lng }) > 8) continue;
           pano = m.pano_id;
         }
         if (seen[pano]) continue; seen[pano] = 1;
-        if (!capOK()) { cur.note = "Batas kuota foto bulan ini tercapai"; break; }
+        if (!capOK()) { cur.note = "Batas kuota foto bulan ini tercapai (pq_dim_cap)"; break; }
         quotaAdd(2);
         var e = await sample(pano, c.rh); if (my !== seq) return;
         if (e) S.push(e);
         A = agg(S); cur.A = A; cur.n = S.length; paint();
         if (!deep && A) {
+          if (S.length >= 3 && A.W == null && maxN < 4) maxN = 4;        /* lebar belum terbaca (tepi tertutup) → satu panorama lagi */
           var sidesOK = A.bl != null && A.br != null;
-          if (S.length === 1 && A.W != null && A.conf >= 0.8 && sidesOK) break;
+          if (S.length === 1 && A.W != null && A.conf >= 0.8 && sidesOK && !A.obs) break;
           if (S.length >= 2 && A.W != null && A.spread < 0.5 && A.conf >= 0.7) break;
         }
       }
       if (my !== seq) return;
       cur.busy = false; cur.A = A;
-      if (!A) cur.note = cur.note || "Foto tidak terbaca (mungkin gelap / tertutup)";
+      if (!A) cur.note = cur.note || "Foto terbaca tetapi tepi jalan tidak ditemukan (gelap / tertutup)";
       else cache[c.key] = A;
       paint();
     } catch (e) {
       if (my !== seq) return;
       cur.busy = false;
-      if (e && e.cors) { on = false; jset(K_ON, 0); syncBtn(); cur.note = "Browser memblokir pembacaan foto (CORS) — dimatikan"; toast_(cur.note, true); }
-      else cur.note = "Gagal mengukur: " + (e && e.message || e);
-      paint();
+      if (e && e.kind === "cors") { fail(my, { msg: "Browser memblokir pembacaan foto (CORS) — Ukur Jeda dimatikan", fatal: true }); on = false; jset(K_ON, 0); syncBtn(); toast_(cur.note, true); }
+      else if (e && (e.kind === "net" || e.kind === "img")) fail(my, { msg: e.message, retry: true });
+      else fail(my, { msg: "Gagal mengukur: " + (e && e.message || e), retry: false });
     }
   }
 
@@ -185,8 +280,11 @@
       "#pqJeda svg{display:block;width:100%;height:auto;margin:2px 0 4px}#pqJeda .sub{margin-top:4px;color:#9db3c9;font-size:10px}#pqJeda .btns{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}" +
       "#pqJeda .ok{color:#34d399}#pqJeda .mid{color:#facc15}#pqJeda .lo{color:#f59e0b}#pqJeda.min .bd{display:none}" +
       "@media(max-width:860px){#svOverlay.mode-split #pqJeda svg{display:none}}#pqJedaBtn.active{background:var(--cyan,#22d3ee);color:#04121a;border-color:var(--cyan,#22d3ee)}";
+        st.textContent += "#pqJeda.idle{padding:5px 9px;border-color:#ffffff22;background:#080c14b8}#pqJeda.idle .jh{margin:0}#pqJeda.idle .jh b{color:#9db3c9;font-weight:600}" +
+      "#pqJeda .sub.lo{color:#fda4af;white-space:normal}";
     document.head.appendChild(st);
   }
+  
   function ensureCard() {
     var h = $("pqJeda"); if (h) return h;
     var wrap = $("svFrameWrap"); if (!wrap) return null;
@@ -195,7 +293,8 @@
       var b = e.target.closest("button"); if (!b) return; e.stopPropagation();
       var a = b.getAttribute("data-a");
       if (a === "min") { minimized = !minimized; jset(K_MIN, minimized ? 1 : 0); paint(); }
-      else if (a === "redo" && cur) { delete cache[cur.c.key]; run(cur.c, false); }
+      else if (a === "now") measureNow(false);
+      else if (a === "redo" && cur) { delete cache[cur.c.key]; apiOK = apiOK === false ? null : apiOK; run(cur.c, false); }
       else if (a === "deep" && cur) { delete cache[cur.c.key]; run(cur.c, true); }
       else if (a === "copy") copyText();
       else if (a === "save") saveCur();
@@ -205,7 +304,7 @@
     return h;
   }
   function f1(v) { return v == null || !isFinite(v) ? "—" : v.toFixed(1) + " m"; }
-  function bahuT(v) { return v == null ? "—" : v < 0.15 ? "tidak ada" : f1(v); }
+  function bahuT(v, open) { return v == null ? "—" : v < 0.15 ? "tidak ada" : (open ? "≥ " : "") + f1(v); }
   function drT(v) { return v == null ? "—" : v <= 0 ? "tidak ada" : f1(v); }
   function cls(c) { return c >= 0.7 ? "ok" : c >= 0.45 ? "mid" : "lo"; }
   function ctxLabel(c) { return c.sta ? "STA " + esc(c.sta) : "titik ini"; }
@@ -220,34 +319,45 @@
     return '<svg viewBox="0 0 ' + Wd + ' 44" role="img" aria-label="Penampang jalan">' + o + "</svg>";
   }
 
+  
+  function setCard(h, html) { if (h.__h !== html) { h.innerHTML = html; h.__h = html; } }
+  /* kartu siaga: selalu ada saat Street View terbuka & fitur ON, supaya jelas modul ini hidup */
+  function paintIdle(kind, extra) {
+    var h = ensureCard(); if (!h) return;
+    var show = on && svOpen(); h.classList.toggle("show", !!show); h.classList.remove("busy"); h.classList.add("idle");
+    document.body.classList.toggle("pqjeda-on", false);
+    if (!show) return;
+    var msg = kind === "playing" ? "siaga — jeda animasi untuk mengukur" : kind === "nokey" ? "isi kunci API Street View dulu" : kind === "core" ? "butuh modul Dimensi (petaqu-dimensi.js)" : kind === "nopano" ? "siaga — belum ada panorama yang bisa dibaca" : "membaca titik ini…";
+    setCard(h, '<div class="jh"><b>Ukur Jeda • ' + esc(extra || msg) + '</b>' + (kind === "wait" || kind === "nopano" ? '<button data-a="now" title="Ukur titik ini sekarang tanpa menunggu">Ukur sekarang</button>' : "") + "</div>");
+  }
   function paint() {
     var h = ensureCard(); if (!h) return;
-    var show = on && svOpen() && cur; h.classList.toggle("show", !!show); document.body.classList.toggle("pqjeda-on", !!show);
+    var show = svOpen() && cur && (on || cur.fatal); h.classList.toggle("show", !!show); document.body.classList.toggle("pqjeda-on", !!show);
     if (!show) return;
-    h.classList.toggle("busy", !!cur.busy); h.classList.toggle("min", minimized);
+    h.classList.remove("idle"); h.classList.toggle("busy", !!cur.busy); h.classList.toggle("min", minimized);
     var A = cur.A, c = cur.c, o = '<div class="jh"><b>Ukur Jeda • ' + ctxLabel(c) + (cur.busy ? " · mengukur…" : "") + "</b>" +
       '<button data-a="min" title="Ciutkan/tampilkan">' + (minimized ? "▲" : "▼") + "</button></div>";
     if (!A) {
-      o += '<div class="bd"><div class="sub">' + esc(cur.note || "Mengukur lebar jalan, bahu & drainase…") + "</div>" + (cur.busy ? "" : '<div class="btns"><button data-a="redo">Ulangi</button></div>') + "</div>";
+      o += '<div class="bd"><div class="sub' + (cur.fatal ? " lo" : "") + '">' + esc(cur.note || "Mengukur lebar jalan, bahu & drainase…") + "</div>" + (cur.busy ? "" : '<div class="btns"><button data-a="redo">Ulangi</button></div>') + "</div>";
     } else {
-      var approx = A.conf < 0.45;
+      var approx = A.conf < 0.45, src = c.live ? "panorama yang tampil" : "titik rute";
       o += '<div class="bd">' + section(A) +
         '<div class="row big"><span>Lebar jalan</span><div class="v"><b class="' + cls(A.conf) + '">' + (approx && A.W != null ? "≈ " : "") + f1(A.W) + "</b>" + (A.err != null && A.W != null ? "<small>±" + A.err.toFixed(1) + " m</small>" : "") + "</div></div>" +
-        '<div class="row"><span>Lebar bahu</span><div class="v"><span><i>kiri</i><b>' + bahuT(A.bl) + "</b></span><span><i>kanan</i><b>" + bahuT(A.br) + "</b></span></div></div>" +
+        '<div class="row"><span>Lebar bahu</span><div class="v"><span><i>kiri</i><b>' + bahuT(A.bl, A.blo) + "</b></span><span><i>kanan</i><b>" + bahuT(A.br, A.bro) + "</b></span></div></div>" +
         '<div class="row"><span>Lebar drainase</span><div class="v"><span><i>kiri</i><b>' + drT(A.dl) + "</b></span><span><i>kanan</i><b>" + drT(A.dr) + "</b></span></div></div>" +
-        '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + A.n + " panorama" + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
+        '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + A.n + " panorama · " + src + (c.axis === "pandang" ? " · arah jalan ditebak dari arah pandang" : "") + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
         '<div class="btns"><button data-a="redo">Ulangi</button>' + (cur.deep || cur.busy ? "" : '<button data-a="deep" title="Tambah panorama tetangga (sampai 5) untuk hasil lebih pasti">Teliti</button>') +
         '<button data-a="copy">Salin</button><button data-a="save">Simpan</button>' + (DB.length ? '<button data-a="csv">CSV (' + DB.length + ")</button>" : "") + "</div></div>";
     }
-    h.innerHTML = o;
+    setCard(h, o);
   }
-  function hideCard() { if (cur) { seq++; cur = null; } var h = $("pqJeda"); if (h) h.classList.remove("show"); document.body.classList.remove("pqjeda-on"); }
+  function hideCard() { if (cur) { seq++; clearTimeout(retryT); cur = null; } var h = $("pqJeda"); if (h) { h.classList.remove("show"); h.__h = ""; } document.body.classList.remove("pqjeda-on"); }
 
   /* ---- salin / simpan / CSV ---- */
   function summary() {
     if (!cur || !cur.A) return ""; var A = cur.A;
     return "Ukur Jeda " + ctxLabel(cur.c).replace(/&amp;/g, "&") + (cur.c.name ? " · " + cur.c.name : "") + " — Lebar jalan " + f1(A.W) + (A.err != null && A.W != null ? " (±" + A.err.toFixed(1) + ")" : "") +
-      " · Bahu kiri " + bahuT(A.bl) + ", kanan " + bahuT(A.br) + " · Drainase kiri " + drT(A.dl) + ", kanan " + drT(A.dr) + " · keyakinan " + Math.round(A.conf * 100) + "%";
+      " · Bahu kiri " + bahuT(A.bl, A.blo) + ", kanan " + bahuT(A.br, A.bro) + " · Drainase kiri " + drT(A.dl) + ", kanan " + drT(A.dr) + " · keyakinan " + Math.round(A.conf * 100) + "%";
   }
   function copyText() {
     var t = summary(); if (!t) return;
@@ -256,13 +366,13 @@
   function saveCur() {
     if (!cur || !cur.A) return; var A = cur.A, c = cur.c;
     DB = DB.filter(function (x) { return x.k !== c.key; });
-    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, conf: +A.conf.toFixed(2), n: A.n, t: new Date().toISOString() });
+    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, conf: +A.conf.toFixed(2), n: A.n, t: new Date().toISOString() });
     if (DB.length > 800) DB = DB.slice(-800); jset(K_DB, DB); toast_("Tersimpan (" + DB.length + " titik)"); paint();
   }
   function csv() {
-    if (!DB.length) return; function r1(v) { return v == null ? "" : (+v).toFixed(2); }
+    if (!DB.length) return; function r1(v, o) { return v == null ? "" : (o ? "≥" : "") + (+v).toFixed(2); }
     var head = ["Ruas", "STA", "Lat", "Lng", "Lebar jalan (m)", "Bahu kiri (m)", "Bahu kanan (m)", "Drainase kiri (m)", "Drainase kanan (m)", "Keyakinan", "Panorama", "Waktu"];
-    var rows = DB.map(function (x) { return [x.ruas, x.sta, x.lat, x.lng, r1(x.W), r1(x.bl), r1(x.br), r1(x.dl), r1(x.dr), x.conf, x.n, x.t]; });
+    var rows = DB.map(function (x) { return [x.ruas, x.sta, x.lat, x.lng, r1(x.W), r1(x.bl, x.blo), r1(x.br, x.bro), r1(x.dl), r1(x.dr), x.conf, x.n, x.t]; });
     var txt = "\ufeff" + [head].concat(rows).map(function (l) { return l.map(function (v) { v = v == null ? "" : String(v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","); }).join("\n");
     var u = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })), a = document.createElement("a");
     a.href = u; a.download = "petaqu-ukur-jeda-" + new Date().toISOString().slice(0, 10) + ".csv"; document.body.appendChild(a); a.click();
@@ -275,40 +385,54 @@
     var bar = $("routePlayerBar"); if (!bar || $("pqJedaBtn")) return;
     var b = document.createElement("button"); b.className = "rp-btn"; b.id = "pqJedaBtn"; b.innerHTML = '<i class="fa-solid fa-bullseye"></i>';
     b.addEventListener("click", function (e) {
-      e.stopPropagation(); on = !on; jset(K_ON, on ? 1 : 0); syncBtn(); pend = null;
+      e.stopPropagation(); on = !on; jset(K_ON, on ? 1 : 0); syncBtn(); pend = null; if (on && apiOK === false) apiOK = null;
       toast_(on ? "Ukur otomatis saat jeda: ON (butuh Street View terbuka)" : "Ukur otomatis saat jeda: OFF"); if (!on) hideCard();
     });
     var d = $("pqDimBtn"), stop = bar.querySelector(".rp-btn.danger"); bar.insertBefore(b, d ? d.nextSibling : stop || null); syncBtn();
+  }
+
+  /* ---- ukur sekarang (tanpa menunggu jeda) ---- */
+  function measureNow(deep) {
+    if (!svOpen()) { toast_("Buka Street View dulu", true); return; }
+    if (!CORE()) { toast_("Ukur Jeda butuh modul Dimensi (petaqu-dimensi.js)", true); return; }
+    if (!apiKey()) { toast_("Isi kunci API Street View dulu", true); return; }
+    var a = RA(); if (a && a.playing) { toast_("Jeda animasi dulu, baru ukur", true); return; }
+    var c = resolveCtx(a); if (!c) { toast_("Belum ada panorama Street View yang bisa dibaca", true); return; }
+    if (cur && cur.busy && cur.key === c.key) return;
+    delete cache[c.key]; if (apiOK === false) apiOK = null; run(c, !!deep);
   }
 
   /* ---- siklus utama ---- */
   function step() {
     addBtn(); injectCss();
     if (document.hidden) return;
-    if (!on || !svOpen()) { if (cur) hideCard(); pend = null; return; }
-    if (!CORE()) { if (!warnedCore) { warnedCore = true; toast_("Ukur Jeda butuh modul Dimensi (petaqu-dimensi.js)", true); } return; }
-    var a = RA(), c = null;
-    if (a) { if (a.playing) { if (cur) hideCard(); pend = null; return; } c = window.PQSvAuto ? PQSvAuto.info(a) : null; }
-    else c = liveCtx();
-    if (!c) { if (cur) hideCard(); return; }
-    c.key = c.lat.toFixed(5) + "," + c.lng.toFixed(5) + "," + Math.round(c.rh / 10);
+    if (!on || !svOpen()) { if (cur) hideCard(); pend = null; var h0 = $("pqJeda"); if (h0 && h0.classList.contains("show")) { h0.classList.remove("show"); h0.__h = ""; } return; }
+    if (!CORE()) { if (!warnedCore) { warnedCore = true; toast_("Ukur Jeda butuh modul Dimensi (petaqu-dimensi.js)", true); } paintIdle("core"); return; }
+    var a = RA();
+    if (a && a.playing) { if (cur) hideCard(); pend = null; paintIdle("playing"); return; }
+    if (!apiKey()) { if (cur) hideCard(); pend = null; paintIdle("nokey"); return; }
+    var c = resolveCtx(a);
+    if (!c) { if (cur) hideCard(); paintIdle("nopano"); return; }
     var now = Date.now();
-    if (!pend || meters(pend, c) > 1) {
-      pend = { lat: c.lat, lng: c.lng, t: now };
-      if (cur && meters(cur.c, c) > 4) hideCard();            /* bergeser → hasil lama basi, batalkan yang berjalan */
+    if (!pend || pend.pano !== (c.pano || null) || meters(pend, c) > 1) {
+      pend = { lat: c.lat, lng: c.lng, pano: c.pano || null, t: now };
+      if (cur && (cur.c.pano !== (c.pano || undefined) || meters(cur.c, c) > 4)) hideCard();    /* bergeser → hasil lama basi, batalkan yang berjalan */
+      if (!cur) paintIdle("wait");
       return;
     }
-    if (now - pend.t < (a ? 800 : 1300)) return;
-    if (cur && cur.c.key === c.key) return;                   /* titik ini sudah diukur / sedang diukur */
-    if (!apiKey()) return;
+    if (now - pend.t < (a ? 800 : 1300)) { if (!cur) paintIdle("wait"); return; }
+    if (cur && cur.key === c.key) return;                     /* titik ini sudah diukur / sedang diukur */
+    if (!apiKey()) { paintIdle("nokey"); return; }
     if (cache[c.key]) { cur = { key: c.key, c: c, A: cache[c.key], busy: false, n: cache[c.key].n, note: "dari cache titik ini" }; paint(); return; }
     run(c, false);
   }
   setInterval(step, 400);
 
   window.PQJeda = {
-    agg: agg, toEntry: toEntry,
+    agg: agg, toEntry: toEntry, axisFrom: axisFrom, metaProblem: metaProblem,
     on: function (v) { if (v !== undefined) { on = !!v; jset(K_ON, on ? 1 : 0); syncBtn(); if (!on) hideCard(); } return on; },
-    csv: csv, saved: function () { return DB.slice(); }, clear: function () { DB = []; jset(K_DB, DB); paint(); }
+    now: measureNow, state: function () { return cur; },
+    csv: csv, saved: function () { return DB.slice(); }, clear: function () { DB = []; jset(K_DB, DB); paint(); },
+    _set: function (o) { if (o.meta) hooks.meta = o.meta; if (o.img) hooks.img = o.img; }
   };
 })();

@@ -42,11 +42,14 @@
     function med(a) { if (!a.length) return NaN; var s = a.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
 
     /* ---- profil lateral: tiap baris di bawah cakrawala → jarak tanah Z (m) + warna median kolom tengah ---- */
-    function profile(img, o) {
+    function profile(img, o, xf, bwf) {
       o = o || OPT;
       var W = img.width, H = img.height, d = img.data;
       var f = (W / 2) / Math.tan(o.fov * D2R / 2), th = o.pitch * D2R, s = Math.sin(th), c = Math.cos(th);
-      var bw = Math.max(6, Math.round(W * 0.075)), x0 = (W >> 1) - bw, x1 = (W >> 1) + bw, rows = [];
+      /* xf = pergeseran kolom (pecahan lebar gambar, 0 = tengah); bwf = setengah lebar pita (pecahan lebar) */
+      var bw = Math.max(5, Math.round(W * (bwf || 0.075))), xm = Math.round((W >> 1) + (xf || 0) * W);
+      xm = Math.max(bw, Math.min(W - 1 - bw, xm));
+      var x0 = xm - bw, x1 = xm + bw, rows = [];
       var rs = new Array(x1 - x0 + 1), gs = new Array(x1 - x0 + 1), bs = new Array(x1 - x0 + 1);
       for (var y = H - 2; y >= 0; y--) {
         var yc = (y - H / 2) / f, den = yc * c - s;
@@ -76,6 +79,11 @@
       var L = r.lab[0], ch = Math.sqrt(r.lab[1] * r.lab[1] + r.lab[2] * r.lab[2]);
       var dd = dE(r.lab, seed.lab);
       if (dd <= T) return "R";
+      /* H = aspal TERNAUNGI (bayangan pohon/bangunan): gelap tetapi rona (a,b) tetap mirip aspal */
+      var dab = Math.abs(r.lab[1] - seed.lab[1]) + Math.abs(r.lab[2] - seed.lab[2]);
+      if (L < seed.lab[0] - 8 && L >= 9 && ch < 14 && dab <= 6 + seed.sd * 0.5) return "H";
+      /* O = objek berwarna biru dominan (mobil, atap seng biru, terpal) — bukan permukaan jalan */
+      if (r.b > r.r + 25 && r.b > r.g + 15 && ch > 25) return "O";
       var yellow = r.lab[2] > 35 && L > 110 && r.lab[1] < 25;
       if (L - seed.lab[0] > 30 && (ch < 26 || yellow)) return "B";
       if (r.g > r.r + 7 && r.g > r.b + 7) return "V";
@@ -114,13 +122,32 @@
       var runs = toRuns(rows, lbl);
       if (!runs.length || runs[0].c !== "R") return null;         /* tanah dekat kamera bukan jalan → tak bisa dipercaya */
       var roadEnd = runs[0].z1, marks = [], k = 1, endIdx = runs[0].i1;
+      var shaded = false;
       while (k < runs.length) {
         var r = runs[k], nx = runs[k + 1];
         if (r.c === "R") { roadEnd = r.z1; endIdx = r.i1; k++; continue; }
+        /* bayangan menutupi sampai tepi: H panjang di ujung jalan dianggap masih aspal (keyakinan diturunkan) */
+        if (r.c === "H" && r.len >= 0.5 && (!nx || nx.c !== "R")) { roadEnd = r.z1; endIdx = r.i1; shaded = true; k++; break; }
         if (nx && nx.c === "R" && r.len <= GAP) {                 /* sela pendek di antara aspal = marka/retak/tambalan */
           if (r.c === "B" && r.len >= 0.04 && r.len <= 0.45) marks.push({ z: (r.z0 + r.z1) / 2, w: r.len });
           k++; continue;
         }
+        /* bayangan / benda sesaat di TENGAH jalan: rentetan H/D/X/G/B (tanpa tanah/rumput) lalu aspal lagi → tetap badan jalan */
+        if (r.c === "H" || r.c === "D" || r.c === "X" || r.c === "G" || r.c === "B") {
+          var j = k, solid = 0, okRun = true;
+          while (j < runs.length && runs[j].c !== "R") {
+            var cj = runs[j].c;
+            if (cj !== "H" && cj !== "D" && cj !== "X" && cj !== "G" && cj !== "B") { okRun = false; break; }
+            if (cj !== "H") solid += runs[j].len;
+            j++;
+          }
+          var hadH = false; for (var q0 = k; q0 < j; q0++) if (runs[q0].c === "H") hadH = true;
+          if (okRun && j < runs.length && runs[j].len >= (hadH ? 0.3 : 0.7) && solid <= 1.0 && (runs[j].z0 - r.z0) <= 4.5) {
+            if (hadH) shaded = true;
+            roadEnd = runs[j].z1; endIdx = runs[j].i1; k = j + 1; continue;
+          }
+        }
+
         if (r.c === "B" && r.len >= 0.04 && r.len <= 0.45 && (!nx || nx.c !== "B")) {   /* marka tepat di tepi → garis tepi */
           marks.push({ z: (r.z0 + r.z1) / 2, w: r.len, edge: true }); roadEnd = r.z1; endIdx = r.i1; k++; }
         break;
@@ -135,6 +162,7 @@
         marks.forEach(function (m) { if (m !== line && m.z >= 0.6 && m.z < roadEnd - 0.8) centre = true; });
       }
       var bahuPaved = line ? Math.max(0, roadEnd - line.z) : 0;
+      var obstacle = !!(runs[k] && runs[k].c === "O" && runs[k].len >= 0.5);
       /* keyakinan tepi: kontras warna 0,5 m sebelum vs sesudah tepi */
       var conf = 0.2;
       if (!hitMax) {
@@ -151,9 +179,11 @@
           if (dE(tl, seed.lab) > Math.max(6.5, T * 0.5)) conf *= 0.4;
         }
       }
+      if (shaded) conf *= 0.85;
+      if (obstacle) conf *= 0.4;
       /* bahu & saluran setelah tepi */
       var after2 = runs.filter(function (q) { return q.z0 >= roadEnd - 0.05 && q.i0 > endIdx - 1; });
-      var bahu = 0, bahuType = "", sal = null, spent = 0;
+      var bahu = 0, bahuType = "", sal = null, spent = 0, bahuOpen = false;
       for (var m = 0; m < after2.length && m < 6; m++) {
         var q = after2[m];
         if (q.len < 0.08) continue;
@@ -164,10 +194,12 @@
         } else if (q.c === "S" || q.c === "X") {
           var take = Math.min(q.len, 3.2);
           bahu += take; bahuType = "tanah/kerikil";
-          if (q.len > 3.2) break;
+          if (q.len > 3.2 || (q.i1 >= rows.length - 2 && q.len > 2.2)) { bahuOpen = true; break; }
         } else if (q.c === "G" || q.c === "B") {
-          if (q.len >= 0.25 && q.len <= 1.8) { sal = { w: q.len, type: "beton/pasangan", at: q.z0 - roadEnd }; break; }
-          if (q.len > 1.8 && !bahu) { bahu += Math.min(q.len, 3.2); bahuType = "beton"; }
+          if (q.len >= 0.25 && q.len <= 1.05) { sal = { w: q.len, type: "beton/pasangan", at: q.z0 - roadEnd }; break; }
+          if (q.len > 1.05 && !bahu) { bahu += Math.min(q.len, 3.2); bahuType = "kerikil/beton"; }
+          break;
+        } else if (q.c === "O" || q.c === "H") {              /* objek biru / bayangan di luar tepi: tak bisa dipercaya → berhenti */
           break;
         } else if (q.c === "D") {
           var nxq = after2[m + 1], prevOK = bahu > 0 || m === 0;
@@ -178,22 +210,50 @@
       }
       var salConf = sal ? (sal.type === "beton/pasangan" ? 0.55 : 0.4) : 0;
       return {
-        edge: roadEnd, hitMax: hitMax, conf: conf, line: line ? line.z : null, centre: centre,
+        edge: roadEnd, hitMax: hitMax, conf: conf, line: line ? line.z : null, centre: centre, shaded: shaded, obstacle: obstacle, bahuOpen: bahuOpen,
         bahuPaved: bahuPaved, bahuLoose: bahu, bahuType: bahuPaved > 0.25 ? (bahu > 0.2 ? "aspal + " + bahuType : "aspal") : bahuType,
         sal: sal, salConf: salConf, errAtEdge: 0.6 * roadEnd * roadEnd / (o.camH * ((o.size / 2) / Math.tan(o.fov * D2R / 2))) + 0.03 * roadEnd
       };
     }
 
     /* ---- gabungkan sisi kiri + kanan ---- */
+    var COLS = [0, -0.11, 0.11, -0.22, 0.22];
+    /* analisis tiap kolom lalu ambil KONSENSUS: tepi = median kolom yang sepakat; mobil/pohon/orang yang hanya
+       menutupi sebagian kolom tidak lagi memotong lebar jalan. */
+    function analyzeMulti(lists, seed, o) {
+      var res = lists.map(function (rows) { return analyzeSide(rows, seed, o); }).filter(Boolean);
+      if (!res.length) return null;
+      var valid = res.filter(function (q) { return !q.hitMax; });
+      if (valid.length * 2 <= res.length) return res.filter(function (q) { return q.hitMax; })[0] || res[0];   /* mayoritas tak melihat tepi */
+      var m0 = med(valid.map(function (q) { return q.edge; })), tol = Math.max(0.45, 0.09 * m0);
+      var inl = valid.filter(function (q) { return Math.abs(q.edge - m0) <= tol; });
+      var base = inl.slice().sort(function (a, b) { return b.conf - a.conf; })[0];
+      var out = Object.assign({}, base);
+      out.edge = med(inl.map(function (q) { return q.edge; }));
+      out.bahuPaved = med(inl.map(function (q) { return q.bahuPaved; }));
+      out.bahuLoose = med(inl.map(function (q) { return q.bahuLoose; }));
+      var sals = inl.filter(function (q) { return q.sal; });
+      if (sals.length * 2 >= inl.length && sals.length) { out.sal = { w: med(sals.map(function (q) { return q.sal.w; })), type: sals[0].sal.type, at: med(sals.map(function (q) { return q.sal.at; })) }; out.salConf = med(sals.map(function (q) { return q.salConf; })); }
+      else { out.sal = null; out.salConf = 0; }
+      var lines = inl.filter(function (q) { return q.line != null; });
+      out.line = lines.length * 2 >= inl.length && lines.length ? med(lines.map(function (q) { return q.line; })) : null;
+      var agree = inl.length / res.length;                               /* 1 = semua kolom sepakat */
+      out.conf = Math.max(0.15, Math.min(0.97, base.conf * (0.72 + 0.28 * agree) + (inl.length >= 4 ? 0.04 : 0)));
+      if (agree < 0.5) out.conf *= 0.7;
+      out.nCol = res.length; out.nAgree = inl.length;
+      out.bahuOpen = inl.filter(function (q) { return q.bahuOpen; }).length * 2 >= inl.length; out.shaded = inl.some(function (q) { return q.shaded; }); out.obstacle = inl.filter(function (q) { return q.obstacle; }).length * 2 > inl.length;
+      return out;
+    }
     function measurePair(left, right, o) {
       o = o || OPT;
-      var rl = profile(left, o), rr = profile(right, o);
-      var seed = seedFrom([rl, rr]);
+      var xs = o.cols || COLS;
+      var rlL = xs.map(function (x) { return profile(left, o, x, 0.045); }), rlR = xs.map(function (x) { return profile(right, o, x, 0.045); });
+      var seed = seedFrom(rlL.concat(rlR));
       if (!seed) return null;
-      var L = analyzeSide(rl, seed, o), R = analyzeSide(rr, seed, o);
+      var L = analyzeMulti(rlL, seed, o), R = analyzeMulti(rlR, seed, o);
       if (!L && !R) return null;
       var out = { eL: L ? L.edge : null, eR: R ? R.edge : null, L: L, R: R, seed: seed };
-      var okL = L && !L.hitMax, okR = R && !R.hitMax;
+      var okL = L && !L.hitMax && !L.obstacle, okR = R && !R.hitMax && !R.obstacle;
       if (okL && okR) {
         out.W = L.edge + R.edge;
         out.Wcar = (L.line != null && R.line != null) ? L.line + R.line : null;
@@ -204,7 +264,7 @@
       out.surfaceL = seed.lab[0] > 62 ? "beton/rigid" : "aspal";
       return out;
     }
-    return { OPT: OPT, lab: lab, dE: dE, med: med, profile: profile, seedFrom: seedFrom, analyzeSide: analyzeSide, measurePair: measurePair };
+    return { OPT: OPT, lab: lab, dE: dE, med: med, profile: profile, seedFrom: seedFrom, analyzeSide: analyzeSide, analyzeMulti: analyzeMulti, measurePair: measurePair };
   })();
 
   if (typeof module !== "undefined" && module.exports) { module.exports = { CORE: CORE }; }
