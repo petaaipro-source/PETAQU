@@ -89,15 +89,25 @@
     return m.containerPointToLatLng(L.point(Vc.x + dx, Vc.y + dy));
   }
 
+  var inFrame = false;
+  function wrapFrame() {   // jalur kedua: semua panTo selama satu frame animasi dianggap panTo kendaraan
+    var o = window.updateRouteAnimVisual;
+    if (typeof o !== "function" || o.__pqf) return;
+    var w = function () { inFrame = true; try { return o.apply(this, arguments); } finally { inFrame = false; } };
+    w.__pqf = 1; window.updateRouteAnimVisual = w;
+  }
   function isVeh(ll) {
     var a = RA(); if (!a || !a.followCamera || !a.marker || !ll) return false;
+    if (inFrame) return true;
     try { return same(L.latLng(ll), a.marker.getLatLng()); } catch (e) { return false; }
   }
 
   function patchMap() {
     var m = MAP();
     if (!m || !m.panTo || !window.L) return setTimeout(patchMap, 600);
+    wrapFrame();
     if (m.__pqf) return; m.__pqf = 1;
+    try { console.info("[PETAQU] panel & panah animasi adaptif aktif (playfit v2)"); } catch (e) {}
     var oPan = m.panTo, oFly = m.flyTo;
     m.panTo = function (ll, o) {
       try { if (isVeh(ll)) ll = shifted(this, L.latLng(ll)); } catch (e) {}
@@ -190,6 +200,6 @@
     schedule(); patchMap();
   }
 
-  window.__pqPlayFit = { calcFree: calcFree, apply: apply, shrink: shrink };
+  window.__pqPlayFit = { v: 2, calcFree: calcFree, apply: apply, shrink: shrink };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
