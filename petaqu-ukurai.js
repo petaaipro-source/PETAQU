@@ -41,7 +41,7 @@
   function isBld(f) { return (f.r > f.g + 30 && f.r > f.b + 40 && f.s > 0.52) || (f.b > f.r + 22 && f.b > f.g + 8); }
   function dist(f, ref) { var a = f.r - ref.r, b = f.g - ref.g, c = f.b - ref.b; return Math.sqrt(a * a + b * b + c * c); }
 
-  var STEP = 0.25, TMAX = 14, ALONG = [-8, -6, -4, -2, 0, 2, 4, 6, 8], BMAX = 3.5;
+  var STEP = 0.25, TMAX = 14, ALONG = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10], BMAX = 3.5;
 
   /* irisan melintang: t = −TMAX..+TMAX (negatif = KIRI arah jalan) */
   function profiles(R, lat, lng, z, heading, along) {
@@ -88,9 +88,17 @@
     if (ok.length < 3) return { fail: "tepi jalan tak terbaca di citra (" + ok.length + "/" + P.length + " irisan)" };
     var Ws = ok.map(function (x) { return x.W; }).filter(function (w) { return w >= 2.5 && w <= 25; });
     if (Ws.length < 3) return { fail: "lebar di luar rentang wajar" };
-    var m0 = med(Ws), W = pct(Ws.filter(function (w) { return w <= m0 * 1.3 + 0.5; }), 0.6), mad = med(Ws.map(function (w) { return Math.abs(w - m0); })) || 0;
-    var err = Math.max(0.4, 1.4 * mad + 0.3, STEP * 1.5 * (mz / 0.3)), spread = Math.max.apply(null, Ws) - Math.min.apply(null, Ws);
-    var conf = 0.8; if (spread > 1.0) conf -= 0.2; if (spread > 2.0) conf -= 0.15; if (ok.length < 6) conf *= 0.75; if (mz > 0.45) conf *= 0.8; if (near.length < tot * 0.6) conf *= 0.85;
+    /* KLASTER TERPADAT: persimpangan/akses/halaman beraspal (terlalu lebar) dan tajuk pohon (terlalu sempit) jadi outlier
+       di dua arah; yang dipakai = kelompok irisan yang paling banyak sepakat. */
+    var m0 = med(Ws), tolC = Math.max(0.75, 0.08 * m0), cl = [];
+    Ws.forEach(function (x) { var g = Ws.filter(function (y) { return Math.abs(y - x) <= tolC; }); if (g.length > cl.length || (g.length === cl.length && g.length && Math.abs(med(g) - m0) < Math.abs(med(cl) - m0))) cl = g; });
+    var W = med(cl), mad = med(cl.map(function (w) { return Math.abs(w - W); })) || 0, frac = cl.length / Ws.length;
+    var cLo = Math.min.apply(null, cl) - 0.01, cHi = Math.max.apply(null, cl) + 0.01;
+    var okIn = ok.filter(function (x) { return x.W >= cLo && x.W <= cHi; }); if (okIn.length >= 3) ok = okIn;   /* bahu/drainase hanya dari irisan yang konsisten */
+    var err = Math.max(0.4, 1.4 * mad + 0.3, mz * 1.0), spread = Math.max.apply(null, cl) - Math.min.apply(null, cl);
+    var conf = 0.8; if (spread > 1.0) conf -= 0.2; if (spread > 2.0) conf -= 0.15; if (Ws.length < 6) conf *= 0.75; if (mz > 0.45) conf *= 0.8; if (near.length < tot * 0.6) conf *= 0.85;
+    if (frac < 0.5) conf *= 0.7; else if (frac < 0.7) conf *= 0.85;
+    var nOut = Ws.length - cl.length;
     function sh(key) {
       var v = ok.map(function (x) { return x[key]; }), bw = med(v.map(function (x) { return x.w; })), op = v.filter(function (x) { return x.open; }).length * 2 >= v.length;
       var cv = v.filter(function (x) { return x.conc >= 0.3 && x.conc <= 1.6; }), dr = cv.length * 100 / v.length >= 40 ? med(cv.map(function (x) { return x.conc; })) : null;
@@ -98,7 +106,7 @@
       var bb = bw - (dr || 0); return { b: bb < 0.4 ? 0 : bb, open: op, dr: dr, occl: occl };
     }
     var L = sh("L"), Rr = sh("R"), off = med(ok.map(function (x) { return x.mid; })) || 0;
-    return { W: W, err: err, conf: Math.max(0.1, Math.min(0.85, conf)), spread: spread, n: ok.length, L: L, R: Rr, off: off, ref: ref };
+    return { W: W, err: err, conf: Math.max(0.1, Math.min(0.85, conf)), spread: spread, nOut: nOut, nAll: Ws.length, n: ok.length, L: L, R: Rr, off: off, ref: ref };
   }
 
   /* ---- OSM ---- */
@@ -110,6 +118,10 @@
     var k = 111320, cx = Math.cos(p.lat * D), ax = (a.lng - p.lng) * k * cx, ay = (a.lat - p.lat) * k, bx = (b.lng - p.lng) * k * cx, by = (b.lat - p.lat) * k, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0, x = ax + t * dx, y = ay + t * dy;
     return Math.sqrt(x * x + y * y);
   }
+  function footPt(p, a, b) {                                  /* titik terdekat pada segmen (lat/lng) */
+    var k = 111320, cx = Math.cos(p.lat * D), ax = (a.lng - p.lng) * k * cx, ay = (a.lat - p.lat) * k, bx = (b.lng - p.lng) * k * cx, by = (b.lat - p.lat) * k, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+    return { lat: p.lat + (ay + t * dy) / k, lng: p.lng + (ax + t * dx) / (k * cx) };
+  }
   function osmPick(els, lat, lng) {
     var p = { lat: lat, lng: lng }, best = null;
     (els || []).forEach(function (w) {
@@ -117,7 +129,7 @@
       for (var i = 0; i + 1 < w.geometry.length; i++) {
         var a = w.geometry[i], b = w.geometry[i + 1], d = ptSeg(p, a, b);
         var rank = HWR[String(w.tags.highway).replace("_link", "")] || 0;
-        if (!best || d < best.d - 3 || (Math.abs(d - best.d) <= 3 && rank > best.rank)) best = { d: d, rank: rank, tags: w.tags, brg: bearing(a, b) };
+        if (!best || d < best.d - 3 || (Math.abs(d - best.d) <= 3 && rank > best.rank)) best = { d: d, rank: rank, tags: w.tags, brg: bearing(a, b), foot: footPt(p, a, b) };
       }
     });
     return best && best.d <= 25 ? best : null;
@@ -149,7 +161,9 @@
       out.dl = sat.L.dr == null ? null : sat.L.dr; out.dr = sat.R.dr == null ? null : sat.R.dr;
       if (sat.L.occl && bl === 0) warn.push("bahu kiri 0 m bisa jadi tertutup pohon/bangunan");
       if (sat.R.occl && br === 0) warn.push("bahu kanan 0 m bisa jadi tertutup pohon/bangunan");
-      if (sat.spread > 1.5) warn.push("lebar antar-irisan bervariasi " + sat.spread.toFixed(1) + " m (tajuk pohon/persimpangan?)");
+      if (sat.nOut >= 2) warn.push(sat.nOut + " dari " + sat.nAll + " irisan menyimpang (persimpangan/akses/tajuk pohon) — dibuang, dipakai kelompok yang sepakat");
+      if (sat.spread > 1.5) warn.push("irisan yang dipakai pun bervariasi " + sat.spread.toFixed(1) + " m");
+      if (sat.z === 18) warn.push("citra z18 (0,6 m/piksel): batas ketelitian ±" + sat.err.toFixed(1) + " m");
       if (Math.abs(sat.off) > 2.2) warn.push("titik agak jauh dari sumbu jalan");
     }
     if (!sat) warn.push("citra satelit tak terbaca — hanya data OSM/kelas jalan (perkiraan kasar, bahu & drainase tidak diketahui)");
@@ -159,11 +173,11 @@
     return out;
   }
 
-  if (typeof module !== "undefined" && module.exports) { module.exports = { worldPx: worldPx, mpp: mpp, profiles: profiles, analyze: analyze, fuse: fuse, osmPick: osmPick, parseW: parseW, bearing: bearing, angDiff180: angDiff180, rgbAt: rgbAt }; }
+  if (typeof module !== "undefined" && module.exports) { module.exports = { footPt: footPt, worldPx: worldPx, mpp: mpp, profiles: profiles, analyze: analyze, fuse: fuse, osmPick: osmPick, parseW: parseW, bearing: bearing, angDiff180: angDiff180, rgbAt: rgbAt }; }
   if (typeof document === "undefined") return;
 
   /* ==================== BAGIAN 2 — BROWSER ==================== */
-  var K_C = "pq_jedaai_v1", tileMem = {}, running = null;
+  var K_C = "pq_jedaai_v2", tileMem = {}, running = null;
   function jget(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
   function jset(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function tmo(ms, p, msg) { return new Promise(function (res, rej) { var t = setTimeout(function () { rej(new Error(msg)); }, ms); p.then(function (v) { clearTimeout(t); res(v); }, function (e) { clearTimeout(t); rej(e); }); }); }
@@ -180,7 +194,7 @@
     return p;
   }
   async function getRaster(lat, lng, z) {
-    var c = worldPx(lat, lng, z), r = 22 / mpp(lat, z) + 2, tx0 = Math.floor((c.x - r) / 256), tx1 = Math.floor((c.x + r) / 256), ty0 = Math.floor((c.y - r) / 256), ty1 = Math.floor((c.y + r) / 256), jobs = [], x, y;
+    var c = worldPx(lat, lng, z), r = 34 / mpp(lat, z) + 2, tx0 = Math.floor((c.x - r) / 256), tx1 = Math.floor((c.x + r) / 256), ty0 = Math.floor((c.y - r) / 256), ty1 = Math.floor((c.y + r) / 256), jobs = [], x, y;
     for (y = ty0; y <= ty1; y++) for (x = tx0; x <= tx1; x++) jobs.push({ x: x, y: y, p: loadTile(z, x, y) });
     var ims = await tmo(12000, Promise.all(jobs.map(function (j) { return j.p; })), "citra satelit lambat (timeout 12 dtk)");
     var cv = document.createElement("canvas"); cv.width = (tx1 - tx0 + 1) * 256; cv.height = (ty1 - ty0 + 1) * 256;
@@ -193,15 +207,21 @@
     return { x0: tx0 * 256, y0: ty0 * 256, w: cv.width, h: cv.height, data: d, flat: sd < 7 };
   }
 
-  var OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+  var OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+  function ovpFetch(url, q) {
+    return new Promise(function (res, rej) {
+      var ctl = typeof AbortController !== "undefined" ? new AbortController() : null, t = setTimeout(function () { if (ctl) ctl.abort(); rej(new Error("timeout")); }, 9000);
+      fetch(url + "?data=" + encodeURIComponent(q), ctl ? { signal: ctl.signal } : undefined).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (j) { clearTimeout(t); res(j); }, function (e) { clearTimeout(t); rej(e); });
+    });
+  }
   async function getOsm(lat, lng) {
     var q = '[out:json][timeout:8];way(around:30,' + lat.toFixed(6) + ',' + lng.toFixed(6) + ')[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road|track)(_link)?$"];out tags geom;';
-    for (var i = 0; i < OVP.length; i++) {
-      try {
-        var ctl = typeof AbortController !== "undefined" ? new AbortController() : null, t = ctl ? setTimeout(function () { ctl.abort(); }, 7000) : 0;
-        var r = await fetch(OVP[i] + "?data=" + encodeURIComponent(q), ctl ? { signal: ctl.signal } : undefined); if (t) clearTimeout(t);
-        if (!r.ok) continue; var j = await r.json(); return osmPick(j.elements, lat, lng);
-      } catch (e) { /* coba server berikutnya */ }
+    for (var attempt = 0; attempt < 2; attempt++) {
+      var j = await new Promise(function (res) {                          /* semua mirror serentak; jawaban valid pertama menang */
+        var fails = 0; OVP.forEach(function (u) { ovpFetch(u, q).then(function (x) { res(x); }, function () { if (++fails === OVP.length) res(null); }); });
+      });
+      if (j && j.elements) return osmPick(j.elements, lat, lng);
+      await new Promise(function (r) { setTimeout(r, 1200); });
     }
     return undefined;                                                    /* undefined = gagal; null = tidak ada jalan OSM */
   }
@@ -214,14 +234,18 @@
     var h = c.rh || 0;
     osm = await osmP;
     if (osm && fin(osm.brg) && fin(c.rh) && angDiff180(osm.brg, c.rh) <= 35) { var d1 = Math.abs(((osm.brg - c.rh + 540) % 360) - 180); h = d1 < 90 ? osm.brg : (osm.brg + 180) % 360; }
+    var cens = [{ lat: c.lat, lng: c.lng }];
+    if (osm && osm.foot && osm.d > 1.5 && osm.d <= 12) cens.unshift(osm.foot);          /* titik panorama sering 2–6 m dari sumbu → geser ke sumbu OSM */
     for (i = 0; i < Z.length && !sat; i++) {
       try {
         var R = await getRaster(c.lat, c.lng, Z[i]);
         if (R.flat) { why = "citra z" + Z[i] + " belum tersedia"; continue; }
-        var an = analyze(profiles(R, c.lat, c.lng, Z[i], h), mpp(c.lat, Z[i]));
-        if (an.fail) { why = an.fail; continue; }
-        if (Z[i] < 19) an.conf *= 0.75;
-        sat = an; sat.z = Z[i];
+        for (var ci = 0; ci < cens.length && !sat; ci++) {
+          var an = analyze(profiles(R, cens[ci].lat, cens[ci].lng, Z[i], h), mpp(c.lat, Z[i]));
+          if (an.fail) { why = an.fail; continue; }
+          if (Z[i] < 19) an.conf *= 0.75;
+          sat = an; sat.z = Z[i];
+        }
       } catch (e) { why = e.message || String(e); if (/CORS/.test(why)) break; }
     }
     var out = fuse(sat, osm || null);
@@ -233,5 +257,5 @@
     return out;
   }
 
-  window.PQJedaAI = { measure: measure, version: 1, clear: function () { jset(K_C, {}); tileMem = {}; } };
+  window.PQJedaAI = { measure: measure, version: 2, clear: function () { jset(K_C, {}); tileMem = {}; } };
 })();
