@@ -17,7 +17,7 @@
   if (window.PQSvView) return;
 
   /* ------------------------------------------------------------------ util & state */
-  var K = { view: "pq_sv_view", fixL: "pq_sv_fix_live", fixE: "pq_sv_fix_emb", lay: "pq_sv_layout", r: "pq_sv_dual_r", swap: "pq_sv_swap", sync: "pq_sv_sync" };
+  var K = { view: "pq_sv_view", fixL: "pq_sv_fix_live", fixE: "pq_sv_fix_emb", lay: "pq_sv_layout", r: "pq_sv_dual_r", swap: "pq_sv_swap", sync: "pq_sv_sync", clean: "pq_sv_clean" };
   function ls(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function ss(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
   function $(id) { return document.getElementById(id); }
@@ -42,7 +42,8 @@
     lay: ls(K.lay, "auto"),
     r: parseFloat(ls(K.r, "50")) || 50,
     swap: ls(K.swap, "0") === "1",
-    sync: ls(K.sync, "1") !== "0"
+    sync: ls(K.sync, "1") !== "0",
+    clean: ls(K.clean, "0") === "1"      /* Bersihkan layar: sembunyikan kartu & kontrol bawaan Google */
   };
   if (["live", "embed", "dual"].indexOf(S.view) < 0) S.view = "dual";
   if (["auto", "row", "col"].indexOf(S.lay) < 0) S.lay = "auto";
@@ -124,6 +125,18 @@
       "#svFrameWrap.pq-v-dual.pq-col:not(.pq-swap) #pqTagE{top:calc(var(--pq-r) + 8px)}",
       "#svFrameWrap.pq-v-dual.pq-col.pq-swap #pqTagL{top:calc(var(--pq-r) + 8px)}",
       "@media(max-width:560px){.pq-tag .pq-sub{display:none}}",
+      /* ====== BERSIHKAN LAYAR: buang kartu judul/"Lihat di Google Maps" & kontrol bawaan Google agar tidak menumpuk dengan HUD ======
+         Embed (iframe lintas-domain → tak bisa disentuh CSS): iframe diperbesar ke atas/kanan lalu dipotong persis seukuran panel.
+         Atribusi Google di tepi bawah (logo, syarat, hak cipta) sengaja DIPERTAHANKAN. */
+      "body.pq-clean #svFrameWrap{--pq-ct:80px;--pq-cr:64px;overflow:hidden}",
+      "body.pq-clean #svFrameWrap #svFrame{position:absolute!important;left:0!important;top:calc(-1 * var(--pq-ct))!important;width:calc(100% + var(--pq-cr))!important;height:calc(100% + var(--pq-ct))!important;clip-path:inset(var(--pq-ct) var(--pq-cr) 0 0)}",
+      "body.pq-clean #svFrameWrap.pq-v-dual.pq-row:not(.pq-swap) #svFrame{left:var(--pq-r)!important;width:calc(100% - var(--pq-r) + var(--pq-cr))!important}",
+      "body.pq-clean #svFrameWrap.pq-v-dual.pq-row.pq-swap #svFrame{left:0!important;width:calc(var(--pq-r) + var(--pq-cr))!important}",
+      "body.pq-clean #svFrameWrap.pq-v-dual.pq-col:not(.pq-swap) #svFrame{top:calc(var(--pq-r) - var(--pq-ct))!important;height:calc(100% - var(--pq-r) + var(--pq-ct))!important;width:calc(100% + var(--pq-cr))!important;left:0!important}",
+      "body.pq-clean #svFrameWrap.pq-v-dual.pq-col.pq-swap #svFrame{top:calc(-1 * var(--pq-ct))!important;height:calc(var(--pq-r) + var(--pq-ct))!important;width:calc(100% + var(--pq-cr))!important;left:0!important}",
+      /* Live (Maps API): sembunyikan kartu alamat & kontrol zoom/pan/layar penuh; logo + hak cipta tetap */
+      "body.pq-clean #pqSvPano .gm-iv-address,body.pq-clean #pqSvPano .gm-iv-address-link,body.pq-clean #pqSvPano .gm-svpc,body.pq-clean #pqSvPano .gm-fullscreen-control,body.pq-clean #pqSvPano .gm-control-active,body.pq-clean #pqSvPano .gmnoprint:not(.gm-style-cc){display:none!important}",
+      "#pqSvView .sv-mode-btn.pq-clean-btn{border-left:1px solid #ffffff1f;border-radius:0;margin-left:2px}",
       /* koreksi warna (balik negatif) */
       "body.pq-fix-l #pqSvPano{filter:invert(1)}",
       "body.pq-fix-l #pqSvPano .gmnoprint,body.pq-fix-l #pqSvPano .gm-style-cc,body.pq-fix-l #pqSvPano .gm-svpc,body.pq-fix-l #pqSvPano .gm-control-active,body.pq-fix-l #pqSvPano .gm-fullscreen-control{filter:invert(1)}",
@@ -198,6 +211,9 @@
       b.addEventListener("click", function (e) { e.stopPropagation(); setView(d[0]); });
       btns[d[0]] = b; g.appendChild(b);
     });
+    var cb = mk("button", { type: "button", "class": "sv-mode-btn pq-clean-btn", id: "pqSvCleanBtn", title: "Bersihkan layar — sembunyikan kartu & kontrol bawaan Google (Alt+B)" }, '<i class="fa-solid fa-broom"></i>');
+    cb.addEventListener("click", function (e) { e.stopPropagation(); setClean(!S.clean); });
+    g.appendChild(cb); btns.clean = cb;
     var mb = mk("button", { type: "button", "class": "sv-mode-btn pq-sep", title: "Warna, tata letak & sinkronisasi", id: "pqSvMenuBtn" }, '<i class="fa-solid fa-sliders"></i>');
     mb.addEventListener("click", function (e) { e.stopPropagation(); toggleMenu(); });
     g.appendChild(mb); btns.menu = mb;
@@ -219,6 +235,8 @@
 
     menu = mk("div", { id: "pqSvMenu" },
       '<div class="pq-mh"><i class="fa-solid fa-street-view"></i> &nbsp;Tampilan Street View</div>' +
+      '<div class="pq-ms">Tampilan</div>' +
+      '<div class="pq-row2"><span>Bersihkan layar<small>Sembunyikan kartu judul, &ldquo;Lihat di Google Maps&rdquo; &amp; kontrol bawaan Google. Logo &amp; hak cipta Google di tepi bawah tetap tampil.</small></span><button type="button" class="pq-sw" id="pqSwClean"></button></div>' +
       '<div class="pq-ms">Warna</div>' +
       '<div class="pq-row2"><span>Koreksi warna — Live</span><button type="button" class="pq-sw" id="pqSwL"></button></div>' +
       '<div class="pq-row2"><span>Koreksi warna — Embed</span><button type="button" class="pq-sw" id="pqSwE"></button></div>' +
@@ -229,11 +247,12 @@
       '<div class="pq-btns"><button type="button" class="pq-btn" id="pqBtnSwap"><i class="fa-solid fa-arrow-right-arrow-left"></i> Tukar sisi</button><button type="button" class="pq-btn" id="pqBtnReset"><i class="fa-solid fa-arrows-left-right"></i> Reset 50:50</button></div>' +
       '<div class="pq-row2" style="margin-top:6px"><span>Embed ikut Live<small>Posisi, arah, zoom &amp; kemiringan disalin otomatis (hemat: tunggu posisi tenang).</small></span><button type="button" class="pq-sw" id="pqSwSync"></button></div>' +
       '<div class="pq-btns"><button type="button" class="pq-btn" id="pqBtnSync"><i class="fa-solid fa-rotate"></i> Sinkronkan sekarang</button></div>' +
-      '<div class="pq-foot">Alt+1 Live · Alt+2 Embed · Alt+3 Dual · Alt+C koreksi warna · Alt+X tukar sisi</div>');
+      '<div class="pq-foot">Alt+1 Live · Alt+2 Embed · Alt+3 Dual · Alt+B bersihkan layar · Alt+C koreksi warna · Alt+X tukar sisi</div>');
     wrap.appendChild(menu);
     menu.addEventListener("click", function (e) { e.stopPropagation(); });
     $("pqSwL").addEventListener("click", function () { setFix("L", !S.fixL); });
     $("pqSwE").addEventListener("click", function () { setFix("E", !S.fixE); });
+    $("pqSwClean").addEventListener("click", function () { setClean(!S.clean); });
     $("pqSwSync").addEventListener("click", function () { S.sync = !S.sync; ss(K.sync, S.sync ? 1 : 0); if (S.sync) syncNow(); refreshUI(); });
     $("pqBtnSync").addEventListener("click", function () { syncNow(true); });
     $("pqBtnSwap").addEventListener("click", function () { swapSides(); });
@@ -264,7 +283,7 @@
   function refreshUI() {
     ["live", "embed", "dual"].forEach(function (v) { if (btns[v]) btns[v].classList.toggle("active", S.view === v); });
     var f = function (id, on) { var e = $(id); if (e) e.classList.toggle("on", !!on); };
-    f("pqFixL", S.fixL); f("pqFixE", S.fixE); f("pqSwL", S.fixL); f("pqSwE", S.fixE); f("pqSwSync", S.sync);
+    f("pqFixL", S.fixL); f("pqFixE", S.fixE); f("pqSwL", S.fixL); f("pqSwE", S.fixE); f("pqSwSync", S.sync); f("pqSwClean", S.clean); f("pqSvCleanBtn", S.clean);
     if (menu) Array.prototype.forEach.call(menu.querySelectorAll("#pqSegLay button"), function (b) { b.classList.toggle("on", b.getAttribute("data-l") === S.lay); });
     var dw = $("pqDrWarn"); if (dw) dw.classList.toggle("show", hasDarkReader());
   }
@@ -274,6 +293,12 @@
     var b = document.body; if (!b) return;
     b.classList.toggle("pq-fix-l", S.fixL);
     b.classList.toggle("pq-fix-e", S.fixE);
+    b.classList.toggle("pq-clean", S.clean);
+  }
+  function setClean(on, quiet) {
+    S.clean = !!on; ss(K.clean, S.clean ? 1 : 0);
+    applyFix(); refreshUI(); resizePano();
+    if (!quiet) toast_("Bersihkan layar: " + (S.clean ? "ON" : "OFF"));
   }
   function setFix(which, on, quiet) {
     if (which === "L") { S.fixL = !!on; ss(K.fixL, S.fixL ? 1 : 0); } else { S.fixE = !!on; ss(K.fixE, S.fixE ? 1 : 0); }
@@ -499,6 +524,7 @@
     else if (c === "Digit3" || k === "3") setView("dual");
     else if (c === "KeyC") { if (shown === "dual") { var on = !(S.fixL && S.fixE); setFix("L", on, true); setFix("E", on, true); toast_("Koreksi warna Live + Embed: " + (on ? "ON" : "OFF")); } else setFix(shown === "embed" ? "E" : "L", shown === "embed" ? !S.fixE : !S.fixL); }
     else if (c === "KeyX") swapSides();
+    else if (c === "KeyB") setClean(!S.clean);
     else done = false;
     if (done) { e.preventDefault(); e.stopPropagation(); }
   }, true);
@@ -507,7 +533,7 @@
   window.PQSvView = {
     wantsLive: wantsLive, wantsFrame: wantsFrame, onPlaced: onPlaced, onLiveFail: onLiveFail,
     setView: setView, getView: function () { return S.view; }, shown: function () { return shown; },
-    setFix: setFix, syncNow: syncNow, swap: swapSides, setRatio: setRatio
+    setFix: setFix, setClean: setClean, getClean: function () { return S.clean; }, syncNow: syncNow, swap: swapSides, setRatio: setRatio
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { buildUI(); applyFix(); });

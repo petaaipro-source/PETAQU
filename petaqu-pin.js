@@ -86,7 +86,13 @@
     if ($("pq-pin-css")) return;
     var c = document.createElement("style"); c.id = "pq-pin-css";
     c.textContent = [
-      ".route-vehicle .rv-core.pq-svgpin{width:34px;height:34px;border-radius:0;background:none;box-shadow:none;filter:drop-shadow(0 2px 5px #000c) drop-shadow(0 0 6px #22d3ee80)}",
+      /* urutan tumpukan: glow di bawah, ikon pin di atas — lingkaran cyan bawaan tidak boleh menutupi pin kustom */
+      ".route-vehicle .rv-glow{z-index:0}",
+      ".route-vehicle .rv-core{z-index:2}",
+      ".route-vehicle.pq-custom .rv-glow{display:none!important}",
+      ".route-vehicle .rv-core.pq-svgpin{width:34px;height:34px;border-radius:0!important;background:none!important;box-shadow:none!important;filter:drop-shadow(0 2px 5px #000c) drop-shadow(0 0 6px #22d3ee80)}",
+      ".route-vehicle .rv-core.pq-svgpin:before,.route-vehicle .rv-core.pq-svgpin:after,.route-vehicle .rv-core.pq-emo:before,.route-vehicle .rv-core.pq-emo:after{content:none!important}",
+      "body.pq-scrubbing .route-vehicle .rv-core.pq-svgpin{box-shadow:none!important;background:none!important}",
       ".route-vehicle .rv-core.pq-svgpin svg{width:100%;height:100%;display:block}",
       ".route-vehicle .rv-core.pq-emo{width:32px;height:32px;background:#0b1220eb;box-shadow:0 0 0 2px #22d3ee,0 4px 14px #000a;font-size:19px;line-height:1}",
       ".route-vehicle .rv-core.pq-emo span{display:block;line-height:1;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}",
@@ -124,6 +130,7 @@
     t.dataset.pin = key;
     var core = t.querySelector(".rv-core"); if (!core) return pick(id);
     var p = pick(id);
+    t.classList.toggle("pq-custom", p.t !== "arrow");   /* pin kustom: sembunyikan glow bulat bawaan */
     if (p.t === "arrow") { core.className = "rv-core"; core.innerHTML = '<div class="rv-arrow"></div>'; }
     else if (p.t === "svg") { core.className = "rv-core pq-svgpin"; core.innerHTML = SVG[p.s]; }
     else { core.className = "rv-core pq-emo"; core.innerHTML = "<span>" + p.e + "</span>"; }
