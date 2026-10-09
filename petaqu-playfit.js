@@ -191,7 +191,7 @@
     s.setProperty("--pqf-x", Math.round(cx) + "px");
     s.setProperty("--pqf-w", avail + "px");
     s.setProperty("--pqf-b", Math.round(b) + "px");
-    bar.classList.toggle("pqf-wrap", avail < 540);
+    bar.classList.toggle("pqf-wrap", avail < 590);
     bar.classList.toggle("pqf-xs", avail < 340);
     bar.classList.toggle("pqf-over", !!f.over);
 

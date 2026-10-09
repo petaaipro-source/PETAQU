@@ -77,8 +77,8 @@
       "#routePlayerBar.pq-noseek .rp-progress-track{cursor:default}",
       "#routePlayerBar.pq-noseek .rp-progress-fill:after{display:none}",
       /* dua tombol ⏮ ⏭ menambah lebar → lebarkan pemutar sedikit & cegah teks STA / km turun baris */
-      "#routePlayerBar{width:min(600px,94vw)}",
-      "#routePlayerBar:not(.dragged){width:min(600px,var(--pqf-w,94vw))}",
+      "#routePlayerBar{width:min(640px,94vw)}",
+      "#routePlayerBar:not(.dragged){width:min(640px,var(--pqf-w,94vw))}",
       "#routePlayerBar .rp-meta span{white-space:nowrap}",
       /* tombol STA sebelumnya / berikutnya */
       ".rp-btn.pq-step{width:28px;height:28px;font-size:10.5px}",
