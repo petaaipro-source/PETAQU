@@ -14,6 +14,13 @@
   var L = { userNav: false, ready: function () { return st === 2 && !!pano && div && div.style.visibility !== "hidden"; },
             heading: function () { try { return pano ? pano.getPov().heading : null; } catch (e) { return null; } } };
   window.PQSvLive = L;
+  /* --- kait untuk PQSvView (mode Live / Embed / Dual) --- */
+  L.pano = function () { return pano; };
+  L.div = function () { return div; };
+  L.state = function () { return st; };
+  L.stale = false;                                   /* panorama tertinggal dari titik aplikasi (saat mode Embed) */
+  L.hide = function () { seq++; hidePano(); };       /* sembunyikan panorama, tampilkan embed */
+  function V_() { var v = window.PQSvView; return v && typeof v.wantsLive === "function" ? v : null; }
 
   function $(id) { return document.getElementById(id); }
   function SV() { try { return typeof svState !== "undefined" ? svState : null; } catch (e) { return null; } }
@@ -100,6 +107,7 @@
     var f = $("svFrame"); if (f) f.style.display = "";
     if (was !== -1) toast_((msg || "Panorama langsung tidak tersedia") + " — memakai Street View embed", true);
     try { if (window.PQSvAuto) window.PQSvAuto.reset(); } catch (e) {}
+    try { var V = V_(); if (V && V.onLiveFail) V.onLiveFail(); } catch (e) {}
     try { if (SV() && typeof renderStreetView === "function") renderStreetView(); } catch (e) {}
   }
 
@@ -107,7 +115,9 @@
     var f = $("svFrame");
     div.style.visibility = "visible";
     try { pano.setVisible(true); } catch (e) {}
-    if (f) { f.onload = null; f.onerror = null; try { clearTimeout(svLoadTimer); } catch (e) {} f.style.display = "none"; if (f.getAttribute("src")) f.src = ""; }
+    var V = V_(), keep = !!(V && V.wantsFrame());
+    if (f && keep) { f.style.display = ""; f.style.visibility = "visible"; }      /* mode Dual: embed tetap tampil di samping */
+    else if (f) { f.onload = null; f.onerror = null; try { clearTimeout(svLoadTimer); } catch (e) {} f.style.display = "none"; if (f.getAttribute("src")) f.src = ""; }
     var l = $("svLoading"); if (l) l.classList.add("hide");
   }
   function hidePano() {
@@ -124,7 +134,9 @@
       ourPano = data.location.pano;
       pano.setPano(ourPano);
       pano.setPov({ heading: heading || 0, pitch: 0 });
+      L.stale = false;
       showPano();
+      try { var V = V_(); if (V && V.onPlaced) { var ll2 = data.location.latLng; V.onPlaced(ll2.lat(), ll2.lng(), heading || 0); } } catch (e) {}
     }
     function ask(radius, next) {
       svc.getPanorama({ location: ll, radius: radius, source: google.maps.StreetViewSource.OUTDOOR }, function (data, status) {
@@ -143,6 +155,8 @@
   L.go = function (c) {
     if (st === -1 || !key()) return false;
     if (histOn()) return false;
+    var V = V_();
+    if (V && !V.wantsLive()) { L.stale = true; return false; }   /* mode Embed: biarkan iframe lama bekerja */
     if (st === 2) { if (!ensurePano()) return false; place(c.lat, c.lng, c.rh != null ? c.rh : c.h); return true; }
     pend = { lat: c.lat, lng: c.lng, h: c.rh != null ? c.rh : c.h };
     if (st === 0) {
