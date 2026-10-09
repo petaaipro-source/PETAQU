@@ -219,7 +219,7 @@
       '<div class="pqw-line"><span>Halo garis (tepi agar tajam)</span><select id="pqwHalo"><option value="auto">Otomatis</option><option value="white">Putih</option><option value="dark">Gelap</option><option value="off">Mati</option></select></div>' +
       '<label class="pqw-chk"><input type="checkbox" id="pqwSv"><span>Ikut ke <b>ruas tersurvei</b> (data sendiri) — dipakai sebagai warna seragam; dikembalikan saat dimatikan.</span></label>' +
       '<div class="pqw-btns"><button type="button" id="pqwReset"><i class="fa-solid fa-rotate-left"></i> Reset palet ini</button></div>' +
-      '<p class="pqw-note">Mode Otomatis: warna yang Anda ubah tersimpan khusus untuk nada peta dasar yang sedang aktif (Gelap / Terang / Satelit). Lapisan Provinsi dari Geoportal (WMS) berwarna dari server dan tidak bisa diganti.</p></div>';
+      '<p class="pqw-note">Mode Otomatis: warna yang Anda ubah tersimpan khusus untuk nada peta dasar yang sedang aktif (Gelap / Terang / Satelit). Lapisan Provinsi (WMS) berwarna dari server dan tidak bisa diganti.</p></div>';
     var title = modal.querySelector(".basemap-title");
     if (title && title.parentNode) title.parentNode.insertBefore(box, title.nextSibling);
     else modal.insertBefore(box, modal.firstChild);
