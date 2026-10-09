@@ -36,7 +36,7 @@
   function overlayOpen() { var o = $("svOverlay"); return !!(o && o.classList.contains("show")); }
 
   var S = {
-    view: ls(K.view, "dual"),
+    view: "embed",                /* SELALU mulai dari Embed; Live disembunyikan (tidak dimuat) sampai dipilih */
     fixL: ls(K.fixL, "0") === "1",
     fixE: ls(K.fixE, "0") === "1",
     lay: ls(K.lay, "auto"),
@@ -383,7 +383,7 @@
     var L = Live(), prev = S.view;
     var fromPano = (L && L.ready && L.ready() && !L.stale) ? readPano() : null;
     var cap = fromPano || ((L && !L.stale && lastCap) ? lastCap : null) || appPoint();   /* lastCap: arah/zoom terakhir dipertahankan saat ganti mode */
-    S.view = v; ss(K.view, v); sig = "";
+    S.view = v; sig = "";
 
     if (!key() && v !== "embed") { toast_("Live butuh API key Google Maps (Pengaturan)", true); }
 
@@ -455,7 +455,7 @@
     applyFix();
     var open = overlayOpen();
     if (!open) { if (wasOpen) { wasOpen = false; ap = null; cand = null; lastCap = null; embBusy = false; liveWarn = false; sig = ""; if (menu) menu.classList.remove("show"); } return; }
-    if (!wasOpen) { wasOpen = true; ap = null; cand = null; sig = ""; checkErr(); }
+    if (!wasOpen) { wasOpen = true; ap = null; cand = null; sig = ""; if (S.view !== "embed") setView("embed", true); checkErr(); }
     if (!drChecked || (!drWarned && hasDarkReader())) {
       drChecked = true;
       if (hasDarkReader() && !drWarned) { drWarned = true; toast_("Dark Reader terdeteksi — jika Street View tampak negatif, buka menu ⚙ lalu nyalakan Koreksi warna", true); refreshUI(); }
