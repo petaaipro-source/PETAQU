@@ -210,10 +210,37 @@
       }
       var salConf = sal ? (sal.type === "beton/pasangan" ? 0.55 : 0.4) : 0;
       return {
-        edge: roadEnd, hitMax: hitMax, conf: conf, line: line ? line.z : null, centre: centre, shaded: shaded, obstacle: obstacle, bahuOpen: bahuOpen,
+        edge: roadEnd, hitMax: hitMax, conf: conf, marks: marks, line: line ? line.z : null, centre: centre, shaded: shaded, obstacle: obstacle, bahuOpen: bahuOpen,
         bahuPaved: bahuPaved, bahuLoose: bahu, bahuType: bahuPaved > 0.25 ? (bahu > 0.2 ? "aspal + " + bahuType : "aspal") : bahuType,
         sal: sal, salConf: salConf, errAtEdge: 0.6 * roadEnd * roadEnd / (o.camH * ((o.size / 2) / Math.tan(o.fov * D2R / 2))) + 0.03 * roadEnd
       };
+    }
+
+    /* ---- MARKA: menerus vs putus-putus dibedakan dari KONSISTENSI antar kolom foto (menerus = hadir di ≥80% kolom;
+       putus-putus = hadir di sebagian kolom). Marka berdekatan ≤0,5 m = ganda. ---- */
+    function markClusters(cols) {
+      var all = [], n = cols.length; cols.forEach(function (q, ci) { (q.marks || []).forEach(function (m) { if (m.z >= 0.4) all.push({ z: m.z, w: m.w, ci: ci }); }); });
+      all.sort(function (a, b) { return a.z - b.z; });
+      var cl = []; all.forEach(function (m) { var c = cl[cl.length - 1]; if (c && Math.abs(m.z - c.zs[c.zs.length - 1]) <= 0.35) { c.zs.push(m.z); c.ws.push(m.w); c.cs[m.ci] = 1; } else { var cs = {}; cs[m.ci] = 1; cl.push({ zs: [m.z], ws: [m.w], cs: cs }); } });
+      return cl.map(function (c) { var k = Object.keys(c.cs).length; return { z: med(c.zs), w: med(c.ws), k: k, frac: k / n, solid: k / n >= 0.8 }; }).filter(function (c) { return n < 4 || c.k >= 2; });
+    }
+    function classifyMarks(mL, mR, eL, eR) {
+      var W = eL + eR; if (!(W > 0)) return null;
+      function outer(ms, e) { var b = null; (ms || []).forEach(function (m) { if (e - m.z <= 3.0 && (!b || m.z > b.z)) b = m; }); return b; }
+      var bl = outer(mL, eL), br = outer(mR, eR);
+      function T(m) { return m.solid ? "menerus" : "putus-putus"; }
+      var pts = [];
+      (mL || []).forEach(function (m) { if (m !== bl) pts.push({ x: -m.z, m: m }); });
+      (mR || []).forEach(function (m) { if (m !== br) pts.push({ x: m.z, m: m }); });
+      pts.sort(function (a, b) { return a.x - b.x; });
+      var groups = []; pts.forEach(function (p) { var g = groups[groups.length - 1]; if (g && p.x - g.xs[g.xs.length - 1] <= 0.5) { g.xs.push(p.x); g.ms.push(p.m); } else groups.push({ xs: [p.x], ms: [p.m] }); });
+      var div = groups.map(function (g) {
+        var x = med(g.xs), dbl = g.ms.length >= 2, sol = g.ms.filter(function (m) { return m.solid; }).length, t;
+        if (dbl) t = sol === g.ms.length ? "ganda menerus" : sol ? "menerus + putus" : "ganda putus-putus";
+        else { t = T(g.ms[0]); if (g.ms[0].w >= 0.3 && g.ms[0].solid) { t = "ganda menerus"; dbl = true; } }
+        return { f: (eL + x) / W, t: t, dbl: dbl };
+      });
+      return { eL: bl ? { t: T(bl), f: (eL - bl.z) / W } : null, eR: br ? { t: T(br), f: (eL + br.z) / W } : null, div: div, lanes: div.length + 1 };
     }
 
     /* ---- gabungkan sisi kiri + kanan ---- */
@@ -240,6 +267,7 @@
       var agree = inl.length / res.length;                               /* 1 = semua kolom sepakat */
       out.conf = Math.max(0.15, Math.min(0.97, base.conf * (0.72 + 0.28 * agree) + (inl.length >= 4 ? 0.04 : 0)));
       if (agree < 0.5) out.conf *= 0.7;
+      out.marks = markClusters(inl);
       out.nCol = res.length; out.nAgree = inl.length;
       out.bahuOpen = inl.filter(function (q) { return q.bahuOpen; }).length * 2 >= inl.length; out.shaded = inl.some(function (q) { return q.shaded; }); out.obstacle = inl.filter(function (q) { return q.obstacle; }).length * 2 > inl.length;
       return out;
@@ -261,10 +289,11 @@
         out.err = Math.sqrt(L.errAtEdge * L.errAtEdge + R.errAtEdge * R.errAtEdge);
       } else { out.W = null; out.Wcar = null; out.conf = 0.15; out.err = null; }
       out.mark = !!((L && L.centre) || (R && R.centre));
+      out.mkc = (okL && okR) ? classifyMarks(L.marks, R.marks, L.edge, R.edge) : null;
       out.surfaceL = seed.lab[0] > 62 ? "beton/rigid" : "aspal";
       return out;
     }
-    return { OPT: OPT, lab: lab, dE: dE, med: med, profile: profile, seedFrom: seedFrom, analyzeSide: analyzeSide, analyzeMulti: analyzeMulti, measurePair: measurePair };
+    return { OPT: OPT, lab: lab, dE: dE, med: med, profile: profile, seedFrom: seedFrom, analyzeSide: analyzeSide, analyzeMulti: analyzeMulti, measurePair: measurePair, markClusters: markClusters, classifyMarks: classifyMarks };
   })();
 
   if (typeof module !== "undefined" && module.exports) { module.exports = { CORE: CORE }; }
