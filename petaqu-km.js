@@ -78,15 +78,8 @@
     } catch (e2) { return null; }
   }
   function routeText(e, t, a) { var k = routeKm(e, t, a); return k == null ? '' : fmt(k); }
-  /* pemutar rute: KM di elemen sendiri (sejajar STA), baris jarak turun ke bawahnya → tidak menimpa tombol kecepatan */
-  function paintRoute(e, t, a) {
-    var sta = document.getElementById('routePlayerSta'); if (!sta || !sta.parentNode) return;
-    var meta = sta.parentNode, el = document.getElementById('routePlayerKmPos');
-    if (!el) { el = document.createElement('span'); el.id = 'routePlayerKmPos'; sta.insertAdjacentElement('afterend', el); }
-    var txt = routeText(e, t, a), want = txt ? 'KM ' + txt : '';
-    if (el.textContent !== want) el.textContent = want;
-    meta.classList.toggle('pq-has-km', !!txt);
-  }
+  /* untuk pemutar: " • KM 12+048" atau "" */
+  function routeSuffix(e, t, a) { var s = routeText(e, t, a); return s ? ' • KM ' + s : ''; }
 
   function reapplyAll() {
     var any = false;
@@ -109,17 +102,6 @@
     '#pqKmBox .pq-km-note{font-size:11px;color:var(--text-dim,#8a96b0);margin-top:8px;line-height:1.5}' +
     '#pqKmBox .pq-km-act{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}#pqKmBox .pq-km-act button{flex:1 1 auto;padding:9px 12px;border-radius:9px;border:1px solid var(--line,#2a3550);background:transparent;color:inherit;font:700 12.5px inherit;cursor:pointer}' +
     '#pqKmBox .pq-km-act button.pri{background:var(--cyan,#22d3ee);border-color:var(--cyan,#22d3ee);color:#04121a}' +
-    '#routePlayerBar .rp-meta.pq-has-km{display:flex;flex-direction:column;align-items:flex-start;gap:1px;font-size:13px;line-height:1.3}' +
-    '#routePlayerBar .rp-meta.pq-has-km #routePlayerKm{font-size:13px}' +
-    '#routePlayerBar.pqf-wrap .rp-meta.pq-has-km{display:grid;grid-template-columns:auto auto;justify-content:space-between;column-gap:10px;row-gap:2px}' +
-    '#routePlayerBar.pqf-wrap .rp-meta.pq-has-km #routePlayerKm{grid-column:1/-1}' +
-    '@media(max-width:640px){#routePlayerBar .rp-meta.pq-has-km{display:grid;grid-template-columns:auto auto;justify-content:space-between;column-gap:10px;row-gap:2px}#routePlayerBar .rp-meta.pq-has-km #routePlayerKm{grid-column:1/-1}}' +
-    '#routePlayerBar .rp-meta #routePlayerSta,#routePlayerBar .rp-meta #routePlayerKmPos{white-space:nowrap}' +
-    '#routePlayerBar .rp-meta #routePlayerKmPos{color:var(--green,#34d399)}' +
-    '#routePlayerBar .rp-info{position:relative}' +
-    '#routePlayerBar .rp-info .rp-title{padding-right:26px}' +
-    '#pqRpEdit{position:absolute;top:-5px;right:0;width:22px;height:22px;padding:0;border-radius:8px;border:1px solid var(--cyan,#22d3ee);background:var(--cyan-dim,rgba(0,200,255,.18));color:var(--cyan,#22d3ee);font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer}' +
-    '#pqRpEdit:hover{background:var(--cyan,#22d3ee);color:#04121a}' +
     '.pq-km-chip{font:600 10.5px var(--mono,monospace);color:var(--cyan,#22d3ee)}';
   document.head.appendChild(css);
 
@@ -212,59 +194,20 @@
     busy = false;
   }
 
-
-  /* ---------- tombol "Edit STA/KM" di pemutar rute: jeda + buka editor titik terdekat dari posisi sekarang ---------- */
-  function editCurrentPoint() {
-    try {
-      var a = routeAnim; if (!a || !a.road) return;
-      if (a.playing && typeof toggleRoutePlayPause === 'function') toggleRoutePlayPause();
-      var pts = a.road.points || [], n = pts.length; if (!n) return;
-      var o = findSegmentAtDistance(a.cum, a.traveledDist || 0);
-      var s = Math.min(1, Math.max(0, ((a.traveledDist || 0) - a.cum[o]) / ((a.cum[o + 1] - a.cum[o]) || 1e-9)));
-      var k = Math.max(0, Math.min(n - 1, s < 0.5 ? o : o + 1)), rev = false;
-      try { rev = !!(a.queueMode && routeAllQueue && routeAllQueue[routeAllIndex] && routeAllQueue[routeAllIndex].reversed); } catch (x) {}
-      openPointEditor(a.road.id, rev ? n - 1 - k : k);
-    } catch (e) { note('Belum ada titik yang bisa diedit', true); }
-  }
-  function mountEditBtn() {
-    var info = document.querySelector('#routePlayerBar .rp-info');
-    if (!info) return setTimeout(mountEditBtn, 500);
-    if (document.getElementById('pqRpEdit')) return;
-    var b = document.createElement('button'); b.id = 'pqRpEdit'; b.type = 'button';
-    b.title = 'Edit STA / KM titik terdekat (animasi dijeda)';
-    b.innerHTML = '<i class="fa-solid fa-pen-to-square"></i>';
-    ['mousedown', 'touchstart', 'dblclick'].forEach(function (ev) { b.addEventListener(ev, function (e) { e.stopPropagation(); }); });
-    b.addEventListener('click', function (e) { e.stopPropagation(); editCurrentPoint(); });
-    info.insertBefore(b, info.firstChild);
-  }
-
   function init() {
     if (typeof roads === 'undefined' || typeof persist !== 'function') return setTimeout(init, 400);
     /* hitung ulang otomatis tiap data disimpan */
     var orig = window.persist;
     if (!orig.__pqKm) {
-      var w = function () {
-        reapplyAll();
-        var r = orig.apply(this, arguments);
-        try { /* animasi dijeda: segarkan KM di pemutar setelah edit titik */
-          var an = routeAnim;
-          if (an && an.road && !an.playing && an.cum) {
-            var o = findSegmentAtDistance(an.cum, an.traveledDist || 0);
-            var s = Math.min(1, Math.max(0, ((an.traveledDist || 0) - an.cum[o]) / ((an.cum[o + 1] - an.cum[o]) || 1e-9)));
-            paintRoute(an, o, s);
-          }
-        } catch (e) {}
-        return r;
-      };
+      var w = function () { reapplyAll(); return orig.apply(this, arguments); };
       w.__pqKm = 1; window.persist = w;
     }
     reapplyAll();
-    mountEditBtn();
     var list = document.getElementById('roadList');
     if (list) { new MutationObserver(function () { decorate(); }).observe(list, { childList: true }); }
     decorate();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.PQKm = { open: open, apply: apply, parse: parseKm, interp: interp, interpText: interpText, routeKm: routeKm, routeText: routeText, paintRoute: paintRoute, editCurrentPoint: editCurrentPoint, reapplyAll: reapplyAll };
+  window.PQKm = { open: open, apply: apply, parse: parseKm, interp: interp, interpText: interpText, routeKm: routeKm, routeText: routeText, routeSuffix: routeSuffix, reapplyAll: reapplyAll };
 })();
