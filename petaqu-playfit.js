@@ -11,6 +11,10 @@
      peta. Saat Street View dibuka/diubah ukurannya atau panel berpindah, panah otomatis digeser masuk
      ke area terlihat (juga saat kamera-ikut dimatikan atau animasi dijeda).
    • LABEL STA di atas panah (STA berjalan + km), berdenyut tiap melewati titik STA, warnanya mengikuti warna ruas.
+   • v4: (a) TITIK BIRU posisi Street View di peta disembunyikan selama panel animasi tampil — posisi sudah
+     ditunjukkan ikon kendaraan, jadi tidak ada lagi dua penanda yang bertumpuk. (b) Panel selalu berada DI ATAS
+     kontrol peta (z-index) dan tombol zoom +/− beserta skala jarak otomatis NAIK tepat di atas panel bila
+     bertabrakan (HP/layar sempit); toolbar kanan ikut memendek agar tidak menimpa tombol zoom.
    • Ringan: tanpa timer polling; ResizeObserver/MutationObserver + 1 rAF per perubahan; rect di-cache 250 ms. */
 (function () {
   "use strict";
@@ -28,6 +32,17 @@
     "#routePlayerBar.pqf-xs .rp-btn{width:28px;height:28px;font-size:11px}",
     "#routePlayerBar.pqf-xs .rp-meta{font-size:11.5px}",
     "#routePlayerBar.pqf-over{z-index:5100}",
+    "html body #routePlayerBar{z-index:1100}",
+    "html body #routePlayerBar.pqf-over{z-index:5100}",
+    /* v4a: titik biru Street View disembunyikan selama animasi (kendaraan sudah menandai posisi) */
+    "html body.pqf-anim .pq-sv-live-wrap{display:none!important}",
+    /* v4b: zoom +/− & skala naik di atas panel; toolbar kanan memendek mengikuti */
+    "html body .leaflet-bottom.leaflet-right{transition:margin-bottom .22s ease}",
+    "html body.pqf-lift .leaflet-bottom.leaflet-right{margin-bottom:var(--pqf-zb,0px)}",
+    "html body.pqf-tbfit #mapToolbar{bottom:max(118px,var(--pqf-tb,0px))!important}",
+    "@media(max-width:860px){html body.pqf-tbfit #mapToolbar{bottom:max(128px,var(--pqf-tb,0px))!important}}",
+    /* ruang kolom kanan terlalu pendek untuk toolbar + zoom → zoom bergeser ke kiri toolbar */
+    "html body.pqf-side .leaflet-bottom.leaflet-right{padding-right:calc(var(--pq-edge) + 54px)}",
     ".pqf-sta{position:absolute;left:50%;bottom:calc(100% + 7px);transform:translateX(-50%);pointer-events:none;white-space:nowrap;display:flex;flex-direction:column;align-items:center;z-index:6}",
     ".pqf-sta b{position:relative;font:800 13px var(--mono,ui-monospace,monospace);letter-spacing:.3px;color:#22d3ee;background:#0b1220ee;border:1.5px solid var(--pqf-c,#22d3ee);border-radius:10px;padding:3px 9px;box-shadow:0 4px 14px #000a,0 0 12px #22d3ee40}",
     ".pqf-sta b:after{content:'';position:absolute;left:50%;bottom:-6px;width:8px;height:8px;background:#0b1220;border-right:1.5px solid var(--pqf-c,#22d3ee);border-bottom:1.5px solid var(--pqf-c,#22d3ee);transform:translateX(-50%) rotate(45deg)}",
@@ -138,7 +153,7 @@
     if (!m || !m.panTo || !window.L) return setTimeout(patchMap, 600);
     wrapFrame();
     if (m.__pqf) return; m.__pqf = 1;
-    try { console.info("[PETAQU] panel & panah animasi adaptif aktif (playfit v3)"); } catch (e) {}
+    try { console.info("[PETAQU] panel & panah animasi adaptif aktif (playfit v4)"); } catch (e) {}
     var oPan = m.panTo, oFly = m.flyTo;
     m.panTo = function (ll, o) {
       try { if (isVeh(ll)) ll = shifted(this, L.latLng(ll)); } catch (e) {}
@@ -194,6 +209,7 @@
     bar.classList.toggle("pqf-wrap", avail < 590);
     bar.classList.toggle("pqf-xs", avail < 340);
     bar.classList.toggle("pqf-over", !!f.over);
+    try { dodge(bar, pr, f, cx, avail, b); } catch (e) {}
 
     if (bar.classList.contains("dragged") && !bar.classList.contains("dragging")) {
       var r = bar.getBoundingClientRect(), L = parseFloat(s.left) || 0, T = parseFloat(s.top) || 0;
@@ -205,6 +221,35 @@
       if (dx) s.left = Math.round(L + dx) + "px";
       if (dy) s.top = Math.round(T + dy) + "px";
     }
+  }
+
+  /* v4: tandai mode animasi di <body> & angkat zoom/skala bila panel menutupinya (hanya ubah kelas bila berubah → tanpa loop). */
+  function flag(cls, on) { var c = document.body.classList; if (c.contains(cls) !== on) c.toggle(cls, on); }
+  function dodge(bar, pr, f, cx, avail, b) {
+    var shown = bar.classList.contains("show"), root = document.documentElement.style;
+    flag("pqf-anim", shown);
+    var lift = 0;
+    var z = document.querySelector(".leaflet-control-zoom");
+    if (shown && !f.over && z && z.offsetWidth > 0) {
+      var zr = z.getBoundingClientRect(), w = Math.min(580, avail);
+      var bl = pr.left + cx - w / 2, br = bl + w, top = null;  // kotak panel (target, bukan nilai tengah-transisi)
+      if (bar.classList.contains("dragged")) {                 // digeser manual → pakai kotak aktual
+        var rr = bar.getBoundingClientRect(); bl = rr.left; br = rr.right; top = rr.top;
+      }
+      if (br > zr.left - 6 && bl < zr.right + 6) {
+        var mb = document.getElementById("map").getBoundingClientRect().bottom;
+        lift = Math.max(0, Math.round(top == null ? b + bar.offsetHeight + 8 : mb - top + 8));
+      }
+    }
+    var fit = false, side = false;
+    if (lift > 0) {
+      root.setProperty("--pqf-zb", lift + "px"); root.setProperty("--pqf-tb", (lift + 92) + "px");
+      var tb = document.getElementById("mapToolbar"), mr = document.getElementById("map").getBoundingClientRect();
+      var room = tb ? (mr.bottom - (lift + 92)) - tb.getBoundingClientRect().top : 999;
+      fit = room >= 130; side = !fit;                          // toolbar masih layak (≥ ±3 tombol) → pendekkan; kalau tidak → zoom ke samping
+      if (side) root.setProperty("--pqf-tb", lift + "px");     // mode samping: toolbar berhenti tepat di atas panel (bisa di-scroll)
+    }
+    flag("pqf-lift", lift > 0); flag("pqf-tbfit", lift > 0); flag("pqf-side", side);
   }
 
   function init() {
@@ -231,6 +276,6 @@
     schedule(); patchMap();
   }
 
-  window.__pqPlayFit = { v: 3, calcFree: calcFree, apply: apply, shrink: shrink };
+  window.__pqPlayFit = { v: 4, calcFree: calcFree, apply: apply, shrink: shrink };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
