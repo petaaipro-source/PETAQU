@@ -52,6 +52,8 @@
       "#svInfoPanel .sv-info-row span:after{content:':'}" +
       "#svInfoPanel .sv-info-row b{text-align:left}" +
       "@media(max-width:639px){#svInfoPanel{left:8px;right:auto;width:fit-content;max-width:min(330px,calc(100% - 16px));bottom:calc(70px + env(safe-area-inset-bottom,0px))}}" +
+      /* HP / layar sempit: panel info titik disembunyikan (tombol labelnya ikut disembunyikan) */
+      "@media(max-width:860px){#svInfoPanel,#svInfoPanel.show{display:none!important}#svInfoToggleBtn{display:none!important}}" +
       "@media(prefers-reduced-motion:reduce){#svInfoPanel.pq-live #svInfoPanelTitle:before{animation:none}}";
     document.head.appendChild(st);
   })();
