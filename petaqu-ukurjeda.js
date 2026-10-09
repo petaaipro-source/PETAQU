@@ -213,15 +213,30 @@
     paint();
     if (p.retry && !cur.retried) { var c0 = cur.c, key = cur.key; cur.retried = true; clearTimeout(retryT); retryT = setTimeout(function () { if (cur && cur.key === key && !cur.busy && !cur.A) { var keep = cur.retried; run(c0, false); if (cur) cur.retried = keep; } }, 4000); }
   }
-  async function run(c, deep) {
+  /* ---- CADANGAN: AI gratis (satelit + OSM) saat Google menolak / kuota habis / CORS / tanpa kunci ---- */
+  async function runAI(my, c, reason) {
+    if (my !== seq || !cur) return;
+    var AI = window.PQJedaAI;
+    if (!AI) { fail(my, { msg: reason + " (modul petaqu-ukurai.js tidak termuat)", fatal: true }); return; }
+    cur.busy = true; cur.note = reason + " → AI gratis (satelit + OSM) mengukur…"; cur.fatal = false; paint();
+    try {
+      var A = await AI.measure(c); if (my !== seq || !cur) return;
+      cur.busy = false; cur.A = A; cur.n = A.n; cur.fatal = false; cur.note = reason + " → hasil dari AI gratis"; cache[c.key] = A; paint();
+    } catch (e) {
+      if (my !== seq || !cur) return;
+      cur.busy = false; cur.A = null; cur.fatal = true; cur.note = reason + " · AI gratis juga gagal: " + (e && e.message || e); paint();
+    }
+  }
+  async function run(c, deep, forceAI) {
     var my = ++seq, S = [], seen = {}, offs = [0, 10, -10, 20, -20], maxN = deep ? 5 : 3, A = null;
     clearTimeout(retryT);
     cur = { key: c.key, c: c, A: null, busy: true, deep: !!deep, n: 0, note: "", fatal: false, retried: false };
     paint();
+    if (forceAI || apiOK === false || !apiKey()) { await runAI(my, c, !apiKey() ? "Tanpa kunci API Google" : forceAI ? "Ukur AI dipilih" : "Google menolak foto Street View"); return; }
     try {
       if (apiOK !== true) {                                              /* uji kunci API dulu (metadata gratis) → pesan error yang jelas */
         var m0 = await meta(c.lat, c.lng, 25); if (my !== seq) return;
-        var pr0 = metaProblem(m0); if (pr0) { fail(my, pr0); return; }
+        var pr0 = metaProblem(m0); if (pr0) { if (pr0.fatal) { apiOK = false; await runAI(my, c, /OVER_|limit|Kuota/i.test(pr0.msg) ? "Kuota Google habis" : "Google menolak foto Street View"); return; } fail(my, pr0); return; }
         apiOK = true;
       }
       for (var i = 0; i < offs.length && S.length < maxN; i++) {
@@ -231,13 +246,13 @@
         else {
           var p = off === 0 ? c : offsetPt(c, off), m = await meta(p.lat, p.lng, off === 0 ? 25 : 12);
           if (my !== seq) return;
-          var pr = metaProblem(m); if (pr) { fail(my, pr); return; }
+          var pr = metaProblem(m); if (pr) { if (pr.fatal) { apiOK = false; await runAI(my, c, "Google menolak foto Street View"); return; } fail(my, pr); return; }
           if (!m || m.status !== "OK" || !m.pano_id) { if (off === 0) { cur.busy = false; cur.note = "Tidak ada foto Street View di titik ini"; paint(); return; } continue; }
           if (off !== 0 && m.location && meters(p, { lat: m.location.lat, lng: m.location.lng }) > 8) continue;
           pano = m.pano_id;
         }
         if (seen[pano]) continue; seen[pano] = 1;
-        if (!capOK()) { cur.note = "Batas kuota foto bulan ini tercapai (pq_dim_cap)"; break; }
+        if (!capOK()) { if (!S.length) { await runAI(my, c, "Batas kuota foto bulan ini tercapai"); return; } cur.note = "Batas kuota foto bulan ini tercapai (pq_dim_cap)"; break; }
         quotaAdd(2);
         var e = await sample(pano, c.rh); if (my !== seq) return;
         if (e) S.push(e);
@@ -257,7 +272,7 @@
     } catch (e) {
       if (my !== seq) return;
       cur.busy = false;
-      if (e && e.kind === "cors") { fail(my, { msg: "Browser memblokir pembacaan foto (CORS) — Ukur Jeda dimatikan", fatal: true }); on = false; jset(K_ON, 0); syncBtn(); toast_(cur.note, true); }
+      if (e && e.kind === "cors") { apiOK = false; await runAI(my, c, "Browser memblokir pembacaan foto Google (CORS)"); }
       else if (e && (e.kind === "net" || e.kind === "img")) fail(my, { msg: e.message, retry: true });
       else fail(my, { msg: "Gagal mengukur: " + (e && e.message || e), retry: false });
     }
@@ -295,6 +310,7 @@
       if (a === "min") { minimized = !minimized; jset(K_MIN, minimized ? 1 : 0); paint(); }
       else if (a === "now") measureNow(false);
       else if (a === "redo" && cur) { delete cache[cur.c.key]; apiOK = apiOK === false ? null : apiOK; run(cur.c, false); }
+      else if (a === "ai" && cur) { delete cache[cur.c.key]; run(cur.c, false, true); }
       else if (a === "deep" && cur) { delete cache[cur.c.key]; run(cur.c, true); }
       else if (a === "copy") copyText();
       else if (a === "save") saveCur();
@@ -338,15 +354,15 @@
     var A = cur.A, c = cur.c, o = '<div class="jh"><b>Ukur Jeda • ' + ctxLabel(c) + (cur.busy ? " · mengukur…" : "") + "</b>" +
       '<button data-a="min" title="Ciutkan/tampilkan">' + (minimized ? "▲" : "▼") + "</button></div>";
     if (!A) {
-      o += '<div class="bd"><div class="sub' + (cur.fatal ? " lo" : "") + '">' + esc(cur.note || "Mengukur lebar jalan, bahu & drainase…") + "</div>" + (cur.busy ? "" : '<div class="btns"><button data-a="redo">Ulangi</button></div>') + "</div>";
+      o += '<div class="bd"><div class="sub' + (cur.fatal ? " lo" : "") + '">' + esc(cur.note || "Mengukur lebar jalan, bahu & drainase…") + "</div>" + (cur.busy ? "" : '<div class="btns"><button data-a="redo">Ulangi</button><button data-a="ai" title="Ukur memakai AI gratis (satelit + OSM), tanpa Google">Ukur AI</button></div>') + "</div>";
     } else {
-      var approx = A.conf < 0.45, src = c.live ? "panorama yang tampil" : "titik rute";
+      var approx = A.conf < 0.45, src = A.ai ? "🤖 AI gratis: " + esc(A.src || "satelit + OSM") : c.live ? "panorama yang tampil" : "titik rute";
       o += '<div class="bd">' + section(A) +
         '<div class="row big"><span>Lebar jalan</span><div class="v"><b class="' + cls(A.conf) + '">' + (approx && A.W != null ? "≈ " : "") + f1(A.W) + "</b>" + (A.err != null && A.W != null ? "<small>±" + A.err.toFixed(1) + " m</small>" : "") + "</div></div>" +
         '<div class="row"><span>Lebar bahu</span><div class="v"><span><i>kiri</i><b>' + bahuT(A.bl, A.blo) + "</b></span><span><i>kanan</i><b>" + bahuT(A.br, A.bro) + "</b></span></div></div>" +
         '<div class="row"><span>Lebar drainase</span><div class="v"><span><i>kiri</i><b>' + drT(A.dl) + "</b></span><span><i>kanan</i><b>" + drT(A.dr) + "</b></span></div></div>" +
-        '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + A.n + " panorama · " + src + (c.axis === "pandang" ? " · arah jalan ditebak dari arah pandang" : "") + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
-        '<div class="btns"><button data-a="redo">Ulangi</button>' + (cur.deep || cur.busy ? "" : '<button data-a="deep" title="Tambah panorama tetangga (sampai 5) untuk hasil lebih pasti">Teliti</button>') +
+        '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + (A.ai ? A.n + " sumber" : A.n + " panorama") + " · " + src + (c.axis === "pandang" ? " · arah jalan ditebak dari arah pandang" : "") + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
+        '<div class="btns"><button data-a="redo">Ulangi</button>' + (A.ai || cur.busy ? "" : '<button data-a="ai" title="Bandingkan dengan AI gratis (satelit + OSM)">Ukur AI</button>') + (A.ai || cur.deep || cur.busy ? "" : '<button data-a="deep" title="Tambah panorama tetangga (sampai 5) untuk hasil lebih pasti">Teliti</button>') +
         '<button data-a="copy">Salin</button><button data-a="save">Simpan</button>' + (DB.length ? '<button data-a="csv">CSV (' + DB.length + ")</button>" : "") + "</div></div>";
     }
     setCard(h, o);
@@ -366,7 +382,7 @@
   function saveCur() {
     if (!cur || !cur.A) return; var A = cur.A, c = cur.c;
     DB = DB.filter(function (x) { return x.k !== c.key; });
-    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, conf: +A.conf.toFixed(2), n: A.n, t: new Date().toISOString() });
+    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, conf: +A.conf.toFixed(2), n: A.n, ai: A.ai ? 1 : 0, t: new Date().toISOString() });
     if (DB.length > 800) DB = DB.slice(-800); jset(K_DB, DB); toast_("Tersimpan (" + DB.length + " titik)"); paint();
   }
   function csv() {
@@ -395,7 +411,6 @@
   function measureNow(deep) {
     if (!svOpen()) { toast_("Buka Street View dulu", true); return; }
     if (!CORE()) { toast_("Ukur Jeda butuh modul Dimensi (petaqu-dimensi.js)", true); return; }
-    if (!apiKey()) { toast_("Isi kunci API Street View dulu", true); return; }
     var a = RA(); if (a && a.playing) { toast_("Jeda animasi dulu, baru ukur", true); return; }
     var c = resolveCtx(a); if (!c) { toast_("Belum ada panorama Street View yang bisa dibaca", true); return; }
     if (cur && cur.busy && cur.key === c.key) return;
@@ -410,7 +425,6 @@
     if (!CORE()) { if (!warnedCore) { warnedCore = true; toast_("Ukur Jeda butuh modul Dimensi (petaqu-dimensi.js)", true); } paintIdle("core"); return; }
     var a = RA();
     if (a && a.playing) { if (cur) hideCard(); pend = null; paintIdle("playing"); return; }
-    if (!apiKey()) { if (cur) hideCard(); pend = null; paintIdle("nokey"); return; }
     var c = resolveCtx(a);
     if (!c) { if (cur) hideCard(); paintIdle("nopano"); return; }
     var now = Date.now();
@@ -422,7 +436,6 @@
     }
     if (now - pend.t < (a ? 800 : 1300)) { if (!cur) paintIdle("wait"); return; }
     if (cur && cur.key === c.key) return;                     /* titik ini sudah diukur / sedang diukur */
-    if (!apiKey()) { paintIdle("nokey"); return; }
     if (cache[c.key]) { cur = { key: c.key, c: c, A: cache[c.key], busy: false, n: cache[c.key].n, note: "dari cache titik ini" }; paint(); return; }
     run(c, false);
   }
