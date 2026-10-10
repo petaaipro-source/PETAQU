@@ -200,7 +200,7 @@
   }
   async function sample(pano, rh) {
     var k = jget(K_K, 1) || 1, left = await svImage(pano, rh - 90), right = await svImage(pano, rh + 90);
-    return toEntry(CORE().measurePair(left, right, CORE().OPT), k);
+    var e = toEntry(CORE().measurePair(left, right, CORE().OPT), k); if (e) e._im = [left, right]; return e;
   }
 
   /* ---- konteks titik: yang DITAMPILKAN Street View LIVE (utama) atau titik animasi ---- */
@@ -290,7 +290,7 @@
       if (my !== seq) return;
       cur.busy = false; cur.A = A;
       if (!A) cur.note = cur.note || "Foto terbaca tetapi tepi jalan tidak ditemukan (gelap / tertutup)";
-      else cache[c.key] = A;
+      else { cache[c.key] = A; if (!A.ai && !A.km) readKm(my, c, S, A); }
       paint();
     } catch (e) {
       if (my !== seq) return;
@@ -421,6 +421,50 @@
   function cls(c) { return c >= 0.7 ? "ok" : c >= 0.45 ? "mid" : "lo"; }
   function ctxLabel(c) { return c.sta ? "STA " + esc(c.sta) : "titik ini"; }
 
+  /* ---------- PATOK KM: baca pelat putih (angka) dari foto kiri/kanan yang sudah diambil — tanpa foto tambahan ---------- */
+  var TESS_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js", LANG_URL = "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int", kmW = null, kmWL = null;
+  function kmWorker() {
+    if (kmW) return Promise.resolve(kmW); if (kmWL) return kmWL;
+    kmWL = (window.Tesseract ? Promise.resolve() : new Promise(function (res, rej) { var s = document.createElement("script"); s.src = TESS_URL; s.onload = res; s.onerror = function () { rej(new Error("tesseract")); }; document.head.appendChild(s); }))
+      .then(function () { return Tesseract.createWorker("eng", 1, { langPath: LANG_URL }).catch(function () { return Tesseract.createWorker("eng"); }); })
+      .then(function (w) { return w.setParameters({ preserve_interword_spaces: "1" }).then(function () { kmW = w; return w; }); });
+    kmWL.catch(function () { kmWL = null; });
+    return kmWL;
+  }
+  function grayCv(im) { var cv = document.createElement("canvas"); cv.width = im.w; cv.height = im.h; var cx = cv.getContext("2d"), id = cx.createImageData(im.w, im.h), i; for (i = 0; i < im.d.length; i++) { id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = im.d[i]; id.data[i * 4 + 3] = 255; } cx.putImageData(id, 0, 0); return cv; }
+  async function kmRecog(im, psm, wl) {
+    var w = await kmWorker();
+    await w.setParameters({ tessedit_pageseg_mode: String(psm), tessedit_char_whitelist: wl === "a" ? "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/+-." : "0123456789/" });
+    var r = await w.recognize(grayCv(im)); return { text: r.data.text, conf: r.data.confidence };
+  }
+  function kmT(k) {
+    if (!k || !k.ok) return ""; var s = [];
+    if (k.a != null) s.push(k.b != null ? "KM " + k.b + " · ruas " + k.a : "KM " + k.a);
+    if (k.kota) s.push("pelat " + k.kota.kode + " " + k.kota.jarak);
+    return s.join("; ") + " (" + (k.side === "L" ? "kiri" : "kanan") + ")";
+  }
+  async function readKm(my, c, S, A) {
+    var K = window.PQ_KMOCR && PQ_KMOCR.core, imgs = [];
+    S.forEach(function (x) { if (x && x._im) { imgs.push({ im: x._im[0], side: "L" }); imgs.push({ im: x._im[1], side: "R" }); } });
+    S.forEach(function (x) { if (x) delete x._im; });
+    if (!K || !imgs.length) return;
+    imgs = imgs.slice(0, 6); cur && (cur.kmBusy = true); paint();
+    var best = null, bestK = null;
+    try {
+      for (var i = 0; i < imgs.length; i++) {
+        if (my !== seq) return;
+        var boxes = K.findPlates(imgs[i].im, { max: 4 }); if (!boxes || !boxes.length) continue;      /* tak ada pelat putih → lewati (hemat CPU) */
+        var rd = await K.readImage(imgs[i].im, kmRecog, { maxPlates: 3 });
+        if (rd.km && rd.km.length) { var q = rd.km[0], sc = q.votes * 100 + q.conf; if (!best || sc > best.sc) best = { sc: sc, pr: q.pr, side: imgs[i].side }; }
+        if (rd.kota && rd.kota.length) { var z = rd.kota[0], sz = z.votes * 100 + z.conf; if (!bestK || sz > bestK.sc) bestK = { sc: sz, pr: z.pr, side: imgs[i].side }; }
+        if (best && bestK) break;
+      }
+    } catch (e) { /* OCR gagal/offline: abaikan, ukuran jalan tetap tampil */ }
+    if (my !== seq && !(cur && cur.A === A)) return;
+    A.km = (best || bestK) ? { ok: 1, a: best ? best.pr.a : null, b: best ? best.pr.b : null, kota: bestK ? { kode: bestK.pr.kode, jarak: bestK.pr.jarak } : null, side: (best || bestK).side } : { none: 1 };
+    if (cur) cur.kmBusy = false; paint();
+  }
+
   /* penampang melintang: drainase | rumput | bahu (tanah coklat / agregat butiran / semen-aspal) | jalan | ... | rumput | drainase
      + rel pengaman (loreng hitam-putih horizontal) & patok pengarah (loreng hitam-putih tegak) di tepi luar bahu */
   function section(A) {
@@ -464,6 +508,14 @@
     shoulder(br, A.pr, A.tr, false); pxR = verge();
     seg(dr, "#38bdf8", dr.toFixed(1));
     o += rel(pxL, 1) + patok(pxL) + rel(pxR, -1) + patok(pxR);
+    if (A.km && A.km.ok) {   /* patok KM: badan kuning-oranye, pelat putih (2 baris), kaki merah */
+      var kx = A.km.side === "L" ? pxL + 44 : pxR - 44, kw = 12, kh = 32, kt = Y - kh;
+      o += '<rect x="' + (kx - kw / 2) + '" y="' + kt + '" width="' + kw + '" height="' + (kh - 6) + '" fill="#e0a22b" stroke="#7a5200" stroke-width=".6"/>' +
+        '<polygon points="' + (kx - kw / 2) + "," + kt + " " + kx + "," + (kt - 3) + " " + (kx + kw / 2) + "," + kt + '" fill="#f3c25a" stroke="#7a5200" stroke-width=".6"/>' +
+        '<rect x="' + (kx - 4) + '" y="' + (kt + 3) + '" width="8" height="7" fill="#fff"/><rect x="' + (kx - 4) + '" y="' + (kt + 13) + '" width="8" height="7" fill="#fff"/>' +
+        '<path d="M' + (kx - 2.5) + " " + (kt + 5) + "h5M" + (kx - 2.5) + " " + (kt + 8) + "h3M" + (kx - 2.5) + " " + (kt + 15) + "h5M" + (kx - 2.5) + " " + (kt + 18) + 'h3" stroke="#222" stroke-width=".9"/>' +
+        '<rect x="' + (kx - kw / 2) + '" y="' + (Y - 6) + '" width="' + kw + '" height="6" fill="#d94a4a"/>';
+    }
     if (A.mk) {
       var ln = function (f, t, col) { var lx = rx + Math.max(0.02, Math.min(0.98, f)) * rw; o += '<line x1="' + lx.toFixed(1) + '" x2="' + lx.toFixed(1) + '" y1="' + (Y + 1) + '" y2="' + (Y + H - 1) + '" stroke="' + col + '" stroke-width="1.6"' + (/putus/.test(t) ? ' stroke-dasharray="3 3"' : '') + '/>'; };
       if (A.mk.eL) ln(A.mk.eL.f, A.mk.eL.t, "#fff"); if (A.mk.eR) ln(A.mk.eR.f, A.mk.eR.t, "#fff");
@@ -471,7 +523,8 @@
     }
     /* legenda */
     var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen"], ["url(#pqGr)", "rumput"]], lx0 = 8;
-    lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="74" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="81.5" font-size="8" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 62; });
+    lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="74" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="81.5" font-size="8" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 52; });
+    if (A.km && A.km.ok) o += '<rect x="' + lx0 + '" y="74" width="8" height="8" rx="1" fill="#e0a22b"/><text x="' + (lx0 + 11) + '" y="81.5" font-size="8" fill="#9db3c9">patok KM</text>';
     return '<svg viewBox="0 0 ' + Wd + ' 86" role="img" aria-label="Penampang jalan">' + defs + o + "</svg>";
   }
 
@@ -503,6 +556,7 @@
         '<div class="row"><span>Lebar bahu</span><div class="v"><span><i>kiri</i><b>' + bahuT(A.bl, A.blo) + "</b></span><span><i>kanan</i><b>" + bahuT(A.br, A.bro) + "</b></span></div></div>" +
         '<div class="row"><span>Marka tepi</span><div class="v"><b style="font-size:11px">' + esc(mkU(A) ? mkU(A).edge : A.ai ? "butuh foto Google" : mkText(A.mk).edge) + "</b></div></div>" +
         '<div class="row"><span>Marka tengah</span><div class="v"><b style="font-size:11px">' + esc(mkU(A) ? mkU(A).mid : A.ai ? "butuh foto Google" : mkText(A.mk).mid) + "</b><small>" + esc(mkU(A) ? mkU(A).lanes : A.ai ? "" : mkText(A.mk).lanes) + "</small></div></div>" +
+        (cur.kmBusy ? '<div class="row"><span>Patok KM</span><div class="v"><small>membaca…</small></div></div>' : A.km ? '<div class="row"><span>Patok KM</span><div class="v"><b style="font-size:11px">' + (A.km.ok ? esc(kmT(A.km)) : "tidak terlihat") + "</b></div></div>" : "") +
         '<div class="row"><span>Lebar drainase</span><div class="v"><span><i>kiri</i><b>' + drT(A.dl) + "</b></span><span><i>kanan</i><b>" + drT(A.dr) + "</b></span></div></div>" +
         '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + (A.ai ? A.n + " sumber" : A.n + " panorama") + " · " + src + (c.axis === "pandang" ? " · arah jalan ditebak dari arah pandang" : "") + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
         mkChips(A) +
@@ -517,7 +571,7 @@
   function summary() {
     if (!cur || !cur.A) return ""; var A = cur.A;
     return "Ukur Jeda " + ctxLabel(cur.c).replace(/&amp;/g, "&") + (cur.c.name ? " · " + cur.c.name : "") + " — Lebar jalan " + f1(A.W) + (A.err != null && A.W != null ? " (±" + A.err.toFixed(1) + ")" : "") +
-      " · Bahu kiri " + bahuT(A.bl, A.blo) + ", kanan " + bahuT(A.br, A.bro) + " · Drainase kiri " + drT(A.dl) + ", kanan " + drT(A.dr) + (A.mk ? " · Marka tepi " + mkText(A.mk).edge + "; tengah " + mkText(A.mk).mid + " (" + mkText(A.mk).lanes + ")" : "") + " · keyakinan " + Math.round(A.conf * 100) + "%";
+      (kmT(A.km) ? " · Patok KM " + kmT(A.km) : "") + " · Bahu kiri " + bahuT(A.bl, A.blo) + ", kanan " + bahuT(A.br, A.bro) + " · Drainase kiri " + drT(A.dl) + ", kanan " + drT(A.dr) + (A.mk ? " · Marka tepi " + mkText(A.mk).edge + "; tengah " + mkText(A.mk).mid + " (" + mkText(A.mk).lanes + ")" : "") + " · keyakinan " + Math.round(A.conf * 100) + "%";
   }
   function copyText() {
     var t = summary(); if (!t) return;
@@ -526,13 +580,13 @@
   function saveCur() {
     if (!cur || !cur.A) return; var A = cur.A, c = cur.c;
     DB = DB.filter(function (x) { return x.k !== c.key; });
-    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, mt: A.mk ? mkText(A.mk).edge : "", mm: A.mk ? mkText(A.mk).mid : "", ln: A.mk ? A.mk.lanes : "", conf: +A.conf.toFixed(2), lj: A.lanes || "", w0: fin(A.W0) && A.lanes && Math.abs(A.W0 - A.W) > 0.05 ? +A.W0.toFixed(2) : null, n: A.n, ai: A.ai ? 1 : 0, t: new Date().toISOString() });
+    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, mt: A.mk ? mkText(A.mk).edge : "", mm: A.mk ? mkText(A.mk).mid : "", kmt: kmT(A.km), ln: A.mk ? A.mk.lanes : "", conf: +A.conf.toFixed(2), lj: A.lanes || "", w0: fin(A.W0) && A.lanes && Math.abs(A.W0 - A.W) > 0.05 ? +A.W0.toFixed(2) : null, n: A.n, ai: A.ai ? 1 : 0, t: new Date().toISOString() });
     if (DB.length > 800) DB = DB.slice(-800); jset(K_DB, DB); toast_("Tersimpan (" + DB.length + " titik)"); paint();
   }
   function csv() {
     if (!DB.length) return; function r1(v, o) { return v == null ? "" : (o ? "≥" : "") + (+v).toFixed(2); }
-    var head = ["Ruas", "STA", "Lat", "Lng", "Lebar jalan (m)", "Bahu kiri (m)", "Bahu kanan (m)", "Drainase kiri (m)", "Drainase kanan (m)", "Marka tepi", "Marka tengah", "Lajur", "Keyakinan", "Panorama", "Waktu"];
-    var rows = DB.map(function (x) { return [x.ruas, x.sta, x.lat, x.lng, r1(x.W), r1(x.bl, x.blo), r1(x.br, x.bro), r1(x.dl), r1(x.dr), x.mt || "", x.mm || "", x.ln || "", x.conf, x.n, x.t]; });
+    var head = ["Ruas", "STA", "Lat", "Lng", "Lebar jalan (m)", "Bahu kiri (m)", "Bahu kanan (m)", "Drainase kiri (m)", "Drainase kanan (m)", "Marka tepi", "Marka tengah", "Lajur", "Patok KM", "Keyakinan", "Panorama", "Waktu"];
+    var rows = DB.map(function (x) { return [x.ruas, x.sta, x.lat, x.lng, r1(x.W), r1(x.bl, x.blo), r1(x.br, x.bro), r1(x.dl), r1(x.dr), x.mt || "", x.mm || "", x.ln || "", x.kmt || "", x.conf, x.n, x.t]; });
     var txt = "\ufeff" + [head].concat(rows).map(function (l) { return l.map(function (v) { v = v == null ? "" : String(v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","); }).join("\n");
     var u = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })), a = document.createElement("a");
     a.href = u; a.download = "petaqu-ukur-jeda-" + new Date().toISOString().slice(0, 10) + ".csv"; document.body.appendChild(a); a.click();
