@@ -78,9 +78,15 @@
     function labelRow(r, seed, T) {
       var L = r.lab[0], ch = Math.sqrt(r.lab[1] * r.lab[1] + r.lab[2] * r.lab[2]);
       var dd = dE(r.lab, seed.lab);
+      /* S (bahu coklat): lebih "merah/hangat" dari aspal (a* naik, rona bergeser ke oranye) — dicek SEBELUM aspal/bayangan agar bahu tanah gelap
+         tidak terbaca sebagai aspal ternaungi (yang membuat lebar jalan terlalu besar dan bahu "hilang") */
+      var hueR = Math.atan2(r.lab[2], r.lab[1]) / D2R, hueS = Math.atan2(seed.lab[2], seed.lab[1]) / D2R;
+      if (dd >= Math.max(6, seed.sd * 1.5) && r.lab[1] - seed.lab[1] >= 2 && hueS - hueR >= 8 && ch >= 9 && L >= 22) return "S";
       if (dd <= T) return "R";
       /* H = aspal TERNAUNGI (bayangan pohon/bangunan): gelap tetapi rona (a,b) tetap mirip aspal */
       var dab = Math.abs(r.lab[1] - seed.lab[1]) + Math.abs(r.lab[2] - seed.lab[2]);
+      /* sangat gelap & jauh lebih gelap dari aspal = dinding/pasangan batu berlumut/tembok penahan (bukan bayangan di jalan) */
+      if (L < 24 && L < seed.lab[0] - 25) return "D";
       if (L < seed.lab[0] - 8 && L >= 9 && ch < 14 && dab <= 6 + seed.sd * 0.5) return "H";
       /* O = objek berwarna biru dominan (mobil, atap seng biru, terpal) — bukan permukaan jalan */
       if (r.b > r.r + 25 && r.b > r.g + 15 && ch > 25) return "O";
@@ -193,10 +199,10 @@
           break;
         } else if (q.c === "S" || q.c === "X") {
           var take = Math.min(q.len, 3.2);
-          bahu += take; bahuType = "tanah/kerikil";
+          bahu += take; bahuType = "tanah/kerikil (coklat)";
           if (q.len > 3.2 || (q.i1 >= rows.length - 2 && q.len > 2.2)) { bahuOpen = true; break; }
         } else if (q.c === "G" || q.c === "B") {
-          if (q.len >= 0.25 && q.len <= 1.05) { sal = { w: q.len, type: "beton/pasangan", at: q.z0 - roadEnd }; break; }
+          if (q.len >= 0.25 && q.len <= 1.05) { sal = { w: q.len, type: "beton/pasangan batu", at: q.z0 - roadEnd }; break; }
           if (q.len > 1.05 && !bahu) { bahu += Math.min(q.len, 3.2); bahuType = "kerikil/beton"; }
           break;
         } else if (q.c === "O" || q.c === "H") {              /* objek biru / bayangan di luar tepi: tak bisa dipercaya → berhenti */
@@ -204,11 +210,12 @@
         } else if (q.c === "D") {
           var nxq = after2[m + 1], prevOK = bahu > 0 || m === 0;
           if (q.len >= 0.2 && q.len <= 1.6 && prevOK && (nxq || q.z1 < rows[rows.length - 1].z - 0.3)) { sal = { w: q.len, type: "tanah/berair", at: q.z0 - roadEnd }; }
+          else if (q.len > 1.6 && prevOK) { sal = { w: 0.4, type: "pasangan batu (indikasi)", at: q.z0 - roadEnd, ind: true }; }   /* dinding/talud batu menerus di tepi → saluran di kakinya; lebar = perkiraan */
           break;
         } else break;
         spent++;
       }
-      var salConf = sal ? (sal.type === "beton/pasangan" ? 0.55 : 0.4) : 0;
+      var salConf = sal ? (sal.ind ? 0.4 : /beton|pasangan/.test(sal.type) ? 0.55 : 0.4) : 0;
       return {
         edge: roadEnd, hitMax: hitMax, conf: conf, marks: marks, line: line ? line.z : null, centre: centre, shaded: shaded, obstacle: obstacle, bahuOpen: bahuOpen,
         bahuPaved: bahuPaved, bahuLoose: bahu, bahuType: bahuPaved > 0.25 ? (bahu > 0.2 ? "aspal + " + bahuType : "aspal") : bahuType,
