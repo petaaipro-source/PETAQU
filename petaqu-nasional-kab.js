@@ -327,12 +327,12 @@
       if (op) h += has ? B[nm].join("") : '<div style="padding:2px 6px 8px"><small style="display:block;color:#8fa6bd;margin-bottom:6px">Belum dimuat.</small>' + (PBB[nm] ? '<button type="button" class="jk-b jk-on" data-a="provLoad" data-p="' + esc(nm) + '">' + (provBusy ? "Memuat…" : "Muat jalan nasional") + '</button>' : "") + "</div>";
     });
     document.getElementById("jkList").innerHTML = h || '<small style="color:#8fa6bd">Tidak ada hasil.</small>';
-    document.getElementById("jkInfo").textContent = PROV_ALL.length + " provinsi (" + (PROV_ALL.length - provsEmpty().length) + " berisi data) · " + G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat) · " + staItems().length + " ber-STA";
+    document.getElementById("jkInfo").textContent = PROV_ALL.length + " provinsi (" + (PROV_ALL.length - provsEmpty().length) + " berisi data) · " + G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat) · " + staItems().length + " ber-STA" + (diagMsg ? " ⚠ " + diagMsg : "");
   }
 
   /* ---------- muat jalan nasional semua provinsi (server BIG, hanya saat diminta) ---------- */
   var BIGQ = "https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/547/query";
-  var BIGW = "AUTRJL=1 AND (TOLRJL IS NULL OR TOLRJL<>1)", BIGW2 = "FGSRJL IN (1,2) AND (TOLRJL IS NULL OR TOLRJL<>1)", lastErr = "";
+  var BIGW = "AUTRJL=1 AND (TOLRJL IS NULL OR TOLRJL<>1)", BIGW2 = "FGSRJL IN (1,2) AND (TOLRJL IS NULL OR TOLRJL<>1)", lastErr = "", whereUse = "", diagMsg = "";
   var LS_PV = "pq_jnprov_v1", NAS_COLOR = "#38bdf8";
   /* kotak perkiraan [selatan, barat, utara, timur]; segmen ditetapkan ke provinsi berpusat terdekat di antara kotak yang memuatnya */
   var PBB = {"Aceh":[1.9,94.9,6.1,98.4],"Sumatera Utara":[-0.1,97,4.4,100.5],"Sumatera Barat":[-3.4,98.5,0.9,101.9],"Riau":[-1.2,100,2.5,103.9],"Kepulauan Riau":[-1.3,103.4,4.2,109.2],"Jambi":[-2.8,101,-0.7,104.6],"Sumatera Selatan":[-4.9,102.1,-1.6,106.2],"Kepulauan Bangka Belitung":[-3.2,105,-1.4,108.3],"Bengkulu":[-5.6,101,-2.2,103.9],"Lampung":[-6.2,103.5,-3.7,106.3],"DKI Jakarta":[-6.4,106.65,-5.9,107],"Banten":[-7,105.1,-5.8,106.8],"Jawa Barat":[-7.9,106.4,-5.9,108.9],"Jawa Timur":[-8.8,110.9,-6.7,114.7],"Bali":[-8.9,114.4,-8,115.8],"Nusa Tenggara Barat":[-9.2,115.7,-8,119.2],"Nusa Tenggara Timur":[-11,118.9,-8.1,125.3],"Kalimantan Barat":[-3.1,108.7,2.1,114.3],"Kalimantan Tengah":[-3.6,110.7,0,115.9],"Kalimantan Selatan":[-4.3,114.3,-1.3,116.6],"Kalimantan Timur":[-2.6,113.8,2.4,119.1],"Kalimantan Utara":[1,114.8,4.4,118.1],"Sulawesi Utara":[0.2,123,5.6,127.2],"Gorontalo":[0.2,121.1,1,123.6],"Sulawesi Tengah":[-3.7,119.4,1.5,124.4],"Sulawesi Barat":[-3.6,118.7,-1,119.9],"Sulawesi Selatan":[-7.9,118.9,-1.9,121.9],"Sulawesi Tenggara":[-6.3,120.8,-2.8,124.6],"Maluku":[-8.4,125.7,-2.7,134.9],"Maluku Utara":[-2.5,124.2,2.6,129.2],"Papua":[-4,136,-1,141.1],"Papua Barat":[-4.3,131,-0.5,135.2],"Papua Barat Daya":[-1.7,129.3,0,132.6],"Papua Selatan":[-9.2,137.7,-5,141.1],"Papua Tengah":[-5.2,134.5,-3,138.5],"Papua Pegunungan":[-5,137.5,-3.6,141]};
@@ -366,7 +366,7 @@
       var off = 0;
       for (var pg = 0; pg < 4; pg++) {
         var q = new URLSearchParams({ where: where, geometry: c[1] + "," + c[0] + "," + c[3] + "," + c[2], geometryType: "esriGeometryEnvelope", inSR: "4326", outSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "OBJECTID,NAMRJL", returnGeometry: "true", maxAllowableOffset: "0.0006", resultOffset: String(off), resultRecordCount: "1000", f: "geojson" });
-        var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 25000), r, jn;
+        var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 12000), r, jn;
         try { r = await fetch(BIGQ + "?" + q.toString(), { signal: ac.signal }); if (!r.ok) throw new Error("HTTP " + r.status); jn = await r.json(); } finally { clearTimeout(to); }
         if (jn.error) throw new Error(jn.error.message || "server error");
         var fs = jn.features || [];
@@ -397,8 +397,8 @@
     if (!PBB[pn] || !G) return 0;
     var c = pvLoad();
     if (c[pn]) { addProvGroup(pn, c[pn]); return 1; }
-    var r = await fetchProv(pn, BIGW);
-    if (!Object.keys(r.by).length) r = await fetchProv(pn, BIGW2); /* cadangan: arteri + kolektor primer = jalan nasional */
+    var r = await fetchProv(pn, whereUse || BIGW);
+    if (!whereUse && !Object.keys(r.by).length) r = await fetchProv(pn, BIGW2); /* cadangan: arteri + kolektor primer = jalan nasional */
     if (!Object.keys(r.by).length) { if (!quiet) toast(pn + ": tidak ada data dari server" + (lastErr ? " — " + lastErr : "") + (r.fail ? " (" + r.fail + " kotak gagal)" : ""), true); return 0; }
     if (!r.fail) { c[pn] = r.by; pvSave(); }
     addProvGroup(pn, r.by);
@@ -408,10 +408,31 @@
     }
     return 1;
   }
+
+  async function jget(url) {
+    var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 12000);
+    try { var r = await fetch(url, { signal: ac.signal }); if (!r.ok) throw new Error("HTTP " + r.status); var j = await r.json(); if (j.error) throw new Error(j.error.message || "server error"); return j; }
+    finally { clearTimeout(to); }
+  }
+  /* uji cepat server BIG sebelum memuat banyak provinsi: terjangkau? kolom apa? filter mana yang ada isinya? */
+  async function probe() {
+    var meta, cnt = function (w) { return jget(BIGQ + "?" + new URLSearchParams({ where: w, returnCountOnly: "true", f: "json" }).toString()).then(function (j) { return +j.count || 0; }); };
+    try { meta = await jget(BIGQ.replace("/query", "") + "?f=json"); }
+    catch (e) { return { ok: false, msg: "Server BIG tidak terjangkau dari browser ini (" + ((e && e.message) || e) + "). Biasanya karena koneksi/diblokir (CORS). Coba jaringan lain atau tanpa VPN." }; }
+    var fields = (meta.fields || []).map(function (f) { return f.name; });
+    var c1 = 0, c2 = 0, e1 = "";
+    try { c1 = await cnt(BIGW); } catch (e) { e1 = (e && e.message) || String(e); }
+    try { c2 = await cnt(BIGW2); } catch (e) { e1 = e1 || (e && e.message) || String(e); }
+    if (c1 > 0) return { ok: true, where: BIGW, msg: "" };
+    if (c2 > 0) return { ok: true, where: BIGW2, msg: "" };
+    return { ok: false, msg: "Server BIG terjangkau, tetapi filter jalan nasional tidak cocok" + (e1 ? " (" + e1 + ")" : "") + ". Kolom layer: " + fields.join(", ").slice(0, 300) + ". Kirim teks ini ke saya untuk disesuaikan." };
+  }
   async function loadProvList(list) {
     if (provBusy) return toast("Sedang memuat data provinsi, tunggu sebentar…", true);
     provBusy = true; var ok = 0;
-    try { for (var i = 0; i < list.length; i++) { try { ok += await loadProv(list[i], list.length > 1); } catch (e) {} render(); } }
+    try {
+      if (!whereUse) { var pr = await probe(); if (!pr.ok) { diagMsg = pr.msg; toast("Gagal memuat — lihat keterangan di bawah \"Per Kabupaten\"", true); return; } whereUse = pr.where; }
+      diagMsg = ""; for (var i = 0; i < list.length; i++) { try { ok += await loadProv(list[i], list.length > 1); } catch (e) {} render(); } }
     finally { provBusy = false; render(); }
     if (list.length > 1) toast("Selesai: " + ok + " dari " + list.length + " provinsi berisi data");
   }
