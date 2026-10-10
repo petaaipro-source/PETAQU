@@ -224,9 +224,9 @@
     var ws = pts.map(function (p) { return p.W; }).filter(isNum), lo = Math.min.apply(null, ws.concat([an.med == null ? 99 : an.med])), hi = Math.max.apply(null, ws.concat([an.med == null ? 0 : an.med]));
     if (!ws.length) { lo = 0; hi = 8; }
     lo = Math.floor(lo - 1); hi = Math.ceil(hi + 1); if (hi - lo < 4) hi = lo + 4;
-    var top = 14, bot = 116, Y = function (v) { return bot - (v - lo) / (hi - lo) * (bot - top); }, o = "";
+    var top = 24, bot = 116, Y = function (v) { return bot - (v - lo) / (hi - lo) * (bot - top); }, o = "";
     [lo, (lo + hi) / 2, hi].forEach(function (v) { o += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '" stroke="' + th.grid + '"/><text x="' + (L - 6) + '" y="' + (Y(v) + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="' + th.tx + '">' + v.toFixed(v % 1 ? 1 : 0) + ' m</text>'; });
-    o += '<text x="2" y="' + (top + 3) + '" font-size="9" font-weight="700" fill="' + th.tx + '">Lebar jalan</text>';
+    o += '<text x="2" y="9" font-size="9" font-weight="700" fill="' + th.tx + '">Lebar jalan</text>';
     if (an.med != null) o += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(an.med).toFixed(1) + '" y2="' + Y(an.med).toFixed(1) + '" stroke="' + th.med + '" stroke-dasharray="4 3"/><text x="' + (W - R) + '" y="' + (Y(an.med) - 3).toFixed(1) + '" text-anchor="end" font-size="8.5" fill="' + th.med + '">umum ' + an.med.toFixed(1) + ' m</text>';
     var lp = pts.filter(function (p) { return isNum(p.W); }).map(function (p) { return X(p.pos).toFixed(1) + "," + Y(p.W).toFixed(1); }).join(" ");
     if (lp) o += '<polyline points="' + lp + '" fill="none" stroke="' + th.line + '" stroke-width="1.8" stroke-linejoin="round"/>';
@@ -257,7 +257,7 @@
 
   /* ==================== BAGIAN 3 — PANEL ==================== */
   var $ = function (id) { return document.getElementById(id); };
-  var K_AUTO = "pq_an_auto";
+  var K_AUTO = "pq_an_auto", K_MINI = "pq_an_mini";
   function jget(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
   function jset(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function M() { try { if (typeof map !== "undefined" && map && map.addLayer) return map; } catch (e) {} return window.map && window.map.addLayer ? window.map : null; }
@@ -266,8 +266,8 @@
   function ruasName(r) { return r.ruas || "(tanpa nama)"; }
 
   var CSS = "#pqAn{position:fixed;left:var(--pq-fl,364px);top:calc(var(--pq-ft,70px) + 52px);z-index:1270;width:min(430px,calc(100vw - 20px));max-height:calc(100dvh - var(--pq-ft,70px) - 80px);overflow:auto;overscroll-behavior:contain;display:none;box-sizing:border-box;padding:12px;border-radius:16px;border:1px solid rgba(34,211,238,.4);background:#0a0e17f7;color:#dbe7f3;font:13px/1.4 system-ui,sans-serif;box-shadow:0 14px 40px #0008;backdrop-filter:blur(10px)}" +
-    "#pqAn.open{display:block}#pqAn h3{margin:0;font-size:14px}#pqAn small{color:#9fb0c8}#pqAn .an-hd{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}#pqAn .an-hd>div{flex:1}" +
-    "#pqAn .an-x{border:0;background:none;color:#8fa6bd;font-size:22px;line-height:1;cursor:pointer}" +
+    "#pqAn.open{display:block}#pqAn h3{margin:0;font-size:14px}#pqAn small{color:#9fb0c8}#pqAn .an-hd{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}#pqAn .an-hd>div{flex:1}#pqAn #anTop{position:sticky;top:-12px;z-index:5;margin:-12px -12px 8px;padding:12px 12px 6px;background:#0a0e17;border-radius:16px 16px 0 0;border-bottom:1px solid #22d3ee22}#pqAn #anTop .an-hd{margin:0 0 4px}#pqAn.min{overflow:hidden;max-height:none}#pqAn.min>:not(#anTop){display:none}#pqAn.min #anTop>:not(.an-hd){display:none}#pqAn.min #anTop{margin-bottom:-12px;padding-bottom:12px;border-bottom:0;border-radius:16px}#pqAn.min #anTop .an-hd{margin:0}" +
+    "#pqAn .an-mn{border:0;background:none;color:#8fa6bd;font-size:22px;line-height:1;cursor:pointer;padding:0 4px}#pqAn .an-x{border:0;background:none;color:#8fa6bd;font-size:22px;line-height:1;cursor:pointer}" +
     "#pqAn select,#pqAn input[type=text]{width:100%;box-sizing:border-box;margin:3px 0;padding:7px 9px;border-radius:9px;border:1px solid #ffffff22;background:#0f1726;color:#dbe7f3;font:12.5px system-ui}" +
     "#pqAn .an-h{margin:14px 0 6px;font:700 10px/1 system-ui;letter-spacing:.8px;text-transform:uppercase;color:#8fa6bd}" +
     "#pqAn .an-c{display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:3px 0;cursor:pointer}#pqAn .an-c input{margin-top:2px;accent-color:#22d3ee}" +
@@ -293,9 +293,9 @@
   function build() {
     var s = document.createElement("style"); s.textContent = CSS; document.head.appendChild(s);
     panel = document.createElement("div"); panel.id = "pqAn"; panel.setAttribute("role", "dialog");
-    panel.innerHTML = '<div class="an-hd"><div><h3>Analisis Ruas Cerdas</h3><small>profil lebar · temuan otomatis · skor · tanya data</small></div><button class="an-x" id="anX" aria-label="Tutup">×</button></div>' +
+    panel.innerHTML = '<div id="anTop"><div class="an-hd"><div><h3>Analisis Ruas Cerdas</h3><small>profil lebar · temuan otomatis · skor · tanya data</small></div><button class="an-mn" id="anMin" aria-label="Minimalkan" title="Minimalkan">–</button><button class="an-x" id="anX" aria-label="Tutup">×</button></div>' +
       '<select id="anRuas" aria-label="Pilih ruas"></select>' +
-      '<label class="an-c"><input type="checkbox" id="anAuto"><span>Simpan otomatis setiap pengukuran selesai (Ukur Jeda)</span></label>' +
+      '<label class="an-c"><input type="checkbox" id="anAuto"><span>Simpan otomatis setiap pengukuran selesai (Ukur Jeda)</span></label></div>' +
       '<div id="anBody"></div>' +
       '<div class="an-h">Tanya data</div>' +
       '<input type="text" id="anQ" placeholder="mis. bahu tidak ada lebih dari 500 m" autocomplete="off">' +
@@ -312,6 +312,9 @@
     $("anAuto").checked = jget(K_AUTO, 1) !== 0;
     $("anChips").innerHTML = ["bahu tidak ada lebih dari 300 m", "lebar di bawah 6 m", "tanpa drainase", "5 titik terburuk", "keyakinan rendah", "penyempitan"].map(function (t) { return '<button class="an-ch" type="button" data-q="' + esc(t) + '">' + esc(t) + "</button>"; }).join("");
 
+    function syncMin() { var m = panel.classList.contains("min"), b = $("anMin"); b.textContent = m ? "▢" : "–"; b.title = b.ariaLabel = m ? "Perbesar" : "Minimalkan"; }
+    panel.classList.toggle("min", jget(K_MINI, 0) === 1); syncMin();
+    $("anMin").onclick = function () { panel.classList.toggle("min"); jset(K_MINI, panel.classList.contains("min") ? 1 : 0); syncMin(); };
     $("anX").onclick = close;
     $("anRuas").onchange = function () { current = this.value; clearHi(); $("anAsk").innerHTML = ""; render(); };
     $("anAuto").onchange = function () { jset(K_AUTO, this.checked ? 1 : 0); toast_("Simpan otomatis: " + (this.checked ? "ON" : "OFF")); };
