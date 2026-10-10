@@ -8,7 +8,8 @@
   if (window.__pqAdmin) return;
   window.__pqAdmin = 1;
 
-  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null, notice = null, lgOk = true, edOpen = {};
+  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null, notice = null, lgOk = true, edOpen = {}, cek = {}, selTab = "", sortKey = "tgl", sortDir = -1, vis = [], cbs = {};
+  var SORT_AWAL = { abjad: 1, tgl: -1, paket: 1 };
   var $ = function (id) { return document.getElementById(id); };
   function sess() { try { return JSON.parse(localStorage.getItem(SK)); } catch (e) { return null; } }
   function cfg() { return window.PETAQU_CFG; }
@@ -70,8 +71,8 @@
     if (panel) return;
     panel = el("div", "position:fixed;inset:0;z-index:5200;display:none;align-items:center;justify-content:center;background:#000a;padding:12px");
     panel.id = "pqAdminPanel";
-    var box = el("div", "width:min(760px,100%);max-height:90vh;display:flex;flex-direction:column;background:#0f1521;border:1px solid #22d3ee55;border-radius:14px;color:#e6f1ff;font:13px/1.45 system-ui,sans-serif;box-shadow:0 12px 40px #000c");
-    var head = el("div", "display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #ffffff18");
+    var box = el("div", "width:min(760px,100%);max-height:90vh;max-height:90dvh;display:flex;flex-direction:column;overflow:hidden;background:#0f1521;border:1px solid #22d3ee55;border-radius:14px;color:#e6f1ff;font:13px/1.45 system-ui,sans-serif;box-shadow:0 12px 40px #000c");
+    var head = el("div", "flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #ffffff18");
     head.appendChild(el("b", "flex:1;font-size:15px", "Persetujuan akses pengguna"));
     var dg = el("button", btnCss("transparent", "#e6f1ff", "#ffffff30"), "Cek koneksi");
     dg.onclick = jalankanDiag;
@@ -80,15 +81,17 @@
     var cl = el("button", "background:transparent;border:0;color:#e6f1ff;font-size:20px;cursor:pointer;padding:0 6px", "×");
     cl.onclick = function () { panel.style.display = "none"; };
     head.append(dg, rf, cl);
-    var tabs = el("div", "display:flex;gap:6px;padding:10px 14px 0;flex-wrap:wrap;align-items:center");
+    var tabs = el("div", "flex:none;display:flex;gap:6px;padding:10px 14px 0;flex-wrap:wrap;align-items:center");
     tabs.id = "pqAdminTabs";
-    var tools = el("div", "display:flex;gap:8px;padding:10px 14px 0;flex-wrap:wrap;align-items:center");
+    var tools = el("div", "flex:none;display:flex;gap:8px;padding:10px 14px 0;flex-wrap:wrap;align-items:center");
     tools.id = "pqAdminTools";
-    var list = el("div", "padding:10px 14px 14px;overflow:auto;display:flex;flex-direction:column;gap:8px");
+    var bar = el("div", "flex:none;display:none;gap:8px 10px;padding:9px 14px;margin-top:10px;flex-wrap:wrap;align-items:center;border-top:1px solid #ffffff14;border-bottom:1px solid #ffffff18;background:#0b1120");
+    bar.id = "pqAdminBar";
+    var list = el("div", "flex:1 1 auto;min-height:0;padding:10px 14px 14px;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px");
     list.id = "pqAdminList";
-    var note = el("div", "padding:8px 14px 12px;font-size:11px;color:#94a3b8;border-top:1px solid #ffffff12",
+    var note = el("div", "flex:none;padding:8px 14px 12px;font-size:11px;color:#94a3b8;border-top:1px solid #ffffff12",
       "Akun baru otomatis berstatus “Menunggu izin” dan tidak bisa membuka aplikasi sampai kamu menyetujuinya. Skor kepercayaan hanya saran — keputusan tetap di tanganmu. Memblokir mengeluarkan akun dari semua perangkat.");
-    box.append(head, tabs, tools, list, note);
+    box.append(head, tabs, tools, bar, list, note);
     panel.appendChild(box);
     panel.addEventListener("click", function (e) { if (e.target === panel) panel.style.display = "none"; });
     document.body.appendChild(panel);
@@ -276,13 +279,127 @@
   }
   function renderList() {
     var list = $("pqAdminList"); list.textContent = "";
-    if (diag) { list.appendChild(diag); return; }
-    if (lastErr && !rows.length) { list.appendChild(errCard(lastErr)); return; }
+    if (diag) { list.appendChild(diag); vis = []; renderBar(); return; }
+    if (lastErr && !rows.length) { list.appendChild(errCard(lastErr)); vis = []; renderBar(); return; }
     var rk = (tab === "aktif" || tab === "berakhir") ? ringkasan() : null; if (rk) list.appendChild(rk);
     if (notice) list.appendChild(noticeBox());
-    var sh = rows.filter(function (r) { return group(r) === tab && cocok(r); });
+    if (selTab !== tab) { cek = {}; selTab = tab; }
+    var ada = {}; rows.forEach(function (r) { ada[r.id] = 1; }); Object.keys(cek).forEach(function (k) { if (!ada[k]) delete cek[k]; });
+    var sh = urut(rows.filter(function (r) { return group(r) === tab && cocok(r); }));
+    vis = sh; cbs = {};
     if (!sh.length) list.appendChild(el("div", "color:#94a3b8;padding:18px 4px;text-align:center", q ? "Tidak ada yang cocok dengan pencarian." : tab === "tunggu" ? "Tidak ada akun yang menunggu persetujuan." : tab === "berakhir" ? "Tidak ada akun dengan langganan berakhir." : "Tidak ada data."));
     sh.forEach(function (r) { list.appendChild(card(r)); });
+    renderBar();
+  }
+
+  /* ---------- urutan, kotak centang, aksi massal ---------- */
+  function namaR(r) { return String(r.nama || r.email || r.id || ""); }
+  function kunci(r) {
+    if (sortKey === "abjad") return namaR(r).toLowerCase();
+    if (sortKey === "tgl") return Date.parse(r.created_at) || 0;
+    if (r.aktif_sampai) return Date.parse(String(r.aktif_sampai).slice(0, 10)) || 0;
+    return r.paket_bulan ? Date.parse(hariIni()) + r.paket_bulan * 30 * 864e5 : Infinity;   // belum disetujui: pakai paket yang diminta; tanpa batas = paling akhir
+  }
+  function urut(a) {
+    return a.slice().sort(function (x, y) {
+      var kx = kunci(x), ky = kunci(y), c = typeof kx === "string" ? kx.localeCompare(ky, "id", { numeric: true, sensitivity: "base" }) : (kx === ky ? 0 : kx < ky ? -1 : 1);
+      return c ? c * sortDir : namaR(x).localeCompare(namaR(y), "id", { numeric: true, sensitivity: "base" });
+    });
+  }
+  var SORT_LBL = {
+    abjad: ["Abjad", { 1: "A → Z", "-1": "Z → A" }],
+    tgl: ["Tanggal daftar", { 1: "Terlama", "-1": "Terbaru" }],
+    paket: ["Masa paket", { 1: "Segera habis", "-1": "Terpanjang" }]
+  };
+  function tandai(r) {   // sinkronkan tampilan kartu dengan status centang tanpa merender ulang daftar
+    var o = cbs[r.id]; if (!o) return;
+    o.cb.checked = !!cek[r.id];
+    o.card.style.borderColor = cek[r.id] ? "#22d3ee99" : "#ffffff18";
+    o.card.style.background = cek[r.id] ? "#0c1a2b" : "#0b1120";
+  }
+  function terpilih() { return vis.filter(function (r) { return cek[r.id] && r.role !== "admin"; }); }
+  function renderBar() {
+    var bar = $("pqAdminBar"); if (!bar) return;
+    bar.textContent = "";
+    var pilih = vis.filter(function (r) { return r.role !== "admin"; });
+    if (diag || !vis.length) { bar.style.display = "none"; return; }
+    bar.style.display = "flex"; bar.style.pointerEvents = "";
+    var tp = terpilih(), n = tp.length;
+
+    var lab = el("label", "display:flex;align-items:center;gap:7px;cursor:pointer;font:700 12px system-ui;user-select:none;white-space:nowrap");
+    var cb = el("input", "width:16px;height:16px;margin:0;accent-color:#22d3ee;cursor:pointer");
+    cb.type = "checkbox"; cb.disabled = !pilih.length;
+    cb.checked = n > 0 && n === pilih.length; cb.indeterminate = n > 0 && n < pilih.length;
+    cb.onchange = function () { pilih.forEach(function (r) { if (cb.checked) cek[r.id] = 1; else delete cek[r.id]; tandai(r); }); renderBar(); };
+    lab.append(cb, document.createTextNode("Pilih semua (" + pilih.length + ")"));
+    bar.appendChild(lab);
+
+    var sw = el("div", "display:flex;align-items:center;gap:5px;flex-wrap:wrap");
+    sw.appendChild(el("span", "font-size:11px;color:#94a3b8", "Urutkan:"));
+    ["abjad", "tgl", "paket"].forEach(function (k) {
+      var on = sortKey === k, d = SORT_LBL[k];
+      var b = el("button", "border-radius:14px;padding:4px 10px;cursor:pointer;font:600 11.5px system-ui;white-space:nowrap;border:1px solid " + (on ? "#22d3ee" : "#ffffff30") + ";background:" + (on ? "#22d3ee22" : "transparent") + ";color:" + (on ? "#67e8f9" : "#e6f1ff"),
+        on ? d[0] + ": " + d[1][sortDir] + (sortDir === 1 ? " ↑" : " ↓") : d[0] + " ⇅");
+      b.title = on ? "Klik lagi untuk membalik urutan" : "Urutkan menurut " + d[0].toLowerCase();
+      b.onclick = function () { if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = SORT_AWAL[k]; } renderList(); };
+      sw.appendChild(b);
+    });
+    bar.appendChild(sw);
+
+    var aks = el("div", "display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto");
+    if (n) aks.appendChild(el("span", "font:700 12px system-ui;color:#67e8f9", n + " dipilih"));
+    if (n && tab === "tunggu") {
+      var ok = el("button", btnCss("#16a34a", "#fff"), "Setujui (" + n + ")");
+      ok.title = "Setujui sebagai “Lihat saja”, masa aktif mengikuti paket yang diminta tiap pendaftar";
+      ok.onclick = function () { setujuiMassal(ok, tp); }; aks.appendChild(ok);
+    }
+    if (n && tab !== "blok") {
+      var bl = el("button", btnCss("transparent", "#f87171", "#f87171"), "Blokir (" + n + ")");
+      bl.onclick = function () { blokirMassal(bl, tp); }; aks.appendChild(bl);
+    }
+    var semua = n > 0 && n === pilih.length;
+    var hp = el("button", btnCss(n ? "#b91c1c" : "transparent", n ? "#fff" : "#fca5a5", n ? "#b91c1c" : "#7f1d1d") + (n ? "" : ";opacity:.55"), (semua ? "Hapus semua" : "Hapus") + (n ? " (" + n + ")" : " semua"));
+    hp.title = n ? "Hapus permanen akun yang dicentang" : "Centang akun dulu, atau tekan “Pilih semua”";
+    hp.onclick = function () { if (!n) { T("Centang akun dulu, atau tekan “Pilih semua”"); return; } hapusMassal(hp, tp); };
+    aks.appendChild(hp);
+    bar.appendChild(aks);
+  }
+  function daftarNama(a) { return a.slice(0, 12).map(function (r) { return "• " + (r.nama ? r.nama + " — " : "") + (r.email || r.id); }).join("\n") + (a.length > 12 ? "\n… dan " + (a.length - 12) + " lainnya" : ""); }
+  async function massal(b, jobs, kata, selesai) {   // jalankan satu per satu agar kegagalan satu akun tidak menggagalkan yang lain
+    var bar = $("pqAdminBar"), asli = b.textContent, ok = 0, gagal = [], berhasil = [];
+    if (bar) bar.style.pointerEvents = "none";
+    for (var i = 0; i < jobs.length; i++) {
+      b.textContent = "Memproses " + (i + 1) + "/" + jobs.length + "…";
+      try { var d = await jobs[i].run(); if (d && d.ok) { ok += jobs[i].rows.length; berhasil = berhasil.concat(jobs[i].rows); } else gagal.push(jobs[i].nama + " (" + ((d && d.reason) || "ditolak") + ")"); }
+      catch (e) { gagal.push(jobs[i].nama + " (gagal menghubungi server)"); }
+    }
+    b.textContent = asli; cek = {};
+    if (selesai) selesai(berhasil);
+    if (gagal.length) { T(ok + " " + kata + ", " + gagal.length + " gagal", true); try { alert(gagal.length + " akun gagal diproses:\n\n" + gagal.slice(0, 12).join("\n")); } catch (e) { /* abaikan */ } }
+    else T(ok + " akun " + kata);
+    await refresh();
+  }
+  function hapusMassal(b, a) {
+    var aktifN = a.filter(function (r) { return group(r) === "aktif"; }).length;
+    if (!confirm("HAPUS PERMANEN " + a.length + " akun?\n\n" + daftarNama(a) + "\n\nFoto proyek mereka dipindah ke akun admin; riwayat pembayaran tetap tersimpan. Pendaftar yang ditolak bisa mendaftar ulang.\n\nTindakan ini tidak bisa dibatalkan.")) return;
+    if (aktifN && !confirm("Konfirmasi terakhir: " + aktifN + " di antaranya AKUN AKTIF dan langsung tidak bisa masuk. Hapus " + a.length + " akun sekarang?")) return;
+    massal(b, a.map(function (r) {
+      var g = group(r);
+      return { nama: r.email || r.id, rows: [r], run: function () { return g === "aktif" ? rpc("admin_hapus_akun", { p_id: r.id, p_paksa: true }) : g === "berakhir" ? rpc("admin_hapus_akun", { p_id: r.id }) : rpc("admin_hapus_pendaftar", { p_id: r.id }); } };
+    }), "dihapus");
+  }
+  function blokirMassal(b, a) {
+    if (!confirm("Blokir " + a.length + " akun? Semuanya akan keluar dari semua perangkat.\n\n" + daftarNama(a))) return;
+    massal(b, a.map(function (r) { return { nama: r.email || r.id, rows: [r], run: function () { return rpc("admin_blokir", { p_id: r.id }); } }; }), "diblokir");
+  }
+  function setujuiMassal(b, a) {
+    var g = {}; a.forEach(function (r) { var k = r.paket_bulan ? String(r.paket_bulan) : ""; (g[k] = g[k] || []).push(r); });
+    var ket = Object.keys(g).map(function (k) { return (k ? (k % 12 === 0 ? k / 12 + " tahun" : k + " bulan") : "tanpa batas waktu") + ": " + g[k].length + " akun"; }).join("\n");
+    if (!confirm("Setujui " + a.length + " akun sebagai “Lihat saja”?\n\nMasa aktif mengikuti paket yang diminta:\n" + ket + "\n\n" + daftarNama(a))) return;
+    massal(b, Object.keys(g).map(function (k) {
+      var body = { p_ids: g[k].map(function (r) { return r.id; }), p_role: "viewer" }; if (k) body.p_bulan = +k;
+      return { nama: g[k].length + " akun", rows: g[k], run: function () { return rpc("admin_setujui_banyak", body); } };
+    }), "disetujui", function (ok) { if (ok.length) { notice = { rows: ok }; tab = "aktif"; } });
   }
   function errCard(e) {
     var c = el("div", "padding:14px;border:1px solid #f8717166;border-radius:10px;background:#2a0f14;line-height:1.55");
@@ -301,6 +418,13 @@
   function card(r) {
     var st = berakhir(r) ? ["Langganan berakhir", "#f87171"] : (STATUS[r.role] || [r.role, "#94a3b8"]);
     var c = el("div", "display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border:1px solid #ffffff18;border-radius:10px;background:#0b1120");
+    if (r.role !== "admin") {
+      var cb = el("input", "width:16px;height:16px;margin:2px 2px 0 0;accent-color:#22d3ee;cursor:pointer;flex:none;align-self:flex-start");
+      cb.type = "checkbox"; cb.checked = !!cek[r.id]; cb.title = "Pilih akun ini";
+      cb.onchange = function () { if (cb.checked) cek[r.id] = 1; else delete cek[r.id]; tandai(r); renderBar(); };
+      cbs[r.id] = { cb: cb, card: c }; c.appendChild(cb);
+      if (cek[r.id]) { c.style.borderColor = "#22d3ee99"; c.style.background = "#0c1a2b"; }
+    }
     var info = el("div", "flex:1 1 240px;min-width:0");
     var judul = r.nama ? r.nama : (r.email || r.id);
     info.appendChild(el("div", "font-weight:700;overflow-wrap:anywhere", judul));
@@ -461,7 +585,7 @@
       var r = await api("/rest/v1/profiles?select=role&id=eq." + encodeURIComponent(s.uid));
       if (r && r[0] && r[0].role === "admin") {
         adminOk = true; setFlag(true); addButton(); refresh();
-        if (!poll) poll = setInterval(function () { if (adminOk && document.visibilityState === "visible" && !Object.keys(edOpen).length) refresh(); }, 6e4);   // lencana + notifikasi pendaftar baru tiap menit
+        if (!poll) poll = setInterval(function () { if (adminOk && document.visibilityState === "visible" && !Object.keys(edOpen).length && !Object.keys(cek).length) refresh(); }, 6e4);   // lencana + notifikasi pendaftar baru tiap menit
       }
     } catch (e) { /* bukan admin / offline: tidak ada tombol */ }
   }
