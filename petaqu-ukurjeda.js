@@ -308,7 +308,7 @@
       "body.pqjeda-on #pqDimHud{display:none!important}" +
       "#pqJeda .jh{display:flex;align-items:center;gap:6px;margin-bottom:4px}#pqJeda .jh b{flex:1;color:#34d399;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
       "#pqJeda.busy .jh b:before{content:'';display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:#34d399;animation:pqJd 1s ease-in-out infinite}@keyframes pqJd{50%{opacity:.25;transform:scale(.7)}}" +
-      "#pqJeda button{background:#ffffff12;border:1px solid #ffffff22;color:#e6edf5;border-radius:7px;font:700 10px var(--mono,system-ui);padding:3px 7px;cursor:pointer}#pqJeda button:hover{border-color:#34d399;color:#34d399}" +
+      "#pqJeda button{background:#ffffff12;border:1px solid #ffffff22;color:#e6edf5;border-radius:7px;font:700 10px var(--mono,system-ui);padding:3px 7px;cursor:pointer}#pqJeda button:hover{border-color:#34d399;color:#34d399}#pqJeda button.on{background:#22d3ee;border-color:#22d3ee;color:#04222b}#pqJeda .mfx{margin-top:5px;padding:5px 7px;border-radius:7px;background:#34d3991f;color:#bff5df;font-size:10px;line-height:1.35}#pqJeda .mfx.w{background:#f59e0b24;color:#fde7b0}" +
       "#pqJeda .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:3px 0;border-top:1px solid #ffffff14}#pqJeda .row:first-of-type{border-top:0}" +
       "#pqJeda .row>span{color:#9db3c9;white-space:nowrap}#pqJeda .row .v{display:flex;gap:10px;font-variant-numeric:tabular-nums}#pqJeda .row .v b{color:#fff;font-size:13px}#pqJeda .row .v i{font-style:normal;color:#9db3c9;font-size:9.5px;margin-right:3px}" +
       "#pqJeda .big b{font-size:21px}#pqJeda .big .v small{color:#9db3c9;font-size:10px;align-self:flex-end}" +
@@ -320,6 +320,45 @@
     document.head.appendChild(st);
   }
   
+  /* ---- KOREKSI MARKA: tepi putih menerus + marka tengah (kuning putus-putus / kelipatannya) → jumlah lajur × lebar lajur standar ---- */
+  var K_MKU = "pq_jeda_mku", U = Object.assign({ on: 0, eL: 1, eR: 1, mid: "ky", n: 1 }, jget(K_MKU, {}));
+  function fuse(A) {
+    if (A.W0 === undefined) { A.W0 = A.W; A.conf0 = A.conf; A.err0 = A.err; A.warn0 = A.warn; }
+    A.W = A.W0; A.conf = A.conf0; A.err = A.err0; A.warn = A.warn0; A.lanes = null; A.mfix = ""; A.mfw = false;
+    if (!U.on || U.mid === "none") return;
+    var nd = Math.max(1, Math.min(4, U.n | 0)), lanes = nd + 1, white = U.mid === "pp";
+    var L = white ? 3.25 : 3.5, sL = white ? 0.35 : 0.3, edges = (U.eL ? 1 : 0) + (U.eR ? 1 : 0);
+    var Wm = lanes * L, sm = sL * lanes * 0.8 + (edges === 2 ? 0 : edges === 1 ? 0.12 : 0.25) + 0.1;
+    var W0 = A.W0, e0 = Math.max(A.err0 || 0.5, A.ai ? 0.9 : 0.3), lo = lanes * 2.8, hi = lanes * 4.1, base = lanes + " lajur × " + L.toFixed(2).replace(/0$/, "").replace(".", ",") + " m = " + Wm.toFixed(1).replace(".", ",") + " m";
+    A.lanes = lanes;
+    if (!fin(W0)) { A.W = Wm; A.err = sm + 0.2; A.conf = 0.5; A.mfix = "Ukur gagal → memakai estimasi marka: " + base + "."; return; }
+    if (W0 >= lo && W0 <= hi) {
+      var w0 = 1 / (e0 * e0), wm = 1 / (sm * sm);
+      A.W = (W0 * w0 + Wm * wm) / (w0 + wm); A.err = Math.sqrt(1 / (w0 + wm)); A.conf = Math.min(0.95, Math.max(A.conf0 || 0, 0.45) + 0.2);
+      A.mfix = "Selaras dengan marka (" + base + "): hasil ukur " + W0.toFixed(1) + " m digabung dengan estimasi marka → " + A.W.toFixed(1) + " m.";
+    } else if (W0 < lo) {
+      A.W = Wm; A.err = sm + 0.3; A.conf = 0.5; A.mfw = true;
+      A.mfix = "Hasil ukur " + W0.toFixed(1) + " m terlalu sempit untuk " + lanes + " lajur (min ≈ " + lo.toFixed(1) + " m) → dikoreksi ke " + base + ". Verifikasi di lapangan.";
+    } else {
+      A.conf = Math.min(A.conf0 || 0.5, 0.6); A.mfw = true;
+      A.mfix = "Hasil ukur " + W0.toFixed(1) + " m melebihi " + lanes + " lajur (maks ≈ " + hi.toFixed(1) + " m): mungkin termasuk bahu beraspal/persimpangan, atau garis pembagi kurang. Nilai ukur dipertahankan.";
+    }
+    A.warn = (A.warn0 ? A.warn0 + " · " : "") + "koreksi marka aktif";
+  }
+  function mkU() {
+    if (!U.on) return null;
+    var e = U.eL && U.eR ? "putih menerus kiri & kanan" : U.eL ? "putih menerus kiri saja" : U.eR ? "putih menerus kanan saja" : "tidak terlihat";
+    var m = { ky: "kuning putus-putus", km: "kuning menerus/ganda", pp: "putih putus-putus", none: "tidak ada" }[U.mid];
+    return { edge: e + " (pengamatan)", mid: m + (U.mid !== "none" ? " ×" + U.n : ""), lanes: U.mid !== "none" ? "≈ " + (U.n + 1) + " lajur" : "" };
+  }
+  function mkChips() {
+    function ch(k, v, t, on) { return '<button data-a="mk" data-k="' + k + '" data-v="' + v + '" class="' + (on ? "on" : "") + '">' + t + "</button>"; }
+    return '<div class="sub">Marka yang terlihat di Street View (diingat untuk titik berikutnya):</div>' +
+      '<div class="btns">' + ch("eL", U.eL ? 0 : 1, "Tepi kiri putih", U.eL) + ch("eR", U.eR ? 0 : 1, "Tepi kanan putih", U.eR) + "</div>" +
+      '<div class="btns">' + ch("mid", "ky", "Kuning putus", U.mid === "ky") + ch("mid", "km", "Kuning menerus", U.mid === "km") + ch("mid", "pp", "Putih putus", U.mid === "pp") + ch("mid", "none", "Tanpa tengah", U.mid === "none") + "</div>" +
+      '<div class="btns"><span style="color:#9db3c9;font-size:10px;align-self:center">Garis pembagi:</span>' + ch("n", 1, "1", U.n === 1) + ch("n", 2, "2", U.n === 2) + ch("n", 3, "3", U.n === 3) +
+      '<button data-a="mkon" class="' + (U.on ? "on" : "") + '" title="Koreksi lebar memakai jumlah lajur × lebar lajur standar jalan nasional">Koreksi marka: ' + (U.on ? "ON" : "OFF") + "</button></div>";
+  }
   function ensureCard() {
     var h = $("pqJeda"); if (h) return h;
     var wrap = $("svFrameWrap"); if (!wrap) return null;
@@ -328,6 +367,11 @@
       var b = e.target.closest("button"); if (!b) return; e.stopPropagation();
       var a = b.getAttribute("data-a");
       if (a === "min") { minimized = !minimized; jset(K_MIN, minimized ? 1 : 0); paint(); }
+      else if (a === "mk" || a === "mkon") {
+        if (a === "mkon") U.on = U.on ? 0 : 1; else { var k = b.getAttribute("data-k"), v = b.getAttribute("data-v"); U[k] = k === "mid" ? v : +v; U.on = 1; }
+        jset(K_MKU, U); paint();
+        if (cur && cur.A && DB.some(function (x) { return x.k === cur.c.key; })) saveCur();
+      }
       else if (a === "now") measureNow(false);
       else if (a === "redo" && cur) { delete cache[cur.c.key]; apiOK = apiOK === false ? null : apiOK; run(cur.c, false); }
       else if (a === "ai" && cur) { delete cache[cur.c.key]; run(cur.c, false, true); }
@@ -376,6 +420,7 @@
     var show = svOpen() && cur && (on || cur.fatal); h.classList.toggle("show", !!show); document.body.classList.toggle("pqjeda-on", !!show);
     if (!show) return;
     h.classList.remove("idle"); h.classList.toggle("busy", !!cur.busy); h.classList.toggle("min", minimized);
+    if (cur.A) fuse(cur.A);
     var A = cur.A, c = cur.c, o = '<div class="jh"><b>Ukur Jeda • ' + ctxLabel(c) + (cur.busy ? " · mengukur…" : "") + "</b>" +
       '<button data-a="min" title="Ciutkan/tampilkan">' + (minimized ? "▲" : "▼") + "</button></div>";
     if (!A) {
@@ -384,11 +429,13 @@
       var approx = A.conf < 0.45, src = A.ai ? "🤖 AI gratis: " + esc(A.src || "satelit + OSM") : c.live ? "panorama yang tampil" : "titik rute";
       o += '<div class="bd">' + section(A) +
         '<div class="row big"><span>Lebar jalan</span><div class="v"><b class="' + cls(A.conf) + '">' + (approx && A.W != null ? "≈ " : "") + f1(A.W) + "</b>" + (A.err != null && A.W != null ? "<small>±" + A.err.toFixed(1) + " m</small>" : "") + "</div></div>" +
+        (A.mfix ? '<div class="mfx' + (A.mfw ? " w" : "") + '">' + esc(A.mfix) + "</div>" : "") +
         '<div class="row"><span>Lebar bahu</span><div class="v"><span><i>kiri</i><b>' + bahuT(A.bl, A.blo) + "</b></span><span><i>kanan</i><b>" + bahuT(A.br, A.bro) + "</b></span></div></div>" +
-        '<div class="row"><span>Marka tepi</span><div class="v"><b style="font-size:11px">' + esc(A.ai ? "butuh foto Google" : mkText(A.mk).edge) + "</b></div></div>" +
-        '<div class="row"><span>Marka tengah</span><div class="v"><b style="font-size:11px">' + esc(A.ai ? "butuh foto Google" : mkText(A.mk).mid) + "</b><small>" + esc(A.ai ? "" : mkText(A.mk).lanes) + "</small></div></div>" +
+        '<div class="row"><span>Marka tepi</span><div class="v"><b style="font-size:11px">' + esc(mkU() ? mkU().edge : A.ai ? "butuh foto Google" : mkText(A.mk).edge) + "</b></div></div>" +
+        '<div class="row"><span>Marka tengah</span><div class="v"><b style="font-size:11px">' + esc(mkU() ? mkU().mid : A.ai ? "butuh foto Google" : mkText(A.mk).mid) + "</b><small>" + esc(mkU() ? mkU().lanes : A.ai ? "" : mkText(A.mk).lanes) + "</small></div></div>" +
         '<div class="row"><span>Lebar drainase</span><div class="v"><span><i>kiri</i><b>' + drT(A.dl) + "</b></span><span><i>kanan</i><b>" + drT(A.dr) + "</b></span></div></div>" +
         '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + (A.ai ? A.n + " sumber" : A.n + " panorama") + " · " + src + (c.axis === "pandang" ? " · arah jalan ditebak dari arah pandang" : "") + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
+        mkChips() +
         '<div class="btns"><button data-a="redo">Ulangi</button>' + (A.ai || cur.busy ? "" : '<button data-a="ai" title="Bandingkan dengan AI gratis (satelit + OSM)">Ukur AI</button>') + (A.ai || cur.deep || cur.busy ? "" : '<button data-a="deep" title="Tambah panorama tetangga (sampai 5) untuk hasil lebih pasti">Teliti</button>') +
         '<button data-a="copy">Salin</button><button data-a="save">Simpan</button>' + (DB.length ? '<button data-a="csv">CSV (' + DB.length + ")</button>" : "") + "</div></div>";
     }
@@ -409,7 +456,7 @@
   function saveCur() {
     if (!cur || !cur.A) return; var A = cur.A, c = cur.c;
     DB = DB.filter(function (x) { return x.k !== c.key; });
-    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, mt: A.mk ? mkText(A.mk).edge : "", mm: A.mk ? mkText(A.mk).mid : "", ln: A.mk ? A.mk.lanes : "", conf: +A.conf.toFixed(2), n: A.n, ai: A.ai ? 1 : 0, t: new Date().toISOString() });
+    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, mt: A.mk ? mkText(A.mk).edge : "", mm: A.mk ? mkText(A.mk).mid : "", ln: A.mk ? A.mk.lanes : "", conf: +A.conf.toFixed(2), lj: A.lanes || "", w0: fin(A.W0) && A.lanes && Math.abs(A.W0 - A.W) > 0.05 ? +A.W0.toFixed(2) : null, n: A.n, ai: A.ai ? 1 : 0, t: new Date().toISOString() });
     if (DB.length > 800) DB = DB.slice(-800); jset(K_DB, DB); toast_("Tersimpan (" + DB.length + " titik)"); paint();
   }
   function csv() {
