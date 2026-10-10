@@ -271,7 +271,7 @@
     "#pqAn select,#pqAn input[type=text]{width:100%;box-sizing:border-box;margin:3px 0;padding:7px 9px;border-radius:9px;border:1px solid #ffffff22;background:#0f1726;color:#dbe7f3;font:12.5px system-ui}" +
     "#pqAn .an-h{margin:14px 0 6px;font:700 10px/1 system-ui;letter-spacing:.8px;text-transform:uppercase;color:#8fa6bd}" +
     "#pqAn .an-c{display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:3px 0;cursor:pointer}#pqAn .an-c input{margin-top:2px;accent-color:#22d3ee}" +
-    "#pqAn .an-b{display:inline-block;margin:3px 5px 3px 0;padding:7px 11px;border:0;border-radius:9px;background:#22d3ee22;color:#a5f3fc;font:600 12px system-ui;cursor:pointer}#pqAn .an-b:hover{background:#22d3ee40}#pqAn .an-dg{background:#ef444422;color:#fecaca}#pqAn .an-dg:hover{background:#ef444444}" +
+    "#pqAn .an-b{display:inline-block;margin:3px 5px 3px 0;padding:7px 11px;border:0;border-radius:9px;background:#22d3ee22;color:#a5f3fc;font:600 12px system-ui;cursor:pointer}#pqAn .an-b:hover{background:#22d3ee40}#pqAn .an-lr{display:flex;align-items:center;gap:6px;padding:5px 8px;margin:2px 0;border-radius:8px;background:#ffffff0a;font:11.5px/1.3 system-ui}#pqAn .an-lr span{flex:1;min-width:0;color:#cbd5e1}#pqAn .an-lr b{color:#fff}#pqAn .an-lr button{border:0;background:#ef444433;color:#fecaca;border-radius:6px;width:24px;height:24px;font:700 14px system-ui;cursor:pointer}#pqAn .an-lst{max-height:210px;overflow:auto}#pqAn .an-dg{background:#ef444422;color:#fecaca}#pqAn .an-dg:hover{background:#ef444444}" +
     "#pqAn .an-ch{display:inline-block;margin:3px 4px 0 0;padding:4px 9px;border:1px solid #ffffff22;border-radius:99px;background:transparent;color:#c6d4e6;font:11.5px system-ui;cursor:pointer}#pqAn .an-ch:hover{border-color:#22d3ee;color:#fff}" +
     "#pqAn .an-sc{display:flex;gap:14px;align-items:center;padding:10px;border-radius:12px;background:#ffffff0a}" +
     "#pqAn .an-ring{--p:0;--c:#22d3ee;width:78px;height:78px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:conic-gradient(var(--c) calc(var(--p)*1%),#ffffff1a 0)}" +
@@ -284,7 +284,7 @@
     "#pqAn .an-leg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:10px;color:#9fb0c8}#pqAn .an-leg i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:-1px}" +
     "#pqAnBtn.active{filter:brightness(1.3)}";
 
-  var panel, current = "", an = null, hiGroup = null, pulse = null, lastSig = "", lastKey = "", qItems = [];
+  var listOpen = false, undoBuf = null, undoT = 0, panel, current = "", an = null, hiGroup = null, pulse = null, lastSig = "", lastKey = "", qItems = [];
 
   function groups() {
     var g = {}; rowsAll().forEach(function (r) { (g[ruasName(r)] = g[ruasName(r)] || []).push(r); });
@@ -303,6 +303,7 @@
       '<div class="an-h">Kelola data</div>' +
       '<button class="an-b" id="anRef" type="button">⟳ Segarkan &amp; simpan semua</button><button class="an-b" id="anRst" type="button">Reset tampilan</button>' +
       '<button class="an-b an-dg" id="anDelR" type="button">Hapus ruas ini</button><button class="an-b an-dg" id="anDelA" type="button">Hapus semua daftar</button>' +
+      '<button class="an-b" id="anBak" type="button">Cadangkan (JSON)</button><button class="an-b" id="anRes" type="button">Pulihkan dari JSON</button><input type="file" id="anFile" accept=".json,application/json" style="display:none">' +
       '<div class="an-note" id="anInfo"></div>' +
       '<div class="an-h">Laporan</div>' +
       '<button class="an-b" id="anXls" type="button">Unduh Excel</button><button class="an-b" id="anPrt" type="button">Laporan cetak / PDF</button>' +
@@ -315,9 +316,12 @@
     $("anRuas").onchange = function () { current = this.value; clearHi(); $("anAsk").innerHTML = ""; render(); };
     $("anAuto").onchange = function () { jset(K_AUTO, this.checked ? 1 : 0); toast_("Simpan otomatis: " + (this.checked ? "ON" : "OFF")); };
     $("anQ").addEventListener("keydown", function (e) { if (e.key === "Enter") ask(this.value); });
+    $("anBak").onclick = backup; $("anRes").onclick = function () { $("anFile").click(); }; $("anFile").onchange = function () { restoreFile(this.files && this.files[0]); this.value = ""; };
     $("anRef").onclick = refreshAll; $("anRst").onclick = resetView; $("anDelR").onclick = delRuas; $("anDelA").onclick = delAll;
     $("anXls").onclick = exportXls; $("anPrt").onclick = printReport;
     panel.addEventListener("click", function (e) {
+      var dl = e.target.closest("[data-del]"); if (dl) { delPoint(dl.dataset.del); return; }
+      var lt = e.target.closest("[data-lt]"); if (lt) { listOpen = !listOpen; render(); return; }
       var ch = e.target.closest("[data-q]"); if (ch) { $("anQ").value = ch.dataset.q; ask(ch.dataset.q); return; }
       var pt = e.target.closest("[data-i]"); if (pt && an) { focusPoint(+pt.dataset.i); return; }
       var qi = e.target.closest("[data-qi]"); if (qi) { gotoItem(qItems[+qi.dataset.qi]); }
@@ -345,22 +349,57 @@
     current = ""; lastKey = ""; lastSig = ""; refreshList(); render();
     info_("Tampilan direset. Data tersimpan tidak berubah."); toast_("Tampilan direset");
   }
+  function setUndo(snap, msg) {
+    undoBuf = snap; var e = $("anInfo"); if (!e) return; e.innerHTML = esc(msg) + ' <button class="an-b" id="anUndo" type="button">Batalkan</button>';
+    clearTimeout(undoT); undoT = setTimeout(function () { undoBuf = null; info_(""); }, 12000);
+    $("anUndo").onclick = function () {
+      var J = window.PQJeda; if (!undoBuf || !J || !J.restore) return;
+      var n = J.restore(undoBuf); undoBuf = null; clearTimeout(undoT); lastSig = ""; refreshList(); render();
+      info_("Dipulihkan " + n + " titik."); toast_("Dipulihkan " + n + " titik");
+    };
+  }
+  function delPoint(k) {
+    var J = window.PQJeda; if (!J || !J.remove) { toast_("Perlu petaqu-ukurjeda.js versi terbaru", true); return; }
+    var snap = rowsAll().filter(function (r) { return r.k === k; }); if (!snap.length) return;
+    J.remove(function (r) { return r.k === k; }); clearHi(); lastSig = ""; refreshList(); render();
+    setUndo(snap, "1 titik dihapus.");
+  }
+  function backup() {
+    var rows = rowsAll(); if (!rows.length) { toast_("Belum ada data untuk dicadangkan", true); return; }
+    var u = URL.createObjectURL(new Blob([JSON.stringify({ app: "petaqu-ukurjeda", v: 1, tgl: new Date().toISOString(), rows: rows })], { type: "application/json" })), a = document.createElement("a");
+    a.href = u; a.download = "petaqu-ukur-jeda-cadangan-" + new Date().toISOString().slice(0, 10) + ".json"; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 800); info_(rows.length + " titik dicadangkan."); toast_("Cadangan diunduh");
+  }
+  function restoreFile(file) {
+    var J = window.PQJeda; if (!file || !J || !J.restore) return;
+    var fr = new FileReader();
+    fr.onerror = function () { toast_("Gagal membaca file", true); };
+    fr.onload = function () {
+      try {
+        var d = JSON.parse(fr.result), arr = Array.isArray(d) ? d : d && d.rows;
+        if (!Array.isArray(arr)) throw 0;
+        var n = J.restore(arr.slice(0, 800)); if (!n) { toast_("Tidak ada titik valid di file ini", true); return; }
+        current = ""; lastSig = ""; refreshList(); render(); info_(n + " titik dipulihkan (titik dengan kunci sama ditimpa)."); toast_(n + " titik dipulihkan");
+      } catch (e) { toast_("File bukan cadangan Ukur Jeda yang valid", true); }
+    };
+    fr.readAsText(file);
+  }
   function delRuas() {
     var J = window.PQJeda; if (!J || !J.remove) { toast_("Perlu petaqu-ukurjeda.js versi terbaru", true); return; }
     if (!current || current === "*") { toast_("Pilih satu ruas dulu (bukan 'Semua ruas')", true); return; }
     var n = (groups()[current] || []).length; if (!n) { toast_("Ruas ini belum punya data", true); return; }
-    if (!confirm("Hapus " + n + " titik pada ruas \"" + current + "\"?\nTidak bisa dibatalkan. Disarankan Unduh Excel dulu.")) return;
-    var nm = current; J.remove(function (r) { return ruasName(r) === nm; });
+    if (!confirm("Hapus " + n + " titik pada ruas \"" + current + "\"?\nBisa dibatalkan 12 detik lewat tombol Batalkan.")) return;
+    var nm = current, snapR = (groups()[nm] || []).slice(); J.remove(function (r) { return ruasName(r) === nm; });
     clearHi(); current = ""; lastSig = ""; refreshList(); render();
-    info_(n + " titik ruas dihapus."); toast_(n + " titik dihapus");
+    setUndo(snapR, n + " titik ruas dihapus.");
   }
   function delAll() {
     var J = window.PQJeda, n = rowsAll().length; if (!J) return;
     if (!n) { toast_("Daftar sudah kosong"); return; }
-    if (!confirm("Hapus SEMUA " + n + " titik pengukuran dari semua ruas?\nTidak bisa dibatalkan. Disarankan Unduh Excel dulu.")) return;
+    if (!confirm("Hapus SEMUA " + n + " titik pengukuran dari semua ruas?\nBisa dibatalkan 12 detik lewat tombol Batalkan.")) return;
     if (!confirm("Yakin? Semua data Ukur Jeda akan dikosongkan.")) return;
-    J.clear(); clearHi(); current = ""; lastKey = ""; lastSig = ""; refreshList(); render();
-    info_("Semua data dihapus."); toast_("Semua data dihapus");
+    var snapA = rowsAll(); J.clear(); clearHi(); current = ""; lastKey = ""; lastSig = ""; refreshList(); render();
+    setUndo(snapA, "Semua data dihapus.");
   }
 
   function open() { if (!panel) return; panel.classList.add("open"); refreshList(); render(); var b = $("pqAnBtn"); if (b) b.classList.add("active"); }
@@ -374,7 +413,21 @@
     sel.innerHTML = names.length ? names.map(function (n) { return '<option value="' + esc(n) + '"' + (n === current ? " selected" : "") + ">" + esc(n) + " (" + g[n].length + " titik)</option>"; }).join("") + (names.length > 1 ? '<option value="*"' + (current === "*" ? " selected" : "") + ">— Semua ruas (untuk Tanya data) —</option>" : "") : '<option value="">Belum ada data tersimpan</option>';
   }
 
+  function listHtml(rows) {
+    if (!rows.length) return "";
+    var h = '<button class="an-b" type="button" data-lt="1">' + (listOpen ? "▾ Sembunyikan" : "▸ Tampilkan") + " daftar titik (" + rows.length + ")</button>";
+    if (!listOpen) return h;
+    var rs = rows.slice().sort(function (a, b) { var x = parseSta(a.sta), y = parseSta(b.sta); return x != null && y != null ? x - y : String(a.t || "").localeCompare(String(b.t || "")); });
+    return h + '<div class="an-lst">' + rs.map(function (r, i) {
+      return '<div class="an-lr"><span><b>' + (r.sta ? "STA " + esc(r.sta) : "#" + (i + 1)) + "</b> · lebar " + f1(r.W) + " m · bahu " + f1(r.bl) + "/" + f1(r.br) + " · yakin " + (isNum(r.conf) ? Math.round(r.conf * 100) + "%" : "—") + '</span><button type="button" data-del="' + esc(r.k) + '" aria-label="Hapus titik" title="Hapus titik ini">×</button></div>';
+    }).join("") + "</div>";
+  }
   function render() {
+    renderMain();
+    var body = $("anBody"); if (!body || current === "*") return;
+    body.insertAdjacentHTML("beforeend", listHtml(groups()[current] || []));
+  }
+  function renderMain() {
     var body = $("anBody"); if (!body) return;
     var g = groups(), rows = current === "*" ? [] : (g[current] || []);
     an = null;
