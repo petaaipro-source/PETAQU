@@ -48,6 +48,7 @@
     return {
       W: fin(res.W) ? res.W * k : null, bl: bahu(L, okL), br: bahu(R, okR), dl: okL ? sal(L, okL) : null, dr: okR ? sal(R, okR) : null,
       blo: !!(okL && L.bahuOpen), bro: !!(okR && R.bahuOpen),
+      pl: okL ? (L.bahuPaved || 0) * k : null, pr: okR ? (R.bahuPaved || 0) * k : null, tl: okL ? (L.bahuType || "") : "", tr: okR ? (R.bahuType || "") : "",
       mkc: res.mkc || null, conf: fin(res.conf) ? res.conf : 0, err: fin(res.err) ? res.err * k : null, okL: okL, okR: okR,
       obs: !!((L && L.obstacle) || (R && R.obstacle)), shade: !!((L && L.shaded) || (R && R.shaded))
     };
@@ -76,6 +77,8 @@
     else if (out.obs) out.warn = "tepi jalan tertutup kendaraan/objek — coba titik lain atau tekan Teliti";
     out.bl = med(vals(S, "bl")); out.br = med(vals(S, "br"));
     function openOf(key) { var v = S.filter(function (x) { return fin(x[key === "bl" ? "bl" : "br"]); }); if (!v.length) return false; return v.filter(function (x) { return x[key === "bl" ? "blo" : "bro"]; }).length * 2 >= v.length; }
+    out.pl = med(vals(S, "pl")); out.pr = med(vals(S, "pr"));
+    out.tl = mode(S.map(function (x) { return x.tl; }).filter(Boolean)); out.tr = mode(S.map(function (x) { return x.tr; }).filter(Boolean));
     out.blo = openOf("bl"); out.bro = openOf("br");
     function dr(key) {
       var v = vals(S, key); if (!v.length) return null;
@@ -418,22 +421,60 @@
   function cls(c) { return c >= 0.7 ? "ok" : c >= 0.45 ? "mid" : "lo"; }
   function ctxLabel(c) { return c.sta ? "STA " + esc(c.sta) : "titik ini"; }
 
-  /* penampang melintang: hanya drainase | bahu | jalan | bahu | drainase */
+  /* penampang melintang: drainase | rumput | bahu (tanah coklat / agregat butiran / semen-aspal) | jalan | ... | rumput | drainase
+     + rel pengaman (loreng hitam-putih horizontal) & patok pengarah (loreng hitam-putih tegak) di tepi luar bahu */
   function section(A) {
     if (A.W == null) return "";
     var dl = A.dl > 0 ? A.dl : 0, dr = A.dr > 0 ? A.dr : 0, bl = A.bl > 0.15 ? A.bl : 0, br = A.br > 0.15 ? A.br : 0;
-    var tot = dl + bl + A.W + br + dr, Wd = 280, pad = 4, sc = (Wd - pad * 2) / Math.max(tot, 4), x = pad, o = "";
-    function seg(w, col, label, bold) { if (w <= 0) return; var ww = w * sc; o += '<rect x="' + x.toFixed(1) + '" y="6" width="' + ww.toFixed(1) + '" height="18" fill="' + col + '"/>'; if (ww > 18) o += '<text x="' + (x + ww / 2).toFixed(1) + '" y="38" text-anchor="middle" font-size="' + (bold ? 10 : 8.5) + '" ' + (bold ? 'font-weight="700" fill="#fff"' : 'fill="#cfe0f0"') + ">" + label + "</text>"; x += ww; }
-    seg(dl, "#38bdf8", dl.toFixed(1)); seg(bl, "#a8896a", bl.toFixed(1)); var rx = x, rw = A.W * sc; seg(A.W, "#475569", A.W.toFixed(1) + " m", true); seg(br, "#a8896a", br.toFixed(1)); seg(dr, "#38bdf8", dr.toFixed(1));
+    var VW = 9, Wd = 280, pad = 4, Y = 38, H = 18;
+    var tot = dl + bl + A.W + br + dr, sc = (Wd - pad * 2 - VW * 2) / Math.max(tot, 4), x = pad, o = "";
+    var defs = '<defs>' +
+      '<pattern id="pqGr" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#2f9e44"/><path d="M1 6V3M3 6V1.5M5 6V3.5" stroke="#86e07a" stroke-width="1" stroke-linecap="round"/></pattern>' +
+      '<pattern id="pqSo" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#8a5a36"/><circle cx="1.5" cy="2" r=".7" fill="#6b4226"/><circle cx="5" cy="5" r=".8" fill="#a8764c"/><circle cx="5.5" cy="1.2" r=".5" fill="#6b4226"/></pattern>' +
+      '<pattern id="pqAg" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#b39a74"/><circle cx="1.8" cy="1.8" r="1.1" fill="#e7dcc6"/><circle cx="5.2" cy="3.2" r="1" fill="#7d6a4d"/><circle cx="2.8" cy="5.6" r=".9" fill="#d3c3a2"/><circle cx="6" cy="6" r=".6" fill="#8e7a5a"/></pattern>' +
+      '<pattern id="pqCe" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#c4c8cd"/><circle cx="1.5" cy="1.5" r=".5" fill="#a9aeb5"/><circle cx="4.5" cy="4" r=".5" fill="#dfe2e5"/></pattern>' +
+      '<pattern id="pqSG" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#8a5a36"/><circle cx="1.8" cy="1.8" r="1" fill="#d9c8a6"/><circle cx="5.2" cy="4.6" r=".9" fill="#b9a27c"/><circle cx="5.6" cy="1.2" r=".5" fill="#6b4226"/></pattern></defs>';
+    function rect(w, fill, extra) { var ww = w * sc; o += '<rect x="' + x.toFixed(1) + '" y="' + Y + '" width="' + ww.toFixed(1) + '" height="' + H + '" fill="' + fill + '"' + (extra || "") + '/>'; x += ww; return ww; }
+    function lab(x0, ww, label, bold) { if (ww > 16) o += '<text x="' + (x0 + ww / 2).toFixed(1) + '" y="' + (Y + H + 12) + '" text-anchor="middle" font-size="' + (bold ? 10 : 8.5) + '" ' + (bold ? 'font-weight="700" fill="#fff"' : 'fill="#cfe0f0"') + ">" + label + "</text>"; }
+    function seg(w, col, label, bold) { if (w <= 0) return; var x0 = x, ww = rect(w, col); lab(x0, ww, label, bold); }
+    function verge() { var x0 = x; o += '<rect x="' + x.toFixed(1) + '" y="' + Y + '" width="' + VW + '" height="' + H + '" fill="url(#pqGr)"/>'; x += VW; return x0 + VW / 2; }
+    /* jenis bahu longgar: tanah (coklat) | agregat (butiran) | tanah+kerikil | semen/beton */
+    function kind(t) { t = t || ""; return /beton|semen/.test(t) ? "pqCe" : /tanah/.test(t) && /kerikil/.test(t) ? "pqSG" : /kerikil|agregat/.test(t) ? "pqAg" : "pqSo"; }
+    /* satu sisi bahu: beraspal (dekat jalan) + longgar (di luar). outerFirst = sisi kiri (digambar dari luar ke dalam) */
+    function shoulder(b, p, t, outerFirst) {
+      if (!b) return; var pv = Math.max(0, Math.min(b, p > 0.05 ? p : 0)), lo = b - pv, x0 = x;
+      var parts = [lo > 0 ? { w: lo, f: "url(#" + kind(t) + ")" } : null, pv > 0 ? { w: pv, f: "#64748b" } : null].filter(Boolean);
+      if (!outerFirst) parts.reverse();
+      parts.forEach(function (q) { rect(q.w, q.f); });
+      lab(x0, x - x0, b.toFixed(1));
+      /* helai rumput tumbuh di tepi bahu tanah/agregat → tanda ditumbuhi rumput */
+      if (lo > 0 && !/beton|semen/.test(t || "")) { var gx = outerFirst ? x0 : x - 14; for (var i = 0; i < 3; i++) { var tx = gx + 2 + i * 4.5; o += '<path d="M' + tx.toFixed(1) + ' ' + Y + 'l-1 -3.5M' + tx.toFixed(1) + ' ' + Y + 'l.4 -4M' + tx.toFixed(1) + ' ' + Y + 'l1.6 -3" stroke="#4ade80" stroke-width="1" stroke-linecap="round" fill="none"/>'; } }
+    }
+    function patok(px) { var w = 5, h = 24, top = Y - h, n = 6, bh = h / n, s = '<rect x="' + (px - w / 2).toFixed(1) + '" y="' + top + '" width="' + w + '" height="' + h + '" fill="#fff"/>'; for (var i = 1; i < n; i += 2) s += '<rect x="' + (px - w / 2).toFixed(1) + '" y="' + (top + i * bh).toFixed(1) + '" width="' + w + '" height="' + bh.toFixed(1) + '" fill="#111"/>'; return s + '<rect x="' + (px - w / 2).toFixed(1) + '" y="' + top + '" width="' + w + '" height="' + h + '" fill="none" stroke="#cbd5e1" stroke-width=".8"/>'; }
+    function rel(px, dir) {
+      var L = 30, x0 = dir > 0 ? px + 4 : px - 4 - L, hh = 6, ty = Y - 13, n = 5, bw = L / n, s = '<rect x="' + x0.toFixed(1) + '" y="' + ty + '" width="' + L + '" height="' + hh + '" fill="#fff"/>';
+      for (var i = 0; i < n; i += 2) s += '<rect x="' + (x0 + i * bw).toFixed(1) + '" y="' + ty + '" width="' + bw.toFixed(1) + '" height="' + hh + '" fill="#111"/>';
+      s += '<rect x="' + x0.toFixed(1) + '" y="' + ty + '" width="' + L + '" height="' + hh + '" fill="none" stroke="#cbd5e1" stroke-width=".8"/>';
+      return s + '<rect x="' + (x0 + L / 2 - 1).toFixed(1) + '" y="' + (ty + hh) + '" width="2" height="' + (Y - ty - hh) + '" fill="#64748b"/>';
+    }
+    var pxL, pxR;
+    seg(dl, "#38bdf8", dl.toFixed(1));
+    pxL = verge(); shoulder(bl, A.pl, A.tl, true);
+    var rx = x, rw = A.W * sc; seg(A.W, "#475569", A.W.toFixed(1) + " m", true);
+    shoulder(br, A.pr, A.tr, false); pxR = verge();
+    seg(dr, "#38bdf8", dr.toFixed(1));
+    o += rel(pxL, 1) + patok(pxL) + rel(pxR, -1) + patok(pxR);
     if (A.mk) {
-      var ln = function (f, t, col) { var lx = rx + Math.max(0.02, Math.min(0.98, f)) * rw; o += '<line x1="' + lx.toFixed(1) + '" x2="' + lx.toFixed(1) + '" y1="7" y2="23" stroke="' + col + '" stroke-width="1.6"' + (/putus/.test(t) ? ' stroke-dasharray="3 3"' : '') + '/>'; };
+      var ln = function (f, t, col) { var lx = rx + Math.max(0.02, Math.min(0.98, f)) * rw; o += '<line x1="' + lx.toFixed(1) + '" x2="' + lx.toFixed(1) + '" y1="' + (Y + 1) + '" y2="' + (Y + H - 1) + '" stroke="' + col + '" stroke-width="1.6"' + (/putus/.test(t) ? ' stroke-dasharray="3 3"' : '') + '/>'; };
       if (A.mk.eL) ln(A.mk.eL.f, A.mk.eL.t, "#fff"); if (A.mk.eR) ln(A.mk.eR.f, A.mk.eR.t, "#fff");
       A.mk.div.forEach(function (d) { ln(d.f, d.t, "#fde047"); if (d.dbl) ln(d.f + 0.012, d.t, "#fde047"); });
     }
-    return '<svg viewBox="0 0 ' + Wd + ' 44" role="img" aria-label="Penampang jalan">' + o + "</svg>";
+    /* legenda */
+    var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen"], ["url(#pqGr)", "rumput"]], lx0 = 8;
+    lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="74" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="81.5" font-size="8" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 62; });
+    return '<svg viewBox="0 0 ' + Wd + ' 86" role="img" aria-label="Penampang jalan">' + defs + o + "</svg>";
   }
 
-  
   function setCard(h, html) { if (h.__h !== html) { h.innerHTML = html; h.__h = html; } }
   /* kartu siaga: selalu ada saat Street View terbuka & fitur ON, supaya jelas modul ini hidup */
   function paintIdle(kind, extra) {
