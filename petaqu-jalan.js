@@ -210,8 +210,9 @@
       }
       if (t.id === "tlImpFile") { impFile(t.files && t.files[0]); t.value = ""; }
     });
-    $("tlOp").oninput = function () { st.op = this.value / 10; save(); each(function (l) { l.setStyle && l.setStyle({ opacity: opOf(l) }); }); if (spLayer) spLayer.setOpacity(st.op); };
-    $("tlWt").oninput = function () { st.wt = this.value / 10; save(); each(function (l) { if (l.setStyle && l.__bw) l.setStyle({ weight: l.__bw * st.wt }); }); };
+    var rafOp = 0, rafWt = 0;
+    $("tlOp").oninput = function () { st.op = this.value / 10; if (spLayer) spLayer.setOpacity(st.op); if (rafOp) return; rafOp = requestAnimationFrame(function () { rafOp = 0; save(); each(function (l) { l.setStyle && l.setStyle({ opacity: opOf(l) }); }); }); };
+    $("tlWt").oninput = function () { st.wt = this.value / 10; if (rafWt) return; rafWt = requestAnimationFrame(function () { rafWt = 0; save(); each(function (l) { if (l.setStyle && l.__bw) l.setStyle({ weight: l.__bw * st.wt }); }); }); };
     $("tlFind").oninput = doFind;
     $("tlExp").onclick = exportGeo;
     $("tlSpFind").onclick = function () { spDiscover(true); };
@@ -268,7 +269,7 @@
     var r = findRes[i], m = M(); if (!r || !m) return;
     if (r.pl) {
       m.fitBounds(r.pl.getBounds(), { maxZoom: 15, padding: [40, 40] });
-      if (m.hasLayer(groups[r.k])) r.pl.openPopup();
+      if (m.hasLayer(groups[r.k])) { lazyBind(r.pl); r.pl.openPopup(); }
     } else if (r.g) m.fitBounds(L.latLngBounds(r.g), { maxZoom: 15, padding: [40, 40] });
   }
 
@@ -337,6 +338,9 @@
 
   /* ---------- atribut & popup ---------- */
   var NK = ["nama_ruas", "nm_ruas", "namaruas", "nama_jalan", "nama_tol", "nama_ruas_", "nama", "name", "ruas", "namrjl"];
+  var scT = 0;
+  function saveCacheSoon() { clearTimeout(scT); scT = setTimeout(function () { scT = 0; saveCache(); }, 2000); }
+  window.addEventListener("pagehide", function () { if (scT) { clearTimeout(scT); scT = 0; saveCache(); } });
   function pickName(t) {
     var keys = Object.keys(t || {}), low = {};
     keys.forEach(function (k) { low[k.toLowerCase()] = k; });
@@ -392,7 +396,12 @@
   function inJateng(q, S) {
     var b = jtBox;
     if (q[0] < b[0] || q[0] > b[2] || q[1] < b[1] || q[1] > b[3]) return false;
-    for (var i = 0; i < S.length; i++) if (inRing(q[0], q[1], S[i])) return true;
+    for (var i = 0; i < S.length; i++) {
+      var r = S[i], rb = r.__bb;
+      if (!rb) { rb = [90, 180, -90, -180]; for (var j = 0; j < r.length; j++) { var v = r[j]; if (v[0] < rb[0]) rb[0] = v[0]; if (v[1] < rb[1]) rb[1] = v[1]; if (v[0] > rb[2]) rb[2] = v[0]; if (v[1] > rb[3]) rb[3] = v[1]; } r.__bb = rb; }
+      if (q[0] < rb[0] || q[0] > rb[2] || q[1] < rb[1] || q[1] > rb[3]) continue;
+      if (inRing(q[0], q[1], r)) return true;
+    }
     return false;
   }
   /* pecah garis menjadi potongan {g, out}; tanpa data batas => satu potongan "dalam" */
@@ -441,26 +450,61 @@
   }
 
   var lastLine = 0; /* cadangan: penanda klik garis */
+  /* ---- mode ringan ----
+     1) simp(): Douglas-Peucker ~2 m (tak terlihat) -> titik berkurang, gambar & hit-test lebih cepat
+     2) popup/tooltip baru dibuat saat garis pertama kali disentuh (bukan untuk ribuan garis sekaligus)
+     3) tanpa setStyle saat hover (setiap setStyle memaksa kanvas menggambar ulang area garis panjang) */
+  var SIMP_TOL = 0.00002;
+  function simp(g, tol) {
+    var n = g.length; if (n < 3) return g;
+    var keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1;
+    var stack = [0, n - 1], t2 = tol * tol;
+    while (stack.length) {
+      var b = stack.pop(), a = stack.pop(), idx = -1, md = t2;
+      var ay = g[a][0], ax = g[a][1], dy = g[b][0] - ay, dx = g[b][1] - ax, dd = dx * dx + dy * dy;
+      for (var i = a + 1; i < b; i++) {
+        var py = g[i][0] - ay, px = g[i][1] - ax, d2;
+        if (dd === 0) d2 = px * px + py * py;
+        else { var t = (px * dx + py * dy) / dd; t = t < 0 ? 0 : t > 1 ? 1 : t; var qx = px - t * dx, qy = py - t * dy; d2 = qx * qx + qy * qy; }
+        if (d2 > md) { md = d2; idx = i; }
+      }
+      if (idx > -1) { keep[idx] = 1; stack.push(a, idx, idx, b); }
+    }
+    var out = []; for (var k = 0; k < n; k++) if (keep[k]) out.push(g[k]);
+    return out;
+  }
+  function lazyBind(pl) {
+    if (pl.__bound || !pl.__meta) return false;
+    pl.__bound = 1;
+    var m = pl.__meta;
+    pl.bindPopup(popup(m[0], m[1], m[2], pl.__len));
+    if (pl.__nm) pl.bindTooltip(esc(pl.__nm), { sticky: true, className: "tl-tip" });
+    return true;
+  }
+  function onLineEvt(ev) {
+    var pl = ev.propagatedFrom || ev.layer; if (!pl || !pl.__meta) return;
+    if (ev.type === "click") {
+      lastLine = Date.now();
+      if (lazyBind(pl)) pl.openPopup(ev.latlng);
+    } else if (lazyBind(pl) && pl.__nm) pl.openTooltip(ev.latlng);
+  }
+
   /* els: [{id, s:'bm'|'big'|'osm'|'imp', p:{props}, g:[[lat,lng],...]}] */
   function draw(els, k) {
-    var c = CAT[k], n = 0;
+    var c = CAT[k], n = 0, ov = outVis();
     els.forEach(function (e) {
       var key = k + e.s + e.id; if (seen[key] || !e.g || e.g.length < 2) return; seen[key] = 1;
       var t = e.p || {}, nm = (e.s === "big" ? t.NAMRJL : pickName(t)) || t.name || t.ref || "";
       var osm = e.s === "osm", bw = osm ? Math.max(2, c.w - 1) : c.w, w = bw * (st.wt || 1);
-      splitJt(e.g).forEach(function (part, pi) {
-        var pl = L.polyline(part.g, { color: c.c, weight: w, opacity: 1, dashArray: c.d || null, lineCap: "round", lineJoin: "round", renderer: osm ? rendOsm : rend, pane: osm ? "pqJalanOsm" : "pqJalanPane" });
+      splitJt(simp(e.g, SIMP_TOL)).forEach(function (part, pi) {
+        var pl = L.polyline(part.g, { color: c.c, weight: w, opacity: (osm ? st.op * 0.75 : st.op) * (part.out ? ov : 1), dashArray: c.d || null, lineCap: "round", lineJoin: "round", smoothFactor: 1.6, renderer: osm ? rendOsm : rend, pane: osm ? "pqJalanOsm" : "pqJalanPane" });
         if (e.s === "imp") pl.__imp = 1;
         if (pi === 0 && nm) pl.__nm = String(nm);
         if (pi > 0) pl.__sub = 1;
         if (osm) pl.__osm = 1;
         if (part.out) pl.__out = 1;
-        pl.setStyle({ opacity: opOf(pl) });
         pl.__bw = bw; pl.__len = plen(part.g);
-        pl.bindPopup(popup(k, e.s, t, pl.__len));
-        if (nm) pl.bindTooltip(esc(nm), { sticky: true, className: "tl-tip" });
-        pl.on("mouseover", function () { pl.setStyle({ weight: pl.__bw * (st.wt || 1) + 3 }); }).on("mouseout", function () { pl.setStyle({ weight: pl.__bw * (st.wt || 1) }); });
-        pl.on("click", function () { lastLine = Date.now(); });
+        pl.__meta = [k, e.s, t];
         groups[k].addLayer(pl);
       });
       n++;
@@ -666,7 +710,7 @@
           /* layer provinsi di server utama hanya mencakup DIY: kosong di Jateng ≠ tidak ada jalan → lanjut ke sumber berikut */
           if (!els.length && k === "prov" && i < chain.length - 1) { emptyOk = src; continue; }
           draw(els, k); res = { src: src, n: els.length };
-          if (els.length < 1500) { cache[id] = { t: Date.now(), s: src, e: els }; saveCache(); }
+          if (els.length < 1500) { cache[id] = { t: Date.now(), s: src, e: els }; saveCacheSoon(); }
         } catch (e) { stat(src, false, explain(e)); errs.push(src + ": " + explain(e)); }
       }
       if (!res && emptyOk) res = { src: emptyOk, n: 0 };
@@ -680,7 +724,7 @@
         else {
           var s1 = cy * CELL, w1 = cx * CELL, oe = await getOsm(k, [s1, w1, s1 + CELL, w1 + CELL]);
           stat("osm", true); draw(oe, k);
-          if (oe.length < 1500) { cache[oid] = { t: Date.now(), s: "osm", e: oe }; saveCache(); }
+          if (oe.length < 1500) { cache[oid] = { t: Date.now(), s: "osm", e: oe }; saveCacheSoon(); }
         }
       } catch (e) { stat("osm", false, explain(e)); }
     }
@@ -702,7 +746,7 @@
       if (z < CAT[k].z) { low = true; return; }
       for (var x = Math.floor(b.getWest() / CELL); x <= Math.floor(b.getEast() / CELL); x++)
         for (var y = Math.floor(b.getSouth() / CELL); y <= Math.floor(b.getNorth() / CELL); y++) {
-          if (jobs.length > 40) continue;
+          if (jobs.length > 24) continue;
           jobs.push([k, x, y]);
         }
     });
@@ -875,7 +919,7 @@
      Satu label per ruas (diputar mengikuti arah garis), dengan penyaringan tumpang-tindih. Hanya garis vektor yang punya nama;
      gambar WMS tidak memuat atribut sehingga tidak bisa diberi label. */
   var nmGroup = null, nmT = 0;
-  function lblNames() { clearTimeout(nmT); nmT = setTimeout(nmDraw, 120); }
+  function lblNames() { clearTimeout(nmT); nmT = setTimeout(nmDraw, 250); }
   function nmDraw() {
     var m = M(); if (!m) return;
     if (!nmGroup) nmGroup = L.layerGroup().addTo(m);
@@ -884,7 +928,7 @@
     var sz = m.getSize(), placed = [], byName = {}, made = 0;
     function flat(a, o) { (a || []).forEach(function (x) { if (Array.isArray(x) && typeof x[0] !== "number") flat(x, o); else o.push(x); }); return o; }
     function tryLabel(nm, ll) {
-      if (made >= 120 || !nm || ll.length < 2) return;
+      if (made >= 60 || !nm || ll.length < 2) return;
       var step = Math.max(1, Math.ceil(ll.length / 40)), pts = [], i;
       for (i = 0; i < ll.length; i += step) pts.push(m.latLngToContainerPoint(ll[i]));
       pts.push(m.latLngToContainerPoint(ll[ll.length - 1]));
@@ -975,14 +1019,14 @@
     if (st.sp.layer && SP_NO.test(st.sp.layer)) { st.sp.layer = ""; st.sp.ep = ""; st.sp.on = false; save(); } /* bersihkan pilihan lama yang salah (mis. titik rawan kecelakaan) */
     mkPane(m, "pqJalanOsm", 408);
     mkPane(m, "pqJalanPane", 410);
-    rend = L.canvas({ pane: "pqJalanPane", padding: 0.3 });
-    rendOsm = L.canvas({ pane: "pqJalanOsm", padding: 0.3 });
-    ORDER.forEach(function (k) { groups[k] = L.featureGroup(); });
+    rend = L.canvas({ pane: "pqJalanPane", padding: 0.2 });
+    rendOsm = L.canvas({ pane: "pqJalanOsm", padding: 0.2 });
+    ORDER.forEach(function (k) { groups[k] = L.featureGroup(); groups[k].on("mouseover click", onLineEvt); });
     build(); sync();
     try { imported = JSON.parse(localStorage.getItem(IK) || "{}") || {}; } catch (e) { imported = {}; }
     var ni = 0; Object.keys(imported).forEach(function (k) { if (CAT[k]) ni += draw(imported[k], k); });
     if (ni) impStatus(ni + " ruas hasil impor dipulihkan.");
-    count(); spSync(false); fetchView(); lblSync(); setInterval(lblSync, 800); setInterval(outSync, 500);
+    count(); spSync(false); fetchView(); lblSync(); setInterval(function () { if (!document.hidden) lblSync(); }, 2000); setInterval(function () { if (!document.hidden) outSync(); }, 1500);
     m.on("moveend zoomend", lblNames);
     m.on("moveend", function () { clearTimeout(timer); timer = setTimeout(function () { fetchView(); spWfs(); }, 600); });
     window.__pqJalanDebug = { state: st, status: SS, discovery: function () { return disc; }, test: testSources };
