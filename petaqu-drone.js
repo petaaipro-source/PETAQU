@@ -106,7 +106,7 @@
     if ($("pq-drone-css")) return; var st = document.createElement("style"); st.id = "pq-drone-css";
     st.textContent = "" +
       "#pqDrone{position:fixed;inset:0;z-index:99999;background:#050a12f2;display:none;overflow:auto;color:#e6edf5;font:12px/1.45 system-ui,sans-serif;padding:max(10px,env(safe-area-inset-top)) 10px 30px}#pqDrone.show{display:block}" +
-      "#pqDrone .w{max-width:880px;margin:0 auto}#pqDrone h2{margin:6px 0;font-size:16px;color:#38bdf8;display:flex;justify-content:space-between;align-items:center}#pqDrone .x{background:#ffffff12;border:1px solid #ffffff22;color:#fff;border-radius:8px;padding:4px 10px;cursor:pointer}" +
+      "#pqDrone{overscroll-behavior:contain}#pqDrone .stk{position:sticky;top:calc(-1 * max(10px,env(safe-area-inset-top)));z-index:5;background:#050a12;padding:max(10px,env(safe-area-inset-top)) 0 2px;margin-top:calc(-1 * max(10px,env(safe-area-inset-top)))}#pqDrone .stk .f{margin:6px 0}#pqDrone .pqDf{display:none}@media(max-width:700px),(max-height:620px){#pqDrone .pqDf{display:inline-block}#pqDrone .stk .f{display:none}#pqDrone .stk.open .f{display:grid;max-height:45dvh;overflow:auto}}#pqDrone .w{max-width:880px;margin:0 auto}#pqDrone h2{margin:6px 0;font-size:16px;color:#38bdf8;display:flex;justify-content:space-between;align-items:center}#pqDrone .x{background:#ffffff12;border:1px solid #ffffff22;color:#fff;border-radius:8px;padding:4px 10px;cursor:pointer}" +
       "#pqDrone .f{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;background:#ffffff0a;border:1px solid #ffffff18;border-radius:12px;padding:10px;margin:8px 0}#pqDrone label{display:block;color:#9db3c9;font-size:10.5px}#pqDrone input,#pqDrone select{width:100%;box-sizing:border-box;margin-top:2px;background:#0b1520;border:1px solid #ffffff2a;border-radius:7px;color:#fff;padding:6px;font:inherit}" +
       "#pqDrone .rec{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:8px 0}#pqDrone .rc{background:#0b2a1f;border:1px solid #34d39966;border-radius:12px;padding:9px}#pqDrone .rc b{color:#34d399}#pqDrone .rc.no{background:#2a1313;border-color:#f8717166}" +
       "#pqDrone .nt{background:#ffffff0a;border-left:3px solid #fde047;padding:6px 9px;margin:5px 0;border-radius:6px;color:#dbe7f3}#pqDrone .c{background:#ffffff08;border:1px solid #ffffff18;border-radius:12px;padding:9px;margin:7px 0}#pqDrone .c.ok{border-color:#34d39977}#pqDrone .c.w{border-color:#fde04788}#pqDrone .c.x{opacity:.62}" +
@@ -115,7 +115,7 @@
     document.head.appendChild(st);
   }
   function render() {
-    var R = analyse(I), h = $("pqDrone"), o = '<div class="w"><h2>🛩 Drone Survei — termurah → termahal <button class="x" id="pqDx">✕ Tutup</button></h2>' +
+    var R = analyse(I), h = $("pqDrone"), o = '<div class="w"><div class="stk"><h2>🛩 Drone Survei — termurah → termahal <span><button class="x pqDf" id="pqDf">⚙ Filter</button> <button class="x" id="pqDx">✕ Tutup</button></span></h2>' +
       '<div class="sub">Harga & spesifikasi perkiraan (USD) — verifikasi dealer. Perhitungan memakai GSD, overlap, batas VLOS ±500 m, cadangan baterai 30%.</div><div class="f">' +
       '<label>Tujuan<select id="dTj">' + Object.keys(P).map(function (k) { return '<option value="' + k + '"' + (k === I.tujuan ? " selected" : "") + ">" + esc(P[k].t) + "</option>"; }).join("") + "</select></label>" +
       '<label>Panjang ruas (km)<input id="dPj" type="number" min="0.1" step="0.1" value="' + I.panjang + '"></label>' +
@@ -123,7 +123,7 @@
       '<label>Tutupan pohon (0–1)' + (I.auto ? " · otomatis" : "") + '<input id="dPh" type="number" min="0" max="1" step="0.05" value="' + I.pohon + '"></label>' +
       '<label>Angin lapangan (m/s)<input id="dAg" type="number" min="0" step="1" value="' + I.angin + '"></label>' +
       '<label>Anggaran alat (Rp, opsional)<input id="dBg" type="number" min="0" step="1000000" value="' + I.anggaran + '"></label>' +
-      '<label>Kurs (Rp/USD)<input id="dKs" type="number" min="10000" step="100" value="' + I.kurs + '"></label></div>';
+      '<label>Kurs (Rp/USD)<input id="dKs" type="number" min="10000" step="100" value="' + I.kurs + '"></label></div></div>';
     function rc(t, r, extra) { return r ? '<div class="rc"><b>' + t + "</b><br>" + esc(r.d.n) + '<br><span class="sub">' + idr(r.usd[0], I.kurs) + " – " + idr(r.usd[1], I.kurs) + " · " + r.days + " hari · GSD " + f1(r.gsd) + " cm" + (extra || "") + "</span></div>" : '<div class="rc no"><b>' + t + '</b><br><span class="sub">tidak ada yang memenuhi</span></div>'; }
     o += '<div class="rec">' + rc("✅ Termurah yang memenuhi", R.rec.cheap) + rc("⚡ Paling cepat selesai", R.rec.fast) + (I.anggaran > 0 ? rc("💰 Terbaik dalam anggaran", R.rec.budget) : "") + "</div>";
     R.notes.forEach(function (n) { o += '<div class="nt">' + esc(n) + "</div>"; });
@@ -134,7 +134,7 @@
       r.fail.forEach(function (m) { o += '<div class="m">✖ ' + esc(m) + "</div>"; }); r.warn.forEach(function (m) { o += '<div class="wn">⚠ ' + esc(m) + "</div>"; }); o += "</div>";
     });
     h.innerHTML = o + '<div class="sub" style="margin-top:10px">Panduan: pilih berdasarkan tujuan & akurasi, bukan hanya harga. Untuk ruas pendek/sesekali, sewa jasa survei sering lebih murah daripada membeli kelas profesional.</div></div>';
-    $("pqDx").onclick = close;
+    $("pqDx").onclick = close; $("pqDf").onclick = function () { this.closest(".stk").classList.toggle("open"); };
     [["dTj", "tujuan", 0], ["dPj", "panjang", 1], ["dLb", "lebar", 1], ["dPh", "pohon", 1], ["dAg", "angin", 1], ["dBg", "anggaran", 1], ["dKs", "kurs", 1]].forEach(function (q) {
       $(q[0]).onchange = function () { var v = this.value; I[q[1]] = q[2] ? Math.max(0, +v || 0) : v; if (q[1] === "lebar" || q[1] === "pohon") I.auto = 0; if (q[1] === "kurs" && !I.kurs) I.kurs = 16500; if (q[1] === "panjang" && !I.panjang) I.panjang = 1; jset(K, I); render(); };
     });
