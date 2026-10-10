@@ -266,7 +266,7 @@
   function ruasName(r) { return r.ruas || "(tanpa nama)"; }
 
   var CSS = "#pqAn{position:fixed;left:var(--pq-fl,364px);top:calc(var(--pq-ft,70px) + 52px);z-index:1270;width:min(430px,calc(100vw - 20px));max-height:calc(100dvh - var(--pq-ft,70px) - 80px);overflow:auto;overscroll-behavior:contain;display:none;box-sizing:border-box;padding:12px;border-radius:16px;border:1px solid rgba(34,211,238,.4);background:#0a0e17f7;color:#dbe7f3;font:13px/1.4 system-ui,sans-serif;box-shadow:0 14px 40px #0008;backdrop-filter:blur(10px)}" +
-    "#pqAn.open{display:block}#pqAn h3{margin:0;font-size:14px}#pqAn small{color:#9fb0c8}#pqAn .an-hd{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}#pqAn .an-hd>div{flex:1}#pqAn #anTop{position:sticky;top:-12px;z-index:5;margin:-12px -12px 8px;padding:12px 12px 6px;background:#0a0e17;border-radius:16px 16px 0 0;border-bottom:1px solid #22d3ee22}#pqAn #anTop .an-hd{margin:0 0 4px}#pqAn.min{overflow:hidden;max-height:none}#pqAn.min>:not(#anTop){display:none}#pqAn.min #anTop>:not(.an-hd){display:none}#pqAn.min #anTop{margin-bottom:-12px;padding-bottom:12px;border-bottom:0;border-radius:16px}#pqAn.min #anTop .an-hd{margin:0}" +
+    "@media(max-width:600px){#pqAn{left:8px!important;right:8px;width:auto!important;padding:10px}#pqAn #anTop{margin:-10px -10px 8px;padding:10px 10px 6px;top:-10px}#pqAn .an-stats{grid-template-columns:repeat(2,1fr)!important}}#pqAn svg{max-width:100%;height:auto}#pqAn.open{display:block}#pqAn h3{margin:0;font-size:14px}#pqAn small{color:#9fb0c8}#pqAn .an-hd{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}#pqAn .an-hd>div{flex:1}#pqAn #anTop{position:sticky;top:-12px;z-index:5;margin:-12px -12px 8px;padding:12px 12px 6px;background:#0a0e17;border-radius:16px 16px 0 0;border-bottom:1px solid #22d3ee22}#pqAn #anTop .an-hd{margin:0 0 4px}#pqAn.min{overflow:hidden;max-height:none}#pqAn.min>:not(#anTop){display:none}#pqAn.min #anTop>:not(.an-hd){display:none}#pqAn.min #anTop{margin-bottom:-12px;padding-bottom:12px;border-bottom:0;border-radius:16px}#pqAn.min #anTop .an-hd{margin:0}" +
     "#pqAn .an-mn{border:0;background:none;color:#8fa6bd;font-size:22px;line-height:1;cursor:pointer;padding:0 4px}#pqAn .an-x{border:0;background:none;color:#8fa6bd;font-size:22px;line-height:1;cursor:pointer}" +
     "#pqAn select,#pqAn input[type=text]{width:100%;box-sizing:border-box;margin:3px 0;padding:7px 9px;border-radius:9px;border:1px solid #ffffff22;background:#0f1726;color:#dbe7f3;font:12.5px system-ui}" +
     "#pqAn .an-h{margin:14px 0 6px;font:700 10px/1 system-ui;letter-spacing:.8px;text-transform:uppercase;color:#8fa6bd}" +
@@ -307,14 +307,15 @@
       '<div class="an-note" id="anInfo"></div>' +
       '<div class="an-h">Laporan</div>' +
       '<button class="an-b" id="anXls" type="button">Unduh Excel</button><button class="an-b" id="anPrt" type="button">Laporan cetak / PDF</button>' +
-      '<div class="an-note">Skor dan temuan adalah estimasi dari foto Street View dan citra, bukan hasil survei lapangan. Titik berkeyakinan rendah sebaiknya diverifikasi langsung.</div>';
+      '<div class="an-note">Skor dan temuan adalah estimasi dari foto Street View dan citra, bukan hasil survei lapangan. Titik berkeyakinan rendah sebaiknya diverifikasi langsung. <span style="opacity:.45">[tampilan v4]</span></div>';
     document.body.appendChild(panel);
     $("anAuto").checked = jget(K_AUTO, 1) !== 0;
     $("anChips").innerHTML = ["bahu tidak ada lebih dari 300 m", "lebar di bawah 6 m", "tanpa drainase", "5 titik terburuk", "keyakinan rendah", "penyempitan"].map(function (t) { return '<button class="an-ch" type="button" data-q="' + esc(t) + '">' + esc(t) + "</button>"; }).join("");
 
     function syncMin() { var m = panel.classList.contains("min"), b = $("anMin"); b.textContent = m ? "▢" : "–"; b.title = b.ariaLabel = m ? "Perbesar" : "Minimalkan"; }
     panel.classList.toggle("min", jget(K_MINI, 0) === 1); syncMin();
-    $("anMin").onclick = function () { panel.classList.toggle("min"); jset(K_MINI, panel.classList.contains("min") ? 1 : 0); syncMin(); };
+    $("anMin").onclick = function () { panel.classList.toggle("min"); jset(K_MINI, panel.classList.contains("min") ? 1 : 0); syncMin(); fit(); };
+    window.addEventListener("resize", fit); window.addEventListener("orientationchange", function () { setTimeout(fit, 250); });
     $("anX").onclick = close;
     $("anRuas").onchange = function () { current = this.value; clearHi(); $("anAsk").innerHTML = ""; render(); };
     $("anAuto").onchange = function () { jset(K_AUTO, this.checked ? 1 : 0); toast_("Simpan otomatis: " + (this.checked ? "ON" : "OFF")); };
@@ -405,7 +406,19 @@
     setUndo(snapA, "Semua data dihapus.");
   }
 
-  function open() { if (!panel) return; panel.classList.add("open"); refreshList(); render(); var b = $("pqAnBtn"); if (b) b.classList.add("active"); }
+  /* panel adaptif: muat di layar, tidak menutup pemutar rute, tidak keluar tepi */
+  function fit() {
+    if (!panel || !panel.classList.contains("open")) return;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    panel.style.left = ""; panel.style.maxHeight = "";
+    var r = panel.getBoundingClientRect();
+    if (r.right > vw - 8 && vw > 600) panel.style.left = Math.max(8, vw - 8 - r.width) + "px";
+    if (panel.classList.contains("min")) return;
+    var lim = vh - 10, bar = $("routePlayerBar");
+    if (bar && bar.classList.contains("show")) { var bb = bar.getBoundingClientRect(); if (bb.height && bb.top > r.top + 140) lim = bb.top - 8; }
+    panel.style.maxHeight = Math.max(150, Math.floor(lim - r.top)) + "px";
+  }
+  function open() { if (!panel) return; panel.classList.add("open"); refreshList(); render(); fit(); var b = $("pqAnBtn"); if (b) b.classList.add("active"); }
   function close() { if (panel) panel.classList.remove("open"); clearHi(); var b = $("pqAnBtn"); if (b) b.classList.remove("active"); }
   function toggle() { panel && panel.classList.contains("open") ? close() : open(); }
 
@@ -547,6 +560,7 @@
   /* ---- simpan otomatis + pemantauan ---- */
   function tick() {
     try {
+      fit();
       var J = window.PQJeda; if (!J) return;
       if (jget(K_AUTO, 1) !== 0 && J.state && J.save) {
         var st = J.state();
