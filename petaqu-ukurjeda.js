@@ -470,7 +470,7 @@
   function section(A) {
     if (A.W == null) return "";
     var dl = A.dl > 0 ? A.dl : 0, dr = A.dr > 0 ? A.dr : 0, bl = A.bl > 0.15 ? A.bl : 0, br = A.br > 0.15 ? A.br : 0;
-    var VW = 9, Wd = 280, pad = 4, Y = 38, H = 18;
+    var VW = 9, Wd = 280, pad = 4, Y = 56, H = 18;
     var tot = dl + bl + A.W + br + dr, sc = (Wd - pad * 2 - VW * 2) / Math.max(tot, 4), x = pad, o = "";
     var defs = '<defs>' +
       '<pattern id="pqGr" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#2f9e44"/><path d="M1 6V3M3 6V1.5M5 6V3.5" stroke="#86e07a" stroke-width="1" stroke-linecap="round"/></pattern>' +
@@ -507,6 +507,21 @@
     var rx = x, rw = A.W * sc; seg(A.W, "#475569", A.W.toFixed(1) + " m", true);
     shoulder(br, A.pr, A.tr, false); pxR = verge();
     seg(dr, "#38bdf8", dr.toFixed(1));
+    /* bangunan di tepi jalan (latar): kiri = rumah/ruko 2 lantai beton, kanan = rumah atap genteng + pagar hijau + tiang listrik */
+    var bw = 58, bx = pad;
+    o += '<rect x="' + bx + '" y="' + (Y - 40) + '" width="' + bw + '" height="40" fill="#9aa3ad"/>' +
+      '<rect x="' + bx + '" y="' + (Y - 43) + '" width="' + bw + '" height="4" fill="#6b7480"/>' +
+      '<rect x="' + bx + '" y="' + (Y - 21) + '" width="' + bw + '" height="3" fill="#7b8590"/>' +
+      '<rect x="' + (bx + 6) + '" y="' + (Y - 35) + '" width="12" height="10" fill="#33414f"/><rect x="' + (bx + 24) + '" y="' + (Y - 35) + '" width="12" height="10" fill="#33414f"/><rect x="' + (bx + 42) + '" y="' + (Y - 35) + '" width="10" height="10" fill="#33414f"/>' +
+      '<rect x="' + (bx + 6) + '" y="' + (Y - 17) + '" width="14" height="17" fill="#26303a"/><rect x="' + (bx + 26) + '" y="' + (Y - 14) + '" width="26" height="14" fill="#3f4b58"/>' +
+      '<ellipse cx="' + (bx + 22) + '" cy="' + (Y - 20) + '" rx="9" ry="5" fill="#2f9e44"/>';
+    var rx0 = Wd - pad - bw;
+    o += '<rect x="' + (rx0 + 4) + '" y="' + (Y - 22) + '" width="' + (bw - 4) + '" height="22" fill="#e6d9c0"/>' +
+      '<polygon points="' + (rx0 + 1) + "," + (Y - 22) + " " + (rx0 + 18) + "," + (Y - 38) + " " + (rx0 + bw - 8) + "," + (Y - 38) + " " + (rx0 + bw) + "," + (Y - 22) + '" fill="#b5412f"/>' +
+      '<path d="M' + (rx0 + 8) + " " + (Y - 28) + "h" + (bw - 14) + "M" + (rx0 + 13) + " " + (Y - 33) + "h" + (bw - 24) + '" stroke="#7d2a1d" stroke-width=".8"/>' +
+      '<rect x="' + (rx0 + 12) + '" y="' + (Y - 18) + '" width="10" height="9" fill="#33414f"/><rect x="' + (rx0 + 30) + '" y="' + (Y - 18) + '" width="10" height="9" fill="#33414f"/>' +
+      '<rect x="' + (rx0 + 4) + '" y="' + (Y - 10) + '" width="' + (bw - 4) + '" height="10" fill="#2f9e44"/><path d="M' + (rx0 + 4) + " " + (Y - 7) + "h" + (bw - 4) + 'M' + (rx0 + 4) + " " + (Y - 3.5) + "h" + (bw - 4) + '" stroke="#1b6b2d" stroke-width=".8"/>' +
+      '<rect x="' + (rx0 - 1) + '" y="' + (Y - 46) + '" width="2" height="46" fill="#6b7480"/><path d="M' + (rx0 - 12) + " " + (Y - 44) + "h24M" + (rx0 - 12) + " " + (Y - 40) + 'h24" stroke="#6b7480" stroke-width="1"/>';
     o += rel(pxL, 1) + patok(pxL) + rel(pxR, -1) + patok(pxR);
     if (A.km && A.km.ok) {   /* patok KM: badan kuning-oranye, pelat putih (2 baris), kaki merah */
       var kx = A.km.side === "L" ? pxL + 44 : pxR - 44, kw = 12, kh = 32, kt = Y - kh;
@@ -522,10 +537,10 @@
       A.mk.div.forEach(function (d) { ln(d.f, d.t, "#fde047"); if (d.dbl) ln(d.f + 0.012, d.t, "#fde047"); });
     }
     /* legenda */
-    var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen"], ["url(#pqGr)", "rumput"]], lx0 = 8;
-    lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="74" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="81.5" font-size="8" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 52; });
-    if (A.km && A.km.ok) o += '<rect x="' + lx0 + '" y="74" width="8" height="8" rx="1" fill="#e0a22b"/><text x="' + (lx0 + 11) + '" y="81.5" font-size="8" fill="#9db3c9">patok KM</text>';
-    return '<svg viewBox="0 0 ' + Wd + ' 86" role="img" aria-label="Penampang jalan">' + defs + o + "</svg>";
+    var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen"], ["url(#pqGr)", "rumput"], ["#9aa3ad", "bangunan"]], lx0 = 5;
+    lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="92" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="99.5" font-size="7.5" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 46; });
+    if (A.km && A.km.ok) o += '<rect x="' + lx0 + '" y="92" width="8" height="8" rx="1" fill="#e0a22b"/><text x="' + (lx0 + 11) + '" y="99.5" font-size="7.5" fill="#9db3c9">patok KM</text>';
+    return '<svg viewBox="0 0 ' + Wd + ' 104" role="img" aria-label="Penampang jalan">' + defs + o + "</svg>";
   }
 
   function setCard(h, html) { if (h.__h !== html) { h.innerHTML = html; h.__h = html; } }
