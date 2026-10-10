@@ -75,13 +75,18 @@
 
     /* ---------- ikon aksi: bulat, muncul saat dipilih ---------- */
     'html.pqv body #sidebar #roadList .road-item-actions{display:none;grid-template-columns:repeat(5,1fr);gap:6px;justify-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--pqv-line)}',
-    'html.pqv body #sidebar #roadList .road-item.active .road-item-actions,html.pqv body #sidebar #roadList .road-item.checked .road-item-actions,html.pqv body #sidebar #roadList .road-item:focus-within .road-item-actions{display:grid}',
-    '@media(hover:hover){html.pqv body #sidebar #roadList .road-item:hover .road-item-actions{display:grid}}',
+    'html.pqv body #sidebar #roadList .road-item.pqv-open .road-item-actions{display:grid}',
     'html.pqv body #sidebar #roadList .road-item .rowbtn{width:32px;height:32px;padding:0;border-radius:50%;border:1px solid #38bdf84d;background:var(--pqv-glass);color:var(--pqv-sky2);font-size:13px;display:inline-flex;align-items:center;justify-content:center;transition:.15s}',
     'html.pqv body #sidebar #roadList .road-item .rowbtn:hover{background:var(--pqv-deep);color:#fff;border-color:#22d3ee}',
     'html.pqv body #sidebar #roadList .road-item .rowbtn-drone{color:#38bdf8}',
     'html.pqv body #sidebar #roadList .road-item .rowbtn:last-child:hover{background:#7f1d1d;border-color:#f87171;color:#fecaca}',
 
+    /* tombol indikator hijau/merah */
+    'html.pqv body #sidebar #roadList .pqv-dot{flex:none;width:24px;height:24px;padding:0;border-radius:50%;border:1px solid #ffffff2a;background:var(--pqv-glass);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s}',
+    'html.pqv body #sidebar #roadList .pqv-dot:hover{border-color:#ffffff66}',
+    'html.pqv body #sidebar #roadList .pqv-dot i{display:block;width:11px;height:11px;border-radius:50%;background:#ef4444;box-shadow:0 0 7px #ef4444aa;transition:.15s}',
+    'html.pqv body #sidebar #roadList .road-item.pqv-open .pqv-dot{border-color:#22c55e66}',
+    'html.pqv body #sidebar #roadList .road-item.pqv-open .pqv-dot i{background:#22c55e;box-shadow:0 0 7px #22c55eaa}',
     /* ---------- jembatan (tab sebelah) ikut serasi ---------- */
     'html.pqv body #sidebar #jembatanList .road-item{margin:0 0 7px;border:1px solid var(--pqv-line);border-radius:14px;background:var(--pqv-card)}',
     'html.pqv body #sidebar #jembatanList .road-item:hover{background:#38bdf80d;border-color:#38bdf84d}'
@@ -93,6 +98,14 @@
     document.head.appendChild(s);
   }
 
+  var OK = 'pq_tampilan_open', openMap = {};
+  try { openMap = JSON.parse(localStorage.getItem(OK) || '{}') || {}; } catch (e) { openMap = {}; }
+  function saveOpen() { try { localStorage.setItem(OK, JSON.stringify(openMap)); } catch (e) {} }
+  function paintOpen(it, rid) {
+    var o = !!openMap[rid]; it.classList.toggle('pqv-open', o);
+    var d = it.querySelector('.pqv-dot');
+    if (d) { d.title = o ? 'Ikon aksi tampil — klik untuk menyembunyikan' : 'Ikon aksi tersembunyi — klik untuk menampilkan'; d.setAttribute('aria-pressed', o ? 'true' : 'false'); }
+  }
   var busy = false;
   function tidy() {
     if (busy || !root.classList.contains('pqv')) return;
@@ -127,6 +140,21 @@
 
       /* 3) tandai baris tambahan di dalam kartu ruas (progres, dsb.) */
       sb.querySelectorAll('#roadList .road-item').forEach(function (it) {
+        var rid = it.dataset.roadId, main = it.querySelector('.road-item-main');
+        if (rid && main) {
+          if (!it.querySelector('.pqv-dot')) {
+            var d = document.createElement('button'); d.type = 'button'; d.className = 'pqv-dot'; d.innerHTML = '<i></i>';
+            d.addEventListener('click', function (e) {
+              e.stopPropagation(); e.preventDefault();
+              openMap[rid] = !openMap[rid]; saveOpen(); paintOpen(it, rid);
+            });
+            var tg = main.querySelector('.road-toggle');
+            tg ? main.insertBefore(d, tg) : main.appendChild(d);
+            /* klik kartu pertama kali = tampilkan ikon & tetap tampil (tidak hilang saat kursor keluar) */
+            main.addEventListener('click', function () { if (openMap[rid] === undefined) { openMap[rid] = true; saveOpen(); paintOpen(it, rid); } });
+          }
+          paintOpen(it, rid);
+        }
         Array.prototype.forEach.call(it.children, function (c) {
           if (c.classList.contains('road-item-main') || c.classList.contains('road-item-actions') || c.classList.contains('pqv-extra')) return;
           if (c.tagName === 'INPUT' || c.tagName === 'LABEL') return;
