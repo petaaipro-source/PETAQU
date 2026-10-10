@@ -348,6 +348,14 @@
 
     var aks = el("div", "display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto");
     if (n) aks.appendChild(el("span", "font:700 12px system-ui;color:#67e8f9", n + " dipilih"));
+    var punyaHp = tp.filter(function (r) { return r.hp; });
+    if (n) {
+      var wm = el("button", btnCss("transparent", "#4ade80", "#4ade80"), "WhatsApp" + (semua0(tp, pilih) ? " semua" : "") + " (" + punyaHp.length + ")");
+      wm.title = punyaHp.length ? "Kirim pesan WhatsApp ke akun yang dicentang (satu per satu)" : "Tidak ada nomor WhatsApp pada akun yang dicentang";
+      if (!punyaHp.length) wm.style.opacity = ".5";
+      wm.onclick = function () { if (!punyaHp.length) { T("Akun yang dicentang tidak punya nomor WhatsApp", true); return; } waMassal(punyaHp, tp.length - punyaHp.length); };
+      aks.appendChild(wm);
+    }
     if (n && tab === "tunggu") {
       var ok = el("button", btnCss("#16a34a", "#fff"), "Setujui (" + n + ")");
       ok.title = "Setujui sebagai “Lihat saja”, masa aktif mengikuti paket yang diminta tiap pendaftar";
@@ -358,11 +366,46 @@
       bl.onclick = function () { blokirMassal(bl, tp); }; aks.appendChild(bl);
     }
     var semua = n > 0 && n === pilih.length;
-    var hp = el("button", btnCss(n ? "#b91c1c" : "transparent", n ? "#fff" : "#fca5a5", n ? "#b91c1c" : "#7f1d1d") + (n ? "" : ";opacity:.55"), (semua ? "Hapus semua" : "Hapus") + (n ? " (" + n + ")" : " semua"));
+    var hp = el("button", btnCss(n ? "#b91c1c" : "transparent", n ? "#fff" : "#fca5a5", n ? "#b91c1c" : "#7f1d1d") + (n ? "" : ";opacity:.55"), (tab === "tunggu" || tab === "blok" ? "Tolak & hapus" : "Hapus") + (semua || !n ? " semua" : "") + (n ? " (" + n + ")" : ""));
     hp.title = n ? "Hapus permanen akun yang dicentang" : "Centang akun dulu, atau tekan “Pilih semua”";
     hp.onclick = function () { if (!n) { T("Centang akun dulu, atau tekan “Pilih semua”"); return; } hapusMassal(hp, tp); };
     aks.appendChild(hp);
     bar.appendChild(aks);
+  }
+  function semua0(tp, pilih) { return tp.length > 0 && tp.length === pilih.length; }
+  function waLink(r) {   // pesan menyesuaikan status akun, sama seperti tombol WhatsApp di kartu
+    if (!r.hp) return "";
+    var m = lgOk && (segera(r) || telatBayar(r) || berakhir(r)) ? pesanTagihan(r)
+      : group(r) === "aktif" ? pesanSetuju(r)
+      : "Halo " + (r.nama || "") + ", ini admin PETAQU terkait pendaftaran akun Anda.";
+    return "https://wa.me/" + r.hp + "?text=" + encodeURIComponent(m);
+  }
+  function waMassal(a, tanpaHp) {   // wa.me hanya bisa satu nomor per tautan: sediakan daftar kirim satu per satu
+    var ov = el("div", "position:fixed;inset:0;z-index:5300;display:flex;align-items:center;justify-content:center;background:#000b;padding:12px");
+    var bx = el("div", "width:min(520px,100%);max-height:85vh;display:flex;flex-direction:column;background:#0f1521;border:1px solid #4ade8077;border-radius:14px;color:#e6f1ff;font:13px/1.45 system-ui,sans-serif;overflow:hidden");
+    var h = el("div", "flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #ffffff18");
+    h.appendChild(el("b", "flex:1;font-size:14px", "Kirim WhatsApp ke " + a.length + " akun"));
+    var x = el("button", "background:transparent;border:0;color:#e6f1ff;font-size:20px;cursor:pointer;padding:0 6px", "×"); x.onclick = function () { ov.remove(); }; h.appendChild(x);
+    var tb = el("div", "flex:none;padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #ffffff12");
+    var nx = el("button", btnCss("#16a34a", "#fff"), "Buka berikutnya"), st = el("span", "font-size:11.5px;color:#94a3b8");
+    tb.append(nx, st);
+    var ls = el("div", "flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:6px");
+    var done = {}, baris = {};
+    function upd() { var n = Object.keys(done).length; st.textContent = n + " dari " + a.length + " sudah dibuka" + (tanpaHp ? " · " + tanpaHp + " akun tanpa nomor dilewati" : ""); nx.disabled = n >= a.length; nx.style.opacity = nx.disabled ? ".5" : ""; }
+    function tandaiR(r) { done[r.id] = 1; var b = baris[r.id]; b.style.opacity = ".55"; b.lastChild.textContent = "Terbuka ✓"; upd(); }
+    a.forEach(function (r) {
+      var b = el("div", "display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid #ffffff18;border-radius:8px;background:#0b1120");
+      var t = el("div", "flex:1;min-width:0;overflow-wrap:anywhere");
+      t.appendChild(el("div", "font-weight:700", r.nama || r.email || r.id)); t.appendChild(el("div", "font-size:11.5px;color:#94a3b8", "+" + r.hp));
+      var ln = el("a", btnCss("transparent", "#4ade80", "#4ade80") + ";text-decoration:none;white-space:nowrap", "Kirim");
+      ln.href = waLink(r); ln.target = "_blank"; ln.rel = "noopener"; ln.onclick = function () { tandaiR(r); };
+      b.append(t, ln); baris[r.id] = b; ls.appendChild(b);
+    });
+    nx.onclick = function () { var r = a.find(function (z) { return !done[z.id]; }); if (!r) return; window.open(waLink(r), "_blank", "noopener"); tandaiR(r); };
+    upd();
+    bx.append(h, tb, ls, el("div", "flex:none;padding:8px 14px 12px;font-size:11px;color:#94a3b8;border-top:1px solid #ffffff12", "WhatsApp hanya bisa membuka satu percakapan per klik, jadi tekan “Buka berikutnya” (atau “Kirim”) untuk tiap akun lalu tekan kirim di WhatsApp. Pesan sudah terisi otomatis sesuai status akun."));
+    ov.appendChild(bx); ov.addEventListener("click", function (e) { if (e.target === ov) ov.remove(); });
+    (panel || document.body).appendChild(ov);
   }
   function daftarNama(a) { return a.slice(0, 12).map(function (r) { return "• " + (r.nama ? r.nama + " — " : "") + (r.email || r.id); }).join("\n") + (a.length > 12 ? "\n… dan " + (a.length - 12) + " lainnya" : ""); }
   async function massal(b, jobs, kata, selesai) {   // jalankan satu per satu agar kegagalan satu akun tidak menggagalkan yang lain
