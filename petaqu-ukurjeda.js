@@ -330,11 +330,13 @@
     if (!A) return null;
     if (A.mk && !A.ai) {
       var d = A.mk.div || [], t0 = d.length ? String(d[0].t || "") : "";
+      if (d.length === 3) { var mi = 0; d.forEach(function (q, i) { if (Math.abs(q.f - 0.5) < Math.abs(d[mi].f - 0.5)) mi = i; }); if (!/putus/.test(String(d[mi].t)) && d.every(function (q, i) { return i === mi || /putus/.test(String(q.t)); })) return { eL: A.mk.eL ? 1 : 0, eR: A.mk.eR ? 1 : 0, mid: "kp", n: 3, est: false }; }
       return { eL: A.mk.eL ? 1 : 0, eR: A.mk.eR ? 1 : 0, mid: d.length ? (/putus/.test(t0) ? "ky" : "km") : "none", n: Math.max(1, Math.min(3, d.length)), est: false };
     }
     if (A.osm) {
       var hw = String(A.osm.hw || ""), ln = +A.osm.lanes, n = ln >= 2 ? Math.min(3, ln - 1) : 1;
       if (ln === 1) return { eL: 0, eR: 0, mid: "none", n: 1, est: true };
+      if (/^(trunk|primary|secondary)$/.test(hw) && ln >= 4) return { eL: 1, eR: 1, mid: "kp", n: 3, est: true };
       if (/^(trunk|primary|secondary)$/.test(hw)) return { eL: 1, eR: 1, mid: "ky", n: n, est: true };
       if (/^(tertiary|unclassified)$/.test(hw)) return { eL: 0, eR: 0, mid: "pp", n: n, est: true };
       return { eL: 0, eR: 0, mid: "none", n: 1, est: true };
@@ -349,7 +351,7 @@
     if (A.W0 === undefined) { A.W0 = A.W; A.conf0 = A.conf; A.err0 = A.err; A.warn0 = A.warn; }
     A.W = A.W0; A.conf = A.conf0; A.err = A.err0; A.warn = A.warn0; A.lanes = null; A.mfix = ""; A.mfw = false;
     var E = eff(A); if (!U.on || !E || E.mid === "none") return;
-    var nd = Math.max(1, Math.min(4, E.n | 0)), lanes = nd + 1, white = E.mid === "pp";
+    var nd = E.mid === "kp" ? 3 : Math.max(1, Math.min(4, E.n | 0)), lanes = nd + 1, white = E.mid === "pp";
     var L = white ? 3.25 : 3.5, sL = white ? 0.35 : 0.3, edges = (E.eL ? 1 : 0) + (E.eR ? 1 : 0);
     var Wm = lanes * L, sm = sL * lanes * 0.8 + (edges === 2 ? 0 : edges === 1 ? 0.12 : 0.25) + 0.1 + (E.est ? 0.25 : 0);
     var W0 = A.W0, e0 = Math.max(A.err0 || 0.5, A.ai ? 0.9 : 0.3), lo = lanes * 2.8, hi = lanes * 4.1, base = lanes + " lajur × " + L.toFixed(2).replace(/0$/, "").replace(".", ",") + " m = " + Wm.toFixed(1).replace(".", ",") + " m";
@@ -372,15 +374,15 @@
   function mkU(A) {
     var E = U.on && eff(A); if (!E) return null;
     var e = E.eL && E.eR ? "putih menerus kiri & kanan" : E.eL ? "putih menerus kiri saja" : E.eR ? "putih menerus kanan saja" : "tidak terlihat";
-    var m = { ky: "kuning putus-putus", km: "kuning menerus/ganda", pp: "putih putus-putus", none: "tidak ada" }[E.mid];
-    return { edge: e + (E.man ? " (manual)" : E.est ? " (perkiraan)" : " (terbaca)"), mid: m + (E.mid !== "none" ? " ×" + E.n : ""), lanes: E.mid !== "none" ? "≈ " + (E.n + 1) + " lajur" : "" };
+    var m = { ky: "kuning putus-putus", km: "kuning menerus/ganda", pp: "putih putus-putus", kp: "kuning menerus di tengah + putih putus-putus kiri & kanan", none: "tidak ada" }[E.mid];
+    return { edge: e + (E.man ? " (manual)" : E.est ? " (perkiraan)" : " (terbaca)"), mid: m + (E.mid !== "none" && E.mid !== "kp" ? " ×" + E.n : ""), lanes: E.mid !== "none" ? "≈ " + (E.n + 1) + " lajur" : "" };
   }
   function mkChips(A) {
     var E = eff(A) || {}, src = U.man ? "manual" : E.mid ? (E.est ? "otomatis · perkiraan dari kelas jalan OSM" : "otomatis · terbaca dari foto") : "belum ada data otomatis — pilih manual";
     function ch(k, v, t, on) { return '<button data-a="mk" data-k="' + k + '" data-v="' + v + '" class="' + (on ? "on" : "") + '">' + t + "</button>"; }
     return '<div class="sub">Marka: <b>' + src + "</b> (ketuk untuk mengubah manual)</div>" +
       '<div class="btns">' + ch("eL", E.eL ? 0 : 1, "Tepi kiri putih", E.eL) + ch("eR", E.eR ? 0 : 1, "Tepi kanan putih", E.eR) + "</div>" +
-      '<div class="btns">' + ch("mid", "ky", "Kuning putus", E.mid === "ky") + ch("mid", "km", "Kuning menerus", E.mid === "km") + ch("mid", "pp", "Putih putus", E.mid === "pp") + ch("mid", "none", "Tanpa tengah", E.mid === "none") + "</div>" +
+      '<div class="btns">' + ch("mid", "ky", "Kuning putus", E.mid === "ky") + ch("mid", "km", "Kuning menerus", E.mid === "km") + ch("mid", "pp", "Putih putus", E.mid === "pp") + ch("mid", "kp", "2 jalur: kuning + putih putus", E.mid === "kp") + ch("mid", "none", "Tanpa tengah", E.mid === "none") + "</div>" +
       '<div class="btns"><span style="color:#9db3c9;font-size:10px;align-self:center">Garis pembagi:</span>' + ch("n", 1, "1", E.n === 1) + ch("n", 2, "2", E.n === 2) + ch("n", 3, "3", E.n === 3) +
       (U.man ? '<button data-a="mkauto" title="Kembali mengikuti pembacaan otomatis">↺ Otomatis</button>' : "") +
       '<button data-a="mkon" class="' + (U.on ? "on" : "") + '" title="Koreksi lebar memakai jumlah lajur × lebar lajur standar jalan nasional">Koreksi marka: ' + (U.on ? "ON" : "OFF") + "</button></div>";
@@ -399,7 +401,7 @@
         else {
           var k = b.getAttribute("data-k"), v = b.getAttribute("data-v");
           if (!U.man) { var E0 = eff(cur && cur.A); if (E0) { U.eL = E0.eL ? 1 : 0; U.eR = E0.eR ? 1 : 0; U.mid = E0.mid; U.n = E0.n || 1; } }   /* salin pembacaan otomatis, lalu ubah satu hal */
-          U.man = 1; U[k] = k === "mid" ? v : +v; U.on = 1;
+          U.man = 1; U[k] = k === "mid" ? v : +v; U.on = 1; if (k === "mid" && v === "kp") U.n = 3;
         }
         jset(K_MKU, U); paint();
         if (cur && cur.A && DB.some(function (x) { return x.k === cur.c.key; })) saveCur();
@@ -420,6 +422,26 @@
   function drT(v) { return v == null ? "—" : v <= 0 ? "tidak ada" : f1(v); }
   function cls(c) { return c >= 0.7 ? "ok" : c >= 0.45 ? "mid" : "lo"; }
   function ctxLabel(c) { return c.sta ? "STA " + esc(c.sta) : "titik ini"; }
+
+  /* model marka efektif untuk gambar: tepi putih menerus, pembagi (kuning menerus di tengah, putih putus-putus di sisi) */
+  function mkLines(A) {
+    var E = eff(A), M = A.mk, out = { edges: [], divs: [] };
+    if (!E) return out;
+    var eLf = M && M.eL ? M.eL.f : 0.03, eRf = M && M.eR ? M.eR.f : 0.97;
+    if (E.eL) out.edges.push({ f: eLf, solid: !(M && M.eL && /putus/.test(M.eL.t)) });
+    if (E.eR) out.edges.push({ f: eRf, solid: !(M && M.eR && /putus/.test(M.eR.t)) });
+    if (E.mid === "none") return out;
+    var meas = M && !U.man && !A.ai && M.div && M.div.length ? M.div : null;
+    if (meas && !(E.mid === "kp" && meas.length !== 3)) {
+      var ci = 0; meas.forEach(function (d, i) { if (Math.abs(d.f - 0.5) < Math.abs(meas[ci].f - 0.5)) ci = i; });
+      meas.forEach(function (d, i) { var c = i === ci && (meas.length === 1 || Math.abs(d.f - 0.5) < 0.12); out.divs.push({ f: d.f, solid: !/putus/.test(d.t) || /menerus/.test(d.t), yellow: c, dbl: !!d.dbl }); });
+      return out;
+    }
+    if (E.mid === "kp") { out.divs.push({ f: 0.25, solid: false, yellow: false }, { f: 0.5, solid: true, yellow: true }, { f: 0.75, solid: false, yellow: false }); return out; }
+    var n = Math.max(1, Math.min(4, E.n | 0));
+    for (var i = 1; i <= n; i++) out.divs.push({ f: i / (n + 1), solid: E.mid === "km", yellow: E.mid !== "pp", dbl: E.mid === "km" && n === 1 });
+    return out;
+  }
 
   /* ---------- PATOK KM: baca pelat putih (angka) dari foto kiri/kanan yang sudah diambil — tanpa foto tambahan ---------- */
   var TESS_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js", LANG_URL = "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int", kmW = null, kmWL = null;
@@ -531,11 +553,16 @@
         '<path d="M' + (kx - 2.5) + " " + (kt + 5) + "h5M" + (kx - 2.5) + " " + (kt + 8) + "h3M" + (kx - 2.5) + " " + (kt + 15) + "h5M" + (kx - 2.5) + " " + (kt + 18) + 'h3" stroke="#222" stroke-width=".9"/>' +
         '<rect x="' + (kx - kw / 2) + '" y="' + (Y - 6) + '" width="' + kw + '" height="6" fill="#d94a4a"/>';
     }
-    if (A.mk) {
-      var ln = function (f, t, col) { var lx = rx + Math.max(0.02, Math.min(0.98, f)) * rw; o += '<line x1="' + lx.toFixed(1) + '" x2="' + lx.toFixed(1) + '" y1="' + (Y + 1) + '" y2="' + (Y + H - 1) + '" stroke="' + col + '" stroke-width="1.6"' + (/putus/.test(t) ? ' stroke-dasharray="3 3"' : '') + '/>'; };
-      if (A.mk.eL) ln(A.mk.eL.f, A.mk.eL.t, "#fff"); if (A.mk.eR) ln(A.mk.eR.f, A.mk.eR.t, "#fff");
-      A.mk.div.forEach(function (d) { ln(d.f, d.t, "#fde047"); if (d.dbl) ln(d.f + 0.012, d.t, "#fde047"); });
-    }
+    /* ---- marka (dari data efektif: terbaca / perkiraan OSM / manual) + indikator lebar jalan ---- */
+    var MK = mkLines(A), lnD = function (f, solid, col, dx) { var lx = rx + Math.max(0.015, Math.min(0.985, f)) * rw + (dx || 0); o += '<line x1="' + lx.toFixed(1) + '" x2="' + lx.toFixed(1) + '" y1="' + (Y + 1) + '" y2="' + (Y + H - 1) + '" stroke="' + col + '" stroke-width="1.6"' + (solid ? "" : ' stroke-dasharray="3 3"') + '/>'; };
+    MK.edges.forEach(function (e) { lnD(e.f, e.solid, "#fff"); });
+    MK.divs.forEach(function (d) { var c = d.yellow ? "#fde047" : "#fff"; if (d.dbl) { lnD(d.f, d.solid, c, -1.5); lnD(d.f, d.solid, c, 1.5); } else lnD(d.f, d.solid, c); });
+    /* lebar tiap lajur (m) di antara garis */
+    var bf = [0].concat(MK.divs.map(function (d) { return d.f; })).concat([1]).sort(function (a, b) { return a - b; });
+    if (bf.length > 2) for (var li = 0; li < bf.length - 1; li++) { var lw = (bf[li + 1] - bf[li]) * A.W, lpx = (bf[li + 1] - bf[li]) * rw; if (lpx >= 22) o += '<text x="' + (rx + (bf[li] + bf[li + 1]) / 2 * rw).toFixed(1) + '" y="' + (Y + H / 2 + 2.5) + '" text-anchor="middle" font-size="7" fill="#e2e8f0" opacity=".85">' + lw.toFixed(1) + "</text>"; }
+    /* indikator lebar jalan: garis ukur dua arah di bawah badan jalan */
+    var dy = Y + H + 2.5;
+    o += '<path d="M' + rx.toFixed(1) + " " + dy + "H" + (rx + rw).toFixed(1) + "M" + rx.toFixed(1) + " " + (dy - 3) + "v6M" + (rx + rw).toFixed(1) + " " + (dy - 3) + "v6M" + (rx + 4).toFixed(1) + " " + (dy - 2) + "L" + rx.toFixed(1) + " " + dy + "L" + (rx + 4).toFixed(1) + " " + (dy + 2) + "M" + (rx + rw - 4).toFixed(1) + " " + (dy - 2) + "L" + (rx + rw).toFixed(1) + " " + dy + "L" + (rx + rw - 4).toFixed(1) + " " + (dy + 2) + '" stroke="#fde68a" stroke-width="1" fill="none"/>';
     /* legenda */
     var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen"], ["url(#pqGr)", "rumput"], ["#9aa3ad", "bangunan"]], lx0 = 5;
     lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="92" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="99.5" font-size="7.5" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 46; });
