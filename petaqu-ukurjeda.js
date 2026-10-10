@@ -321,14 +321,34 @@
   }
   
   /* ---- KOREKSI MARKA: tepi putih menerus + marka tengah (kuning putus-putus / kelipatannya) → jumlah lajur × lebar lajur standar ---- */
-  var K_MKU = "pq_jeda_mku", U = Object.assign({ on: 0, eL: 1, eR: 1, mid: "ky", n: 1 }, jget(K_MKU, {}));
+  var K_MKU = "pq_jeda_mku", U = Object.assign({ on: 1, man: 0, eL: 1, eR: 1, mid: "ky", n: 1 }, jget(K_MKU, {}));
+  /* marka OTOMATIS: (1) terbaca dari foto Street View (A.mk) → pengamatan; (2) mode AI tanpa foto → perkiraan dari kelas jalan & jumlah lajur OSM */
+  function autoU(A) {
+    if (!A) return null;
+    if (A.mk && !A.ai) {
+      var d = A.mk.div || [], t0 = d.length ? String(d[0].t || "") : "";
+      return { eL: A.mk.eL ? 1 : 0, eR: A.mk.eR ? 1 : 0, mid: d.length ? (/putus/.test(t0) ? "ky" : "km") : "none", n: Math.max(1, Math.min(3, d.length)), est: false };
+    }
+    if (A.osm) {
+      var hw = String(A.osm.hw || ""), ln = +A.osm.lanes, n = ln >= 2 ? Math.min(3, ln - 1) : 1;
+      if (ln === 1) return { eL: 0, eR: 0, mid: "none", n: 1, est: true };
+      if (/^(trunk|primary|secondary)$/.test(hw)) return { eL: 1, eR: 1, mid: "ky", n: n, est: true };
+      if (/^(tertiary|unclassified)$/.test(hw)) return { eL: 0, eR: 0, mid: "pp", n: n, est: true };
+      return { eL: 0, eR: 0, mid: "none", n: 1, est: true };
+    }
+    return null;
+  }
+  function eff(A) {
+    if (U.man) return { eL: U.eL, eR: U.eR, mid: U.mid, n: U.n, est: false, man: true };
+    return autoU(A);
+  }
   function fuse(A) {
     if (A.W0 === undefined) { A.W0 = A.W; A.conf0 = A.conf; A.err0 = A.err; A.warn0 = A.warn; }
     A.W = A.W0; A.conf = A.conf0; A.err = A.err0; A.warn = A.warn0; A.lanes = null; A.mfix = ""; A.mfw = false;
-    if (!U.on || U.mid === "none") return;
-    var nd = Math.max(1, Math.min(4, U.n | 0)), lanes = nd + 1, white = U.mid === "pp";
-    var L = white ? 3.25 : 3.5, sL = white ? 0.35 : 0.3, edges = (U.eL ? 1 : 0) + (U.eR ? 1 : 0);
-    var Wm = lanes * L, sm = sL * lanes * 0.8 + (edges === 2 ? 0 : edges === 1 ? 0.12 : 0.25) + 0.1;
+    var E = eff(A); if (!U.on || !E || E.mid === "none") return;
+    var nd = Math.max(1, Math.min(4, E.n | 0)), lanes = nd + 1, white = E.mid === "pp";
+    var L = white ? 3.25 : 3.5, sL = white ? 0.35 : 0.3, edges = (E.eL ? 1 : 0) + (E.eR ? 1 : 0);
+    var Wm = lanes * L, sm = sL * lanes * 0.8 + (edges === 2 ? 0 : edges === 1 ? 0.12 : 0.25) + 0.1 + (E.est ? 0.25 : 0);
     var W0 = A.W0, e0 = Math.max(A.err0 || 0.5, A.ai ? 0.9 : 0.3), lo = lanes * 2.8, hi = lanes * 4.1, base = lanes + " lajur × " + L.toFixed(2).replace(/0$/, "").replace(".", ",") + " m = " + Wm.toFixed(1).replace(".", ",") + " m";
     A.lanes = lanes;
     if (!fin(W0)) { A.W = Wm; A.err = sm + 0.2; A.conf = 0.5; A.mfix = "Ukur gagal → memakai estimasi marka: " + base + "."; return; }
@@ -343,20 +363,23 @@
       A.conf = Math.min(A.conf0 || 0.5, 0.6); A.mfw = true;
       A.mfix = "Hasil ukur " + W0.toFixed(1) + " m melebihi " + lanes + " lajur (maks ≈ " + hi.toFixed(1) + " m): mungkin termasuk bahu beraspal/persimpangan, atau garis pembagi kurang. Nilai ukur dipertahankan.";
     }
+    if (E.est) { A.conf = Math.min(A.conf, 0.6); A.mfix = "(Marka diperkirakan dari kelas jalan OSM, bukan terbaca di foto) " + A.mfix; }
     A.warn = (A.warn0 ? A.warn0 + " · " : "") + "koreksi marka aktif";
   }
-  function mkU() {
-    if (!U.on) return null;
-    var e = U.eL && U.eR ? "putih menerus kiri & kanan" : U.eL ? "putih menerus kiri saja" : U.eR ? "putih menerus kanan saja" : "tidak terlihat";
-    var m = { ky: "kuning putus-putus", km: "kuning menerus/ganda", pp: "putih putus-putus", none: "tidak ada" }[U.mid];
-    return { edge: e + " (pengamatan)", mid: m + (U.mid !== "none" ? " ×" + U.n : ""), lanes: U.mid !== "none" ? "≈ " + (U.n + 1) + " lajur" : "" };
+  function mkU(A) {
+    var E = U.on && eff(A); if (!E) return null;
+    var e = E.eL && E.eR ? "putih menerus kiri & kanan" : E.eL ? "putih menerus kiri saja" : E.eR ? "putih menerus kanan saja" : "tidak terlihat";
+    var m = { ky: "kuning putus-putus", km: "kuning menerus/ganda", pp: "putih putus-putus", none: "tidak ada" }[E.mid];
+    return { edge: e + (E.man ? " (manual)" : E.est ? " (perkiraan)" : " (terbaca)"), mid: m + (E.mid !== "none" ? " ×" + E.n : ""), lanes: E.mid !== "none" ? "≈ " + (E.n + 1) + " lajur" : "" };
   }
-  function mkChips() {
+  function mkChips(A) {
+    var E = eff(A) || {}, src = U.man ? "manual" : E.mid ? (E.est ? "otomatis · perkiraan dari kelas jalan OSM" : "otomatis · terbaca dari foto") : "belum ada data otomatis — pilih manual";
     function ch(k, v, t, on) { return '<button data-a="mk" data-k="' + k + '" data-v="' + v + '" class="' + (on ? "on" : "") + '">' + t + "</button>"; }
-    return '<div class="sub">Marka yang terlihat di Street View (diingat untuk titik berikutnya):</div>' +
-      '<div class="btns">' + ch("eL", U.eL ? 0 : 1, "Tepi kiri putih", U.eL) + ch("eR", U.eR ? 0 : 1, "Tepi kanan putih", U.eR) + "</div>" +
-      '<div class="btns">' + ch("mid", "ky", "Kuning putus", U.mid === "ky") + ch("mid", "km", "Kuning menerus", U.mid === "km") + ch("mid", "pp", "Putih putus", U.mid === "pp") + ch("mid", "none", "Tanpa tengah", U.mid === "none") + "</div>" +
-      '<div class="btns"><span style="color:#9db3c9;font-size:10px;align-self:center">Garis pembagi:</span>' + ch("n", 1, "1", U.n === 1) + ch("n", 2, "2", U.n === 2) + ch("n", 3, "3", U.n === 3) +
+    return '<div class="sub">Marka: <b>' + src + "</b> (ketuk untuk mengubah manual)</div>" +
+      '<div class="btns">' + ch("eL", E.eL ? 0 : 1, "Tepi kiri putih", E.eL) + ch("eR", E.eR ? 0 : 1, "Tepi kanan putih", E.eR) + "</div>" +
+      '<div class="btns">' + ch("mid", "ky", "Kuning putus", E.mid === "ky") + ch("mid", "km", "Kuning menerus", E.mid === "km") + ch("mid", "pp", "Putih putus", E.mid === "pp") + ch("mid", "none", "Tanpa tengah", E.mid === "none") + "</div>" +
+      '<div class="btns"><span style="color:#9db3c9;font-size:10px;align-self:center">Garis pembagi:</span>' + ch("n", 1, "1", E.n === 1) + ch("n", 2, "2", E.n === 2) + ch("n", 3, "3", E.n === 3) +
+      (U.man ? '<button data-a="mkauto" title="Kembali mengikuti pembacaan otomatis">↺ Otomatis</button>' : "") +
       '<button data-a="mkon" class="' + (U.on ? "on" : "") + '" title="Koreksi lebar memakai jumlah lajur × lebar lajur standar jalan nasional">Koreksi marka: ' + (U.on ? "ON" : "OFF") + "</button></div>";
   }
   function ensureCard() {
@@ -367,8 +390,14 @@
       var b = e.target.closest("button"); if (!b) return; e.stopPropagation();
       var a = b.getAttribute("data-a");
       if (a === "min") { minimized = !minimized; jset(K_MIN, minimized ? 1 : 0); paint(); }
-      else if (a === "mk" || a === "mkon") {
-        if (a === "mkon") U.on = U.on ? 0 : 1; else { var k = b.getAttribute("data-k"), v = b.getAttribute("data-v"); U[k] = k === "mid" ? v : +v; U.on = 1; }
+      else if (a === "mk" || a === "mkon" || a === "mkauto") {
+        if (a === "mkon") U.on = U.on ? 0 : 1;
+        else if (a === "mkauto") { U.man = 0; U.on = 1; }
+        else {
+          var k = b.getAttribute("data-k"), v = b.getAttribute("data-v");
+          if (!U.man) { var E0 = eff(cur && cur.A); if (E0) { U.eL = E0.eL ? 1 : 0; U.eR = E0.eR ? 1 : 0; U.mid = E0.mid; U.n = E0.n || 1; } }   /* salin pembacaan otomatis, lalu ubah satu hal */
+          U.man = 1; U[k] = k === "mid" ? v : +v; U.on = 1;
+        }
         jset(K_MKU, U); paint();
         if (cur && cur.A && DB.some(function (x) { return x.k === cur.c.key; })) saveCur();
       }
@@ -431,11 +460,11 @@
         '<div class="row big"><span>Lebar jalan</span><div class="v"><b class="' + cls(A.conf) + '">' + (approx && A.W != null ? "≈ " : "") + f1(A.W) + "</b>" + (A.err != null && A.W != null ? "<small>±" + A.err.toFixed(1) + " m</small>" : "") + "</div></div>" +
         (A.mfix ? '<div class="mfx' + (A.mfw ? " w" : "") + '">' + esc(A.mfix) + "</div>" : "") +
         '<div class="row"><span>Lebar bahu</span><div class="v"><span><i>kiri</i><b>' + bahuT(A.bl, A.blo) + "</b></span><span><i>kanan</i><b>" + bahuT(A.br, A.bro) + "</b></span></div></div>" +
-        '<div class="row"><span>Marka tepi</span><div class="v"><b style="font-size:11px">' + esc(mkU() ? mkU().edge : A.ai ? "butuh foto Google" : mkText(A.mk).edge) + "</b></div></div>" +
-        '<div class="row"><span>Marka tengah</span><div class="v"><b style="font-size:11px">' + esc(mkU() ? mkU().mid : A.ai ? "butuh foto Google" : mkText(A.mk).mid) + "</b><small>" + esc(mkU() ? mkU().lanes : A.ai ? "" : mkText(A.mk).lanes) + "</small></div></div>" +
+        '<div class="row"><span>Marka tepi</span><div class="v"><b style="font-size:11px">' + esc(mkU(A) ? mkU(A).edge : A.ai ? "butuh foto Google" : mkText(A.mk).edge) + "</b></div></div>" +
+        '<div class="row"><span>Marka tengah</span><div class="v"><b style="font-size:11px">' + esc(mkU(A) ? mkU(A).mid : A.ai ? "butuh foto Google" : mkText(A.mk).mid) + "</b><small>" + esc(mkU(A) ? mkU(A).lanes : A.ai ? "" : mkText(A.mk).lanes) + "</small></div></div>" +
         '<div class="row"><span>Lebar drainase</span><div class="v"><span><i>kiri</i><b>' + drT(A.dl) + "</b></span><span><i>kanan</i><b>" + drT(A.dr) + "</b></span></div></div>" +
         '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + (A.ai ? A.n + " sumber" : A.n + " panorama") + " · " + src + (c.axis === "pandang" ? " · arah jalan ditebak dari arah pandang" : "") + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
-        mkChips() +
+        mkChips(A) +
         '<div class="btns"><button data-a="redo">Ulangi</button>' + (A.ai || cur.busy ? "" : '<button data-a="ai" title="Bandingkan dengan AI gratis (satelit + OSM)">Ukur AI</button>') + (A.ai || cur.deep || cur.busy ? "" : '<button data-a="deep" title="Tambah panorama tetangga (sampai 5) untuk hasil lebih pasti">Teliti</button>') +
         '<button data-a="copy">Salin</button><button data-a="save">Simpan</button>' + (DB.length ? '<button data-a="csv">CSV (' + DB.length + ")</button>" : "") + "</div></div>";
     }
