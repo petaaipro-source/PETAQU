@@ -304,7 +304,7 @@
       if (!items.length) return; shown++;
       var h0 = h; h = "";
       var o = openKab[gi] || !!q, on = kabOn(g);
-      h += '<div class="jk-k' + (o ? " o" : "") + '" data-g="' + gi + '"><div class="jk-h" data-a="open"><i class="fa-solid fa-chevron-right"></i><div><b>' + esc(g.name) + "</b><small>" + g.items.length + " ruas · " + fmtKm(g.km) + ' km</small></div><button class="jk-sw' + (on ? " on" : "") + '" data-a="kab" title="Tampilkan semua ruas di peta"></button></div>';
+      h += '<div class="jk-k' + (o ? " o" : "") + '" data-g="' + gi + '"><div class="jk-h" data-a="open"><i class="fa-solid fa-chevron-right"></i><div><b>' + esc(g.name) + "</b><small>" + g.items.length + " ruas · " + fmtKm(g.km) + ' km' + (g.src === "OSM" ? " · OSM (perkiraan)" : "") + '</small></div><button class="jk-sw' + (on ? " on" : "") + '" data-a="kab" title="Tampilkan semua ruas di peta"></button></div>';
       if (o) {
         h += '<div class="jk-l">';
         items.forEach(function (it) {
@@ -327,17 +327,26 @@
       if (op) h += has ? B[nm].join("") : '<div style="padding:2px 6px 8px"><small style="display:block;color:#8fa6bd;margin-bottom:6px">Belum dimuat.</small>' + (PBB[nm] ? '<button type="button" class="jk-b jk-on" data-a="provLoad" data-p="' + esc(nm) + '">' + (provBusy ? "Memuat…" : "Muat jalan nasional") + '</button>' : "") + "</div>";
     });
     document.getElementById("jkList").innerHTML = h || '<small style="color:#8fa6bd">Tidak ada hasil.</small>';
+    var pb = document.getElementById("jkProvAll"); if (pb) { pb.textContent = provBusy ? "⏹ Hentikan pemuatan" : "Muat semua provinsi"; pb.className = "jk-b " + (provBusy ? "jk-off" : "jk-on"); }
     document.getElementById("jkInfo").textContent = PROV_ALL.length + " provinsi (" + (PROV_ALL.length - provsEmpty().length) + " berisi data) · " + G.length + " kab/kota · " + G.reduce(function (s, g) { return s + g.items.length; }, 0) + " ruas (tanpa duplikat) · " + staItems().length + " ber-STA" + (diagMsg ? " ⚠ " + diagMsg : "");
+    var pg = document.getElementById("jkProg"); if (pg && !provBusy) pg.textContent = "";
   }
 
-  /* ---------- muat jalan nasional semua provinsi (server BIG, hanya saat diminta) ---------- */
+  /* ---------- muat jalan nasional SEMUA provinsi (otomatis, ringan, tahan gagal) ----------
+     Sumber berurutan per provinsi: (1) server BIG (resmi) bila terjangkau, (2) OpenStreetMap via Overpass
+     (jalan trunk + primary per batas provinsi = pendekatan jalan nasional). Hasil disederhanakan, ruas
+     disambung, disimpan di IndexedDB (tanpa batas kuota 5 MB localStorage), dan hanya digambar saat dinyalakan. */
   var BIGQ = "https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/547/query";
-  var BIGW = "AUTRJL=1 AND (TOLRJL IS NULL OR TOLRJL<>1)", BIGW2 = "FGSRJL IN (1,2) AND (TOLRJL IS NULL OR TOLRJL<>1)", lastErr = "", whereUse = "", diagMsg = "";
-  var LS_PV = "pq_jnprov_v1", NAS_COLOR = "#38bdf8";
-  /* kotak perkiraan [selatan, barat, utara, timur]; segmen ditetapkan ke provinsi berpusat terdekat di antara kotak yang memuatnya */
+  var BIGW = "AUTRJL=1 AND (TOLRJL IS NULL OR TOLRJL<>1)", BIGW2 = "FGSRJL IN (1,2) AND (TOLRJL IS NULL OR TOLRJL<>1)", lastErr = "", whereUse = "", diagMsg = "", progMsg = "";
+  var LS_PV = "pq_jnprov_v1", LS_AUTO = "pq_jn_auto", NAS_COLOR = "#38bdf8", IDB_NAME = "pq_jnprov", TTL = 90 * 864e5;
+  var OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"], ovpFirst = 0;
+  var ISO = {"Aceh":"ID-AC","Sumatera Utara":"ID-SU","Sumatera Barat":"ID-SB","Riau":"ID-RI","Kepulauan Riau":"ID-KR","Jambi":"ID-JA","Sumatera Selatan":"ID-SS","Kepulauan Bangka Belitung":"ID-BB","Bengkulu":"ID-BE","Lampung":"ID-LA","DKI Jakarta":"ID-JK","Banten":"ID-BT","Jawa Barat":"ID-JB","Jawa Timur":"ID-JI","Bali":"ID-BA","Nusa Tenggara Barat":"ID-NB","Nusa Tenggara Timur":"ID-NT","Kalimantan Barat":"ID-KB","Kalimantan Tengah":"ID-KT","Kalimantan Selatan":"ID-KS","Kalimantan Timur":"ID-KI","Kalimantan Utara":"ID-KU","Sulawesi Utara":"ID-SA","Gorontalo":"ID-GO","Sulawesi Tengah":"ID-ST","Sulawesi Barat":"ID-SR","Sulawesi Selatan":"ID-SN","Sulawesi Tenggara":"ID-SG","Maluku":"ID-MA","Maluku Utara":"ID-MU","Papua":"ID-PA","Papua Barat":"ID-PB","Papua Barat Daya":"ID-PD","Papua Selatan":"ID-PS","Papua Tengah":"ID-PT","Papua Pegunungan":"ID-PE"};
+  /* kotak perkiraan [selatan, barat, utara, timur]; dipakai untuk BIG dan cadangan Overpass (segmen ditetapkan ke provinsi berpusat terdekat) */
   var PBB = {"Aceh":[1.9,94.9,6.1,98.4],"Sumatera Utara":[-0.1,97,4.4,100.5],"Sumatera Barat":[-3.4,98.5,0.9,101.9],"Riau":[-1.2,100,2.5,103.9],"Kepulauan Riau":[-1.3,103.4,4.2,109.2],"Jambi":[-2.8,101,-0.7,104.6],"Sumatera Selatan":[-4.9,102.1,-1.6,106.2],"Kepulauan Bangka Belitung":[-3.2,105,-1.4,108.3],"Bengkulu":[-5.6,101,-2.2,103.9],"Lampung":[-6.2,103.5,-3.7,106.3],"DKI Jakarta":[-6.4,106.65,-5.9,107],"Banten":[-7,105.1,-5.8,106.8],"Jawa Barat":[-7.9,106.4,-5.9,108.9],"Jawa Timur":[-8.8,110.9,-6.7,114.7],"Bali":[-8.9,114.4,-8,115.8],"Nusa Tenggara Barat":[-9.2,115.7,-8,119.2],"Nusa Tenggara Timur":[-11,118.9,-8.1,125.3],"Kalimantan Barat":[-3.1,108.7,2.1,114.3],"Kalimantan Tengah":[-3.6,110.7,0,115.9],"Kalimantan Selatan":[-4.3,114.3,-1.3,116.6],"Kalimantan Timur":[-2.6,113.8,2.4,119.1],"Kalimantan Utara":[1,114.8,4.4,118.1],"Sulawesi Utara":[0.2,123,5.6,127.2],"Gorontalo":[0.2,121.1,1,123.6],"Sulawesi Tengah":[-3.7,119.4,1.5,124.4],"Sulawesi Barat":[-3.6,118.7,-1,119.9],"Sulawesi Selatan":[-7.9,118.9,-1.9,121.9],"Sulawesi Tenggara":[-6.3,120.8,-2.8,124.6],"Maluku":[-8.4,125.7,-2.7,134.9],"Maluku Utara":[-2.5,124.2,2.6,129.2],"Papua":[-4,136,-1,141.1],"Papua Barat":[-4.3,131,-0.5,135.2],"Papua Barat Daya":[-1.7,129.3,0,132.6],"Papua Selatan":[-9.2,137.7,-5,141.1],"Papua Tengah":[-5.2,134.5,-3,138.5],"Papua Pegunungan":[-5,137.5,-3.6,141]};
   function pCenter(n) { var b = PBB[n]; return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]; }
   function inBB(pt, b) { return pt[0] >= b[0] && pt[0] <= b[2] && pt[1] >= b[1] && pt[1] <= b[3]; }
+  function pArea(n) { var b = PBB[n]; return (b[2] - b[0]) * (b[3] - b[1]); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function encNum(v) { v = v < 0 ? ~(v << 1) : v << 1; var o = ""; while (v >= 32) { o += String.fromCharCode((32 | (v & 31)) + 63); v >>= 5; } return o + String.fromCharCode(v + 63); }
   function encode(pts) { var la = 0, ln = 0, o = ""; pts.forEach(function (p) { var a = Math.round(p[0] * 1e5), b = Math.round(p[1] * 1e5); o += encNum(a - la) + encNum(b - ln); la = a; ln = b; }); return o; }
   function owner(pt, want) {
@@ -345,31 +354,121 @@
     Object.keys(PBB).forEach(function (n) { if (!inBB(pt, PBB[n])) return; var c = pCenter(n), d = (c[0] - pt[0]) * (c[0] - pt[0]) + (c[1] - pt[1]) * (c[1] - pt[1]); if (d < bd) { bd = d; best = n; } });
     return best === want ? want : null;
   }
-  var provBusy = false, pvCache = null;
-  function pvLoad() { if (!pvCache) pvCache = ls(LS_PV) || {}; return pvCache; }
-  function pvSave() { try { localStorage.setItem(LS_PV, JSON.stringify(pvCache)); } catch (e) { /* kuota penuh: abaikan, data tetap tampil sesi ini */ } }
-  function addProvGroup(pn, byName) {
+  function msgOf(e) { return (e && e.name === "AbortError") ? "waktu habis" : ((e && e.message) || String(e)); }
+
+  /* --- penyederhanaan garis (Douglas-Peucker, iteratif) & penyambungan potongan way --- */
+  function segD(p, a, b) { var x = b[1] - a[1], y = b[0] - a[0], l = x * x + y * y, t = l ? ((p[1] - a[1]) * x + (p[0] - a[0]) * y) / l : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; var dx = a[1] + t * x - p[1], dy = a[0] + t * y - p[0]; return Math.sqrt(dx * dx + dy * dy); }
+  function simplify(p, tol) {
+    if (p.length < 3) return p;
+    var keep = new Uint8Array(p.length), st = [[0, p.length - 1]], i; keep[0] = keep[p.length - 1] = 1;
+    while (st.length) {
+      var s = st.pop(), a = s[0], b = s[1], md = 0, mi = -1;
+      for (i = a + 1; i < b; i++) { var d = segD(p[i], p[a], p[b]); if (d > md) { md = d; mi = i; } }
+      if (mi > 0 && md > tol) { keep[mi] = 1; st.push([a, mi], [mi, b]); }
+    }
+    return p.filter(function (_, i2) { return keep[i2]; });
+  }
+  function chain(ws) {
+    var ends = {}, used = new Array(ws.length), out = [], i;
+    function k(p) { return p[0] + "," + p[1]; }
+    function take(key) { var l = ends[key]; if (!l) return -1; while (l.length) { var j = l.pop(); if (!used[j]) return j; } return -1; }
+    ws.forEach(function (w, ix) { [k(w[0]), k(w[w.length - 1])].forEach(function (e) { (ends[e] = ends[e] || []).push(ix); }); });
+    for (i = 0; i < ws.length; i++) {
+      if (used[i]) continue; used[i] = true;
+      var c = ws[i].slice(), j, w;
+      for (;;) { j = take(k(c[c.length - 1])); if (j < 0) break; used[j] = true; w = ws[j]; if (k(w[0]) !== k(c[c.length - 1])) w = w.slice().reverse(); c = c.concat(w.slice(1)); }
+      for (;;) { j = take(k(c[0])); if (j < 0) break; used[j] = true; w = ws[j]; if (k(w[w.length - 1]) !== k(c[0])) w = w.slice().reverse(); c = w.concat(c.slice(1)); }
+      out.push(c);
+    }
+    return out;
+  }
+  /* elemen Overpass -> {NAMA: {nm, r, km, l:[polyline]}}, diproses bertahap agar UI tidak macet */
+  async function osmToBy(els, pn, own) {
+    var g = {}, by = {}, i, t0 = Date.now();
+    for (i = 0; i < els.length; i++) {
+      var e = els[i], t = e.tags || {}, nm = String(t.name || t.ref || "").trim();
+      if (!nm || !e.geometry || e.geometry.length < 2) continue;
+      var ll = e.geometry.map(function (p) { return [Math.round(p.lat * 1e5) / 1e5, Math.round(p.lon * 1e5) / 1e5]; });
+      if (own && owner(ll[ll.length >> 1], pn) !== pn) continue;
+      var k = nm.toUpperCase(), o = g[k] || (g[k] = { nm: nm, r: "", w: [] });
+      if (!o.r && t.ref) o.r = String(t.ref).trim();
+      o.w.push(ll);
+      if (Date.now() - t0 > 40) { await sleep(0); t0 = Date.now(); }
+    }
+    var ks = Object.keys(g);
+    for (i = 0; i < ks.length; i++) {
+      var q = g[ks[i]], ent = { nm: q.nm, r: q.r, km: 0, l: [] };
+      chain(q.w).forEach(function (c) {
+        var len = 0; for (var z = 1; z < c.length; z++) len += hav(c[z - 1], c[z]);
+        c = simplify(c, 0.00005); if (c.length < 2) return;
+        ent.km += len / 1000; ent.l.push(encode(c));
+      });
+      if (ent.l.length && ent.km >= 0.05) by[ks[i]] = ent;
+      if (Date.now() - t0 > 40) { await sleep(0); t0 = Date.now(); }
+    }
+    return by;
+  }
+
+  /* --- cache IndexedDB (cadangan memori bila IndexedDB ditolak) --- */
+  var idbP = null, mem = {};
+  function idb() {
+    if (idbP) return idbP;
+    return (idbP = new Promise(function (res) {
+      try { var r = indexedDB.open(IDB_NAME, 1); r.onupgradeneeded = function () { r.result.createObjectStore("p"); }; r.onsuccess = function () { res(r.result); }; r.onerror = r.onblocked = function () { res(null); }; } catch (e) { res(null); }
+    }));
+  }
+  async function cacheGet(pn) {
+    if (mem[pn]) return mem[pn];
+    var db = await idb(), v = null;
+    if (db) v = await new Promise(function (res) { try { var q = db.transaction("p").objectStore("p").get(pn); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; } catch (e) { res(null); } });
+    if (!v) { try { var old = (JSON.parse(localStorage.getItem(LS_PV)) || {})[pn]; if (old) v = { by: old, ts: 0, src: "lama" }; } catch (e) {} }
+    if (v && v.by && Object.keys(v.by).length) { mem[pn] = v; return v; }
+    return null;
+  }
+  async function cacheSet(pn, by, src) {
+    var v = { by: by, ts: Date.now(), src: src }; mem[pn] = v;
+    var db = await idb(); if (!db) return;
+    await new Promise(function (res) { try { var tx = db.transaction("p", "readwrite"); tx.objectStore("p").put(v, pn); tx.oncomplete = tx.onerror = tx.onabort = function () { res(); }; } catch (e) { res(); } });
+  }
+
+  function addProvGroup(pn, byName, src) {
     if (G.some(function (g) { return g.prov === pn; })) return;
     var items = [], ki = 1000 + Object.keys(PBB).indexOf(pn);
     Object.keys(byName).forEach(function (k) {
-      var v = byName[k], km = v.km || 0;
-      items.push({ key: k.toUpperCase() + "|", ri: -1, name: v.nm, no: "", lintas: null, color: NAS_COLOR, km: km, lines: v.l });
+      var v = byName[k];
+      items.push({ key: k.toUpperCase() + "|", ri: -1, name: v.nm, no: v.r || "", lintas: null, color: NAS_COLOR, km: v.km || 0, lines: v.l });
     });
     if (!items.length) return;
     items.sort(function (a, b) { return b.km - a.km; });
-    G.push({ ki: ki, name: "Jalan Nasional " + pn, n: pn, prov: pn, items: items, km: items.reduce(function (t, v) { return t + v.km; }, 0) });
+    G.push({ ki: ki, name: "Jalan Nasional " + pn, n: pn, prov: pn, src: src, items: items, km: items.reduce(function (t, v) { return t + v.km; }, 0) });
   }
-  async function fetchProv(pn, where) {
-    var b = PBB[pn], T = 2, by = {}, seenId = {}, jobs = [], i, j, fail = 0;
+
+  /* --- sumber 1: server BIG (kotak 2°, bertahap) --- */
+  async function jget(url, ms) {
+    var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, ms || 12000);
+    try { var r = await fetch(url, { signal: ac.signal }); if (!r.ok) throw new Error("HTTP " + r.status); var j = await r.json(); if (j.error) throw new Error(j.error.message || "server error"); return j; }
+    finally { clearTimeout(to); }
+  }
+  var bigState = null; /* null=belum diuji, true/false */
+  async function probeBig() {
+    if (bigState !== null) return bigState;
+    var cnt = function (w) { return jget(BIGQ + "?" + new URLSearchParams({ where: w, returnCountOnly: "true", f: "json" }).toString(), 9000).then(function (j) { return +j.count || 0; }); };
+    try {
+      if (await cnt(BIGW) > 0) { whereUse = BIGW; return (bigState = true); }
+      if (await cnt(BIGW2) > 0) { whereUse = BIGW2; return (bigState = true); }
+      lastErr = "filter BIG tidak cocok";
+    } catch (e) { lastErr = msgOf(e); }
+    return (bigState = false);
+  }
+  async function fetchBig(pn) {
+    var b = PBB[pn], T = 2, by = {}, seenId = {}, jobs = [], i, j, fail = 0, done = 0;
     for (i = b[0]; i < b[2]; i += T) for (j = b[1]; j < b[3]; j += T) jobs.push([i, j, Math.min(i + T, b[2]), Math.min(j + T, b[3])]);
+    var raw = {};
     async function cell(c) {
       var off = 0;
       for (var pg = 0; pg < 4; pg++) {
-        var q = new URLSearchParams({ where: where, geometry: c[1] + "," + c[0] + "," + c[3] + "," + c[2], geometryType: "esriGeometryEnvelope", inSR: "4326", outSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "OBJECTID,NAMRJL", returnGeometry: "true", maxAllowableOffset: "0.0006", resultOffset: String(off), resultRecordCount: "1000", f: "geojson" });
-        var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 12000), r, jn;
-        try { r = await fetch(BIGQ + "?" + q.toString(), { signal: ac.signal }); if (!r.ok) throw new Error("HTTP " + r.status); jn = await r.json(); } finally { clearTimeout(to); }
-        if (jn.error) throw new Error(jn.error.message || "server error");
-        var fs = jn.features || [];
+        var q = new URLSearchParams({ where: whereUse, geometry: c[1] + "," + c[0] + "," + c[3] + "," + c[2], geometryType: "esriGeometryEnvelope", inSR: "4326", outSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "OBJECTID,NAMRJL", returnGeometry: "true", maxAllowableOffset: "0.0006", resultOffset: String(off), resultRecordCount: "1000", f: "geojson" });
+        var jn = await jget(BIGQ + "?" + q.toString(), 15000), fs = jn.features || [];
         fs.forEach(function (f) {
           var pr = f.properties || {}, id = pr.OBJECTID != null ? pr.OBJECTID : f.id, g = f.geometry; if (!g) return;
           if (id != null) { if (seenId[id]) return; seenId[id] = 1; }
@@ -378,71 +477,131 @@
           parts.forEach(function (pt) {
             if (pt.length < 2) return;
             var ll = pt.map(function (q2) { return [Math.round(q2[1] * 1e5) / 1e5, Math.round(q2[0] * 1e5) / 1e5]; });
-            if (owner(ll[Math.floor(ll.length / 2)], pn) !== pn) return;
-            var len = 0; for (var z = 1; z < ll.length; z++) len += hav(ll[z - 1], ll[z]);
-            var e = by[k] || (by[k] = { nm: nm, km: 0, l: [] }); e.km += len / 1000; e.l.push(encode(ll));
+            if (owner(ll[ll.length >> 1], pn) !== pn) return;
+            (raw[k] || (raw[k] = { nm: nm, w: [] })).w.push(ll);
           });
         });
         if (!(jn.exceededTransferLimit || (jn.properties && jn.properties.exceededTransferLimit)) || !fs.length) break;
         off += fs.length;
       }
     }
-    for (i = 0; i < jobs.length; i += 3) {
-      await Promise.all(jobs.slice(i, i + 3).map(function (c) { return cell(c).catch(function (er) { fail++; lastErr = (er && er.message) || String(er); }); }));
-      var inf = document.getElementById("jkInfo"); if (inf) inf.textContent = "Memuat " + pn + "… " + Math.min(jobs.length, i + 3) + "/" + jobs.length + " kotak";
+    for (i = 0; i < jobs.length && !stopReq; i += 3) {
+      await Promise.all(jobs.slice(i, i + 3).map(function (c) { return cell(c).catch(function (er) { fail++; lastErr = msgOf(er); }); }));
+      done = Math.min(jobs.length, i + 3); progress(pn + " (BIG) " + done + "/" + jobs.length);
     }
-    return { by: by, fail: fail, total: jobs.length };
-  }
-  async function loadProv(pn, quiet) {
-    if (!PBB[pn] || !G) return 0;
-    var c = pvLoad();
-    if (c[pn]) { addProvGroup(pn, c[pn]); return 1; }
-    var r = await fetchProv(pn, whereUse || BIGW);
-    if (!whereUse && !Object.keys(r.by).length) r = await fetchProv(pn, BIGW2); /* cadangan: arteri + kolektor primer = jalan nasional */
-    if (!Object.keys(r.by).length) { if (!quiet) toast(pn + ": tidak ada data dari server" + (lastErr ? " — " + lastErr : "") + (r.fail ? " (" + r.fail + " kotak gagal)" : ""), true); return 0; }
-    if (!r.fail) { c[pn] = r.by; pvSave(); }
-    addProvGroup(pn, r.by);
-    if (!quiet) {
-      var gg = G.filter(function (g) { return g.prov === pn; })[0]; if (gg) setKab(gg, true);
-      toast(pn + ": " + Object.keys(r.by).length + " ruas dimuat & ditampilkan" + (r.fail ? " (sebagian kotak gagal, tekan lagi untuk melengkapi)" : ""));
-    }
-    return 1;
+    Object.keys(raw).forEach(function (k) {
+      var e = { nm: raw[k].nm, r: "", km: 0, l: [] };
+      chain(raw[k].w).forEach(function (c) { var len = 0; for (var z = 1; z < c.length; z++) len += hav(c[z - 1], c[z]); c = simplify(c, 0.00005); if (c.length < 2) return; e.km += len / 1000; e.l.push(encode(c)); });
+      if (e.l.length) by[k] = e;
+    });
+    return { by: by, fail: fail };
   }
 
-  async function jget(url) {
-    var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 12000);
-    try { var r = await fetch(url, { signal: ac.signal }); if (!r.ok) throw new Error("HTTP " + r.status); var j = await r.json(); if (j.error) throw new Error(j.error.message || "server error"); return j; }
-    finally { clearTimeout(to); }
+  /* --- sumber 2: OpenStreetMap / Overpass --- */
+  async function ovpFetch(q) {
+    var err = null, r, i;
+    for (r = 0; r < 2 && !stopReq; r++) {
+      for (i = 0; i < OVP.length && !stopReq; i++) {
+        var u = OVP[(i + ovpFirst) % OVP.length], ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 110000);
+        try {
+          var res = await fetch(u, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: ac.signal });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          var j = await res.json();
+          if (j.remark && !(j.elements && j.elements.length) && /error|timed out|memory/i.test(j.remark)) throw new Error(String(j.remark).slice(0, 80));
+          ovpFirst = (i + ovpFirst) % OVP.length; return j;
+        } catch (e) { err = new Error(u.split("/")[2] + ": " + msgOf(e)); }
+        finally { clearTimeout(to); }
+      }
+      if (r === 0) await sleep(5000);
+    }
+    throw err || new Error("dihentikan");
   }
-  /* uji cepat server BIG sebelum memuat banyak provinsi: terjangkau? kolom apa? filter mana yang ada isinya? */
-  async function probe() {
-    var meta, cnt = function (w) { return jget(BIGQ + "?" + new URLSearchParams({ where: w, returnCountOnly: "true", f: "json" }).toString()).then(function (j) { return +j.count || 0; }); };
-    try { meta = await jget(BIGQ.replace("/query", "") + "?f=json"); }
-    catch (e) { return { ok: false, msg: "Server BIG tidak terjangkau dari browser ini (" + ((e && e.message) || e) + "). Biasanya karena koneksi/diblokir (CORS). Coba jaringan lain atau tanpa VPN." }; }
-    var fields = (meta.fields || []).map(function (f) { return f.name; });
-    var c1 = 0, c2 = 0, e1 = "";
-    try { c1 = await cnt(BIGW); } catch (e) { e1 = (e && e.message) || String(e); }
-    try { c2 = await cnt(BIGW2); } catch (e) { e1 = e1 || (e && e.message) || String(e); }
-    if (c1 > 0) return { ok: true, where: BIGW, msg: "" };
-    if (c2 > 0) return { ok: true, where: BIGW2, msg: "" };
-    return { ok: false, msg: "Server BIG terjangkau, tetapi filter jalan nasional tidak cocok" + (e1 ? " (" + e1 + ")" : "") + ". Kolom layer: " + fields.join(", ").slice(0, 300) + ". Kirim teks ini ke saya untuk disesuaikan." };
+  async function fetchOsm(pn) {
+    var F = '[highway~"^(trunk|primary)$"]', out = ";out tags geom qt;", H = "[out:json][timeout:100][maxsize:536870912];";
+    progress(pn + " (OSM) mengunduh…");
+    var q = H + 'area["ISO3166-2"="' + ISO[pn] + '"]["boundary"="administrative"]->.a;(way(area.a)' + F + "[name];way(area.a)" + F + "[!name][ref];)" + out;
+    var j = await ovpFetch(q), els = j.elements || [], own = false;
+    if (!els.length) { /* batas provinsi belum ada di OSM: pakai kotak perkiraan + saring kepemilikan */
+      var b = PBB[pn].join(","); own = true; progress(pn + " (OSM, kotak) mengunduh…");
+      j = await ovpFetch(H + "(way(" + b + ")" + F + "[name];way(" + b + ")" + F + "[!name][ref];)" + out); els = j.elements || [];
+    }
+    progress(pn + " (OSM) mengolah " + els.length + " ruas…");
+    return { by: await osmToBy(els, pn, own), fail: 0 };
+  }
+
+  /* --- satu provinsi: cache -> BIG -> OSM --- */
+  async function loadOne(pn) {
+    if (!PBB[pn] || !G) return "skip";
+    var c = await cacheGet(pn);
+    if (c) { addProvGroup(pn, c.by, c.src); return "cache"; }
+    var r = null, src = "", errs = [];
+    if (await probeBig()) {
+      try { r = await fetchBig(pn); src = "BIG"; if (r.fail || !Object.keys(r.by).length) { if (r.fail) errs.push("BIG: " + lastErr); r = r.fail ? null : r; } } catch (e) { errs.push("BIG: " + msgOf(e)); r = null; }
+    }
+    if (stopReq) return "stop";
+    if (!r || !Object.keys(r.by).length) {
+      try { r = await fetchOsm(pn); src = "OSM"; } catch (e) { errs.push("OSM: " + msgOf(e)); r = null; }
+    }
+    if (stopReq) return "stop";
+    if (!r) throw new Error(errs.join(" | ") || "gagal");
+    if (!Object.keys(r.by).length) return "empty";
+    await cacheSet(pn, r.by, src);
+    addProvGroup(pn, r.by, src);
+    return "net";
+  }
+  var provBusy = false, stopReq = false, rT = 0;
+  function progress(m) { progMsg = m; var e = document.getElementById("jkProg"); if (e) e.textContent = m ? "⏳ " + m : ""; }
+  function schedRender() { if (rT) return; rT = setTimeout(function () { rT = 0; try { render(); } catch (e) {} }, 300); }
+  function provsEmpty() { return Object.keys(PBB).filter(function (n) { return !G.some(function (g) { return provOf(g) === n; }); }); }
+
+  /* muat semua provinsi yang masih kosong: cache dulu (instan), lalu jaringan satu per satu (kecil dulu) */
+  async function loadAll(auto) {
+    if (provBusy || !G) return;
+    provBusy = true; stopReq = false; diagMsg = ""; if (!auto) ls(LS_AUTO, true);
+    var ok = 0, net = 0, fails = [], list = provsEmpty().sort(function (a, b) { return pArea(a) - pArea(b); }), i, retry = [];
+    render();
+    try {
+      for (i = 0; i < list.length && !stopReq; i++) { var c = await cacheGet(list[i]); if (c) { addProvGroup(list[i], c.by, c.src); ok++; } }
+      list = provsEmpty().sort(function (a, b) { return pArea(a) - pArea(b); });
+      if (list.length) { schedRender(); }
+      for (var pass = 0; pass < 2 && list.length && !stopReq; pass++) {
+        retry = [];
+        for (i = 0; i < list.length && !stopReq; i++) {
+          progress("Provinsi " + (i + 1) + "/" + list.length + (pass ? " (ulang)" : "") + " — " + list[i]);
+          try { var r = await loadOne(list[i]); if (r === "net" || r === "cache") { ok++; if (r === "net") net++; } }
+          catch (e) { retry.push(list[i]); if (pass) fails.push(list[i] + " — " + msgOf(e)); }
+          await sleep(700);
+        }
+        list = retry;
+      }
+    } finally {
+      provBusy = false; progress("");
+      var left = provsEmpty().length;
+      if (fails.length) diagMsg = fails.length + " provinsi gagal: " + fails[0] + (fails.length > 1 ? " (+" + (fails.length - 1) + " lagi)" : "") + ". Tekan \"Muat semua provinsi\" untuk mengulang yang gagal.";
+      else if (stopReq) diagMsg = "Dihentikan. Sisa " + left + " provinsi belum dimuat.";
+      render();
+    }
+    if (!(auto && !net)) toast(stopReq ? "Pemuatan dihentikan" : "Selesai: " + ok + " provinsi dimuat" + (fails.length ? ", " + fails.length + " gagal" : ""), !!fails.length);
   }
   async function loadProvList(list) {
+    if (list.length !== 1) return loadAll(false);
     if (provBusy) return toast("Sedang memuat data provinsi, tunggu sebentar…", true);
-    provBusy = true; var ok = 0;
+    var pn = list[0]; provBusy = true; stopReq = false; diagMsg = ""; render();
     try {
-      if (!whereUse) { var pr = await probe(); if (!pr.ok) { diagMsg = pr.msg; toast("Gagal memuat — lihat keterangan di bawah \"Per Kabupaten\"", true); return; } whereUse = pr.where; }
-      diagMsg = ""; for (var i = 0; i < list.length; i++) { try { ok += await loadProv(list[i], list.length > 1); } catch (e) {} render(); } }
-    finally { provBusy = false; render(); }
-    if (list.length > 1) toast("Selesai: " + ok + " dari " + list.length + " provinsi berisi data");
+      var r = await loadOne(pn);
+      var gg = G.filter(function (g) { return g.prov === pn; })[0];
+      if (gg) { setKab(gg, true); toast(pn + ": " + gg.items.length + " ruas dimuat & ditampilkan"); }
+      else toast(pn + ": tidak ada data jalan nasional" + (r === "empty" ? "" : ""), true);
+    } catch (e) { diagMsg = pn + ": " + msgOf(e); toast(pn + " gagal — " + msgOf(e), true); }
+    finally { provBusy = false; progress(""); render(); }
   }
-  function provsEmpty() { return Object.keys(PBB).filter(function (n) { return !G.some(function (g) { return provOf(g) === n; }); }); }
+  function toggleAll() { if (provBusy) { stopReq = true; ls(LS_AUTO, false); progress("Menghentikan…"); return; } loadAll(false); }
   function onClick(e) {
     var t = e.target.closest("[data-a]"); if (!t) return;
     var kEl = t.closest(".jk-k"), g = kEl && G[+kEl.dataset.g], rEl = t.closest(".jk-r"), it = rEl && g && g.items[+rEl.dataset.i], a = t.dataset.a;
     e.stopPropagation();
-    if (a === "provLoad") { loadProvList([t.dataset.p]); return render(); }
-    if (a === "provAll") { loadProvList(provsEmpty()); return render(); }
+    if (a === "provLoad") { loadProvList([t.dataset.p]); return; }
+    if (a === "provAll") { toggleAll(); return; }
     if (a === "prov") { var pn = t.dataset.p, cur = provOpen[pn]; if (cur === undefined) cur = G.some(function (x) { return provOf(x) === pn; }); provOpen[pn] = !cur; return render(); }
     if (a === "open") { openKab[kEl.dataset.g] = !openKab[kEl.dataset.g]; return render(); }
     if (a === "kab") { setKab(g, !kabOn(g)); return render(); }
@@ -478,22 +637,28 @@
       '<div id="jkSticky"><div class="jk-bar"><b>Per Kabupaten</b><button class="jk-b jk-on" id="jkAllOn" title="Tampilkan semua ruas di peta">Hidupkan semua</button><button class="jk-b jk-off" id="jkAllOff" title="Matikan semua ruas di peta">Matikan semua</button></div>' +
       '<div class="jk-sta2"><button class="jk-b jk-on" id="jkProvAll" data-a="provAll" title="Muat jalan nasional semua provinsi yang masih kosong dari server BIG (butuh internet; hasil disimpan di perangkat)" style="width:100%">Muat semua provinsi</button></div>' +
       '<div class="jk-sta2"><button class="jk-b jk-on" id="jkStaOn" title="Tampilkan semua ruas yang sudah ber-STA">Hidupkan semua STA</button><button class="jk-b jk-off" id="jkStaOff" title="Sembunyikan semua ruas yang sudah ber-STA">Matikan semua STA</button></div>' +
-      '<small id="jkInfo" style="color:#8fa6bd;font-size:11px"></small>' +
+      '<small id="jkInfo" style="color:#8fa6bd;font-size:11px"></small><small id="jkProg" style="color:#38bdf8;font-size:11px"></small>' +
       '<input id="jkQ" type="search" placeholder="Cari kabupaten / ruas / No. Link…" autocomplete="off"></div><div id="jkList" style="display:flex;flex-direction:column;gap:8px"></div>';
     body.appendChild(box);
     try { linkMap = ls(LS_LINK) || {}; } catch (e) { linkMap = {}; }
     document.getElementById("jkHide").onclick = function () { ls(LS_HIDE, !ls(LS_HIDE)); applyTop(); };
     document.getElementById("jkAllOff").onclick = function () { setAllLines(false); };
-    document.getElementById("jkProvAll").onclick = function (ev) { ev.stopPropagation(); loadProvList(provsEmpty()); };
+    document.getElementById("jkProvAll").onclick = function (ev) { ev.stopPropagation(); toggleAll(); };
     document.getElementById("jkAllOn").onclick = function () { setAllLines(true); };
     document.getElementById("jkStaOn").onclick = function () { setStaAll(true); };
     document.getElementById("jkStaOff").onclick = function () { setStaAll(false); };
     document.getElementById("jkQ").oninput = function () { filterQ = this.value; render(); };
     document.getElementById("jkList").addEventListener("click", onClick);
     var jb = document.getElementById("jnBtn"); if (jb) jb.addEventListener("click", function () { setTimeout(render, 50); });
-    applyTop(); render(); return true;
+    applyTop(); render();
+    /* otomatis: isi data tiap provinsi di latar belakang (hemat: lewati bila mode hemat data / offline / pernah dihentikan pengguna) */
+    try {
+      var cn = navigator.connection || {};
+      if (ls(LS_AUTO) !== false && navigator.onLine !== false && !cn.saveData) setTimeout(function () { loadAll(true); }, 1500);
+    } catch (e) {}
+    return true;
   }
-  W.PQ_JNKAB = { openSta: openSta, build: build, decode: decode, render: render };
+  W.PQ_JNKAB = { openSta: openSta, build: build, decode: decode, render: render, loadAll: function () { return loadAll(false); }, _t: { simplify: simplify, chain: chain, encode: encode, osmToBy: osmToBy } };
   if (typeof document !== "undefined" && document.addEventListener) {
     var n = 0, t = setInterval(function () { if (mount() || ++n > 40) clearInterval(t); }, 500);
   }
