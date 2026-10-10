@@ -29,7 +29,7 @@
 
   /* ---------- state ---------- */
   var S = { rid: null, did: "mini4p", tujuan: "ortho", sx: "auto", t: 0, playing: false, race: false, follow: true, sv: true };
-  var R = null, rows = [], layer = null, mk = null, trail = null, foot = null, raceMk = [], raf = 0, last = null, svAt = null, svT = 0, panel = null, trailN = 0;
+  var fc = 0, R = null, rows = [], layer = null, mk = null, trail = null, foot = null, raceMk = [], raf = 0, last = null, svAt = null, svT = 0, panel = null, trailN = 0;
 
   function loadRoad(id) {
     var r = ROADS().filter(function (x) { return x.id === id; })[0];
@@ -37,7 +37,8 @@
     var pts = r.points.map(function (p) { return { lat: +p.lat, lng: +p.lng }; }).filter(function (p) { return isFinite(p.lat) && isFinite(p.lng); }), cum = [0];
     if (pts.length < 2) return null;
     for (var i = 1; i < pts.length; i++) cum.push(cum[i - 1] + mtr(pts[i - 1], pts[i]));
-    return { id: id, name: r.name || id, color: r.color || "#22d3ee", pts: pts, cum: cum, L: cum[cum.length - 1] || 1 };
+    var km0 = 0; for (var k = 0; k < r.points.length && k < cum.length; k++) { var kv = r.points[k] && r.points[k].km; if (kv !== undefined && kv !== null && kv !== "" && !isNaN(kv)) { km0 = kv * 1000 - cum[k]; break; } }
+    return { id: id, name: r.name || id, color: r.color || "#22d3ee", pts: pts, cum: cum, L: cum[cum.length - 1] || 1, km0: km0 };
   }
   function at(d) {
     var c = R.cum, lo = 0, hi = c.length - 1; d = Math.max(0, Math.min(R.L, d));
@@ -45,6 +46,9 @@
     var a = R.pts[lo], b = R.pts[hi], seg = c[hi] - c[lo] || 1, f = (d - c[lo]) / seg;
     return { lat: a.lat + (b.lat - a.lat) * f, lng: a.lng + (b.lng - a.lng) * f, hd: brg(a, b) };
   }
+  function sta(d) { var v = Math.max(0, Math.round(R.km0 + d)), m = v % 1000; return Math.floor(v / 1000) + "+" + (m < 10 ? "00" : m < 100 ? "0" : "") + m; }
+  function dd(s) { return s <= R.L ? s : 2 * R.L - s; }
+  function short(n) { return n.replace(/^DJI |^Autel |^Parrot |^AgEagle /, "").split(" ").slice(0, 2).join(" "); }
   function rt(s) { var p = at(s <= R.L ? s : 2 * R.L - s); if (s > R.L) p.hd = (p.hd + 180) % 360; return p; }   /* posisi pulang-pergi */
 
   /* ---------- metrik tiap drone (memakai perencana misi) ---------- */
@@ -80,7 +84,7 @@
     if (S.race) {
       raceMk = rows.map(function (x, i) {
         var m = L.circleMarker([p0.lat, p0.lng], { radius: 7, color: "#fff", weight: 2, fillColor: "hsl(" + Math.round(i * 360 / rows.length) + ",85%,58%)", fillOpacity: 1, zIndexOffset: 3000 }).addTo(M);
-        m.bindTooltip(x.d.n.replace(/^DJI |^Autel |^Parrot /, "").split(" ").slice(0, 2).join(" "), { permanent: true, direction: "top", offset: [0, -6], className: "pqds-tt" });
+        m.bindTooltip(short(x.d.n) + "<br>" + f1(x.v) + " m/s · STA " + sta(0), { permanent: true, direction: "top", offset: [0, -6], className: "pqds-tt" });
         return m;
       });
     } else {
@@ -88,20 +92,21 @@
       trail = L.polyline([[p0.lat, p0.lng]], { color: "#fde047", weight: 4, opacity: .95, interactive: false }).addTo(M); trailN = 0;
       foot = L.circle([p0.lat, p0.lng], { radius: c.r.wf / 2, color: "#34d399", weight: 1, fillColor: "#34d399", fillOpacity: .18, interactive: false }).addTo(M);
       mk = L.marker([p0.lat, p0.lng], { icon: L.divIcon({ className: "", iconSize: [40, 40], iconAnchor: [20, 20], html: '<div id="pqdsIc" style="width:40px;height:40px">' + ICON + "</div>" }), zIndexOffset: 5000, interactive: false }).addTo(M);
+      mk.bindTooltip(f1(c.v) + " m/s · STA " + sta(0), { permanent: true, direction: "right", offset: [18, 0], className: "pqds-tt" });
     }
   }
 
   /* ---------- loop simulasi ---------- */
   function frame() {
-    var M = MAPX(), L2 = 2 * R.L, c = cur(), done = false, p;
+    var M = MAPX(), L2 = 2 * R.L, c = cur(), done = false, p; fc++;
     if (S.race) {
       var all = true;
-      rows.forEach(function (x, i) { var s = Math.min(L2, x.v * S.t); p = rt(s); raceMk[i].setLatLng([p.lat, p.lng]); if (s < L2) all = false; x.fin = s >= L2 ? Math.min(S.t, x.T) : null; });
+      rows.forEach(function (x, i) { var s = Math.min(L2, x.v * S.t); p = rt(s); raceMk[i].setLatLng([p.lat, p.lng]); x.sta = sta(dd(s)); if (fc % 4 === 0) raceMk[i].setTooltipContent(esc(short(x.d.n)) + "<br>" + f1(x.v) + " m/s · STA " + x.sta); if (s < L2) all = false; x.fin = s >= L2 ? Math.min(S.t, x.T) : null; });
       done = all; hud(null); raceBoard();
       if (S.follow) { var mx = Math.max.apply(null, rows.map(function (x) { return Math.min(L2, x.v * S.t); })); p = rt(mx); M.panTo([p.lat, p.lng], { animate: false }); }
     } else {
       var s = Math.min(L2, c.v * S.t); p = rt(s); done = s >= L2;
-      mk.setLatLng([p.lat, p.lng]); foot.setLatLng([p.lat, p.lng]);
+      mk.setLatLng([p.lat, p.lng]); foot.setLatLng([p.lat, p.lng]); if (fc % 3 === 0) mk.setTooltipContent(f1(c.v) + " m/s · STA " + sta(dd(s)));
       var ic = $("pqdsIc"); if (ic) ic.style.transform = "rotate(" + p.hd.toFixed(0) + "deg)";
       if (++trailN % 3 === 0 || done) trail.addLatLng([p.lat, p.lng]);
       if (S.follow) M.panTo([p.lat, p.lng], { animate: false });
@@ -135,13 +140,13 @@
     if (S.race) { e.innerHTML = '<div class="g"><span><i>waktu</i> ' + fmtT(S.t) + '</span><span><i>percepatan</i> ×' + Math.round(speedX()) + '</span><span><i>jarak</i> ' + f1(2 * R.L / 1000, 2) + ' km pulang-pergi</span></div>'; return; }
     var c = cur(); if (!c) return;
     var s = o ? o.s : 0, hd = o ? o.p.hd : 0, tt = Math.min(S.t, c.T), cyc = Math.min(c.sort - 1, Math.floor(tt / c.use)), bt = Math.max(0, 100 - (tt - cyc * c.use) / (c.d.fly * 60) * 100);
-    e.innerHTML = '<div class="g"><span><i>tinggi</i> ' + Math.round(c.H) + ' m</span><span><i>kec.</i> ' + f1(c.v) + ' m/s</span><span><i>arah</i> ' + Math.round(hd) + '°</span><span><i>' + (s <= R.L ? "pergi" : "pulang") + '</i> ' + f1((s <= R.L ? s : 2 * R.L - s) / 1000, 2) + ' km</span><span><i>waktu</i> ' + fmtT(tt) + ' / ' + fmtT(c.T) + '</span><span><i>sortie</i> ' + (cyc + 1) + '/' + c.sort + '</span><span><i>×</i>' + Math.round(speedX()) + '</span></div>' +
+    e.innerHTML = '<div class="g"><span><i>tinggi</i> ' + Math.round(c.H) + ' m</span><span><i>kec.</i> ' + f1(c.v) + ' m/s</span><span><i>STA</i> ' + sta(dd(s)) + '</span><span><i>arah</i> ' + Math.round(hd) + '°</span><span><i>' + (s <= R.L ? "pergi" : "pulang") + '</i> ' + f1((s <= R.L ? s : 2 * R.L - s) / 1000, 2) + ' km</span><span><i>waktu</i> ' + fmtT(tt) + ' / ' + fmtT(c.T) + '</span><span><i>sortie</i> ' + (cyc + 1) + '/' + c.sort + '</span><span><i>×</i>' + Math.round(speedX()) + '</span></div>' +
       '<div class="bar"><div style="width:' + bt.toFixed(0) + '%;background:' + (bt < 30 ? "#f87171" : bt < 50 ? "#fde047" : "#34d399") + '"></div></div><div class="sub">Baterai ' + Math.round(bt) + '%' + (bt <= 30 ? " — ⚠ ganti baterai (cadangan 30%)" : "") + '</div>';
   }
   function raceBoard() {
     var e = $("pqdsRace"); if (!e) return;
     var o = rows.slice().sort(function (a, b) { return (a.fin == null ? 1e12 : a.fin) - (b.fin == null ? 1e12 : b.fin) || a.d.p[0] - b.d.p[0]; }), n = 0;
-    e.innerHTML = o.map(function (x) { var i = rows.indexOf(x); return '<div class="rr"><span style="color:hsl(' + Math.round(i * 360 / rows.length) + ',85%,62%)">●</span> ' + (x.fin != null ? "🏁 " + (++n) + ". " : "") + esc(x.d.n) + '<b>' + (x.fin != null ? fmtT(x.fin) : fmtT(x.T)) + "</b></div>"; }).join("");
+    e.innerHTML = o.map(function (x) { var i = rows.indexOf(x); return '<div class="rr"><span style="color:hsl(' + Math.round(i * 360 / rows.length) + ',85%,62%)">●</span> ' + (x.fin != null ? "🏁 " + (++n) + ". " : "") + esc(x.d.n) + ' <span class="sub">' + f1(x.v) + ' m/s · STA ' + (x.sta || sta(0)) + '</span><b>' + (x.fin != null ? fmtT(x.fin) : fmtT(x.T)) + "</b></div>"; }).join("");
   }
 
   /* ---------- ekspor misi ---------- */
@@ -192,7 +197,7 @@
       '<select id="pqdsTj">' + Object.keys(P).map(function (k) { return '<option value="' + k + '"' + (k === S.tujuan ? " selected" : "") + ">" + esc(P[k].t) + "</option>"; }).join("") + "</select>" +
       '<select id="pqdsSx" title="Percepatan waktu"><option value="auto">Kecepatan: otomatis (±45 dtk)</option><option value="1">×1 (waktu nyata)</option><option value="10">×10</option><option value="60">×60</option><option value="300">×300</option></select>' +
       '<div class="sub">Drone termurah → termahal. Simulasi = belum perlu punya alat. Rute pulang-pergi ' + f1(2 * R.L / 1000, 2) + ' km.</div><div class="ls">' +
-      rows.map(function (x) { var st = x.r.st; return '<div class="dr ' + (x.d.id === S.did ? "sel " : "") + (st === "x" ? "x" : "") + '" data-id="' + x.d.id + '" title="' + esc((x.r.fail.concat(x.r.warn)).join("; ")) + '"><span>' + (st === "ok" ? "✔" : st === "w" ? "⚠" : "✖") + '</span><div class="n"><b>' + esc(x.d.n) + '</b><span class="sub">' + esc(x.d.tier) + " · " + x.d.fly + " mnt</span></div><div class='m'><span class='pz'>Rp " + idr(x.d.p[0]) + "–" + idr(x.d.p[1]) + "</span><br>" + fmtT(x.T) + " · " + x.sort + " sortie</div></div>"; }).join("") + "</div>" +
+      rows.map(function (x) { var st = x.r.st; return '<div class="dr ' + (x.d.id === S.did ? "sel " : "") + (st === "x" ? "x" : "") + '" data-id="' + x.d.id + '" title="' + esc((x.r.fail.concat(x.r.warn)).join("; ")) + '"><span>' + (st === "ok" ? "✔" : st === "w" ? "⚠" : "✖") + '</span><div class="n"><b>' + esc(x.d.n) + '</b><span class="sub">' + esc(x.d.tier) + " · " + x.d.fly + " mnt · " + f1(x.v) + " m/s (" + Math.round(x.v * 3.6) + " km/j)</span></div><div class='m'><span class='pz'>Rp " + idr(x.d.p[0]) + "–" + idr(x.d.p[1]) + "</span><br>" + fmtT(x.T) + " · " + x.sort + " sortie</div></div>"; }).join("") + "</div>" +
       '<div id="pqdsRace"></div>' +
       (S.sv && !S.race ? '<iframe id="pqdsSv" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe><div class="sub">Street View = pandangan level jalan di titik drone (arah mengikuti heading).</div>' : "") +
       '<div class="sub" style="margin-top:6px">' + (R.L > 500 ? "⚠ Ruas > 500 m: melampaui jarak pandang (VLOS) — perlu pengamat/pindah titik lepas-landas per sortie. " : "") + "Ikon atas: 🧮 perencana biaya · 🌐 KML · CSV Litchi untuk drone Anda. Harga & spesifikasi perkiraan; patuhi izin & batas tinggi 120 m.</div></div>";
