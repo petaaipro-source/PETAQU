@@ -8,8 +8,8 @@
   if (window.__pqAdmin) return;
   window.__pqAdmin = 1;
 
-  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null, notice = null, lgOk = true, edOpen = {}, cek = {}, selTab = "", sortKey = "tgl", sortDir = -1, vis = [], cbs = {};
-  var SORT_AWAL = { abjad: 1, tgl: -1, paket: 1 };
+  var SK = "pq_cloud_session", btn = null, labelEl = null, panel = null, poll = 0, adminOk = false, tab = "tunggu", rows = [], lastErr = null, q = "", prevTunggu = -1, diag = null, notice = null, lgOk = true, edOpen = {}, cek = {}, selTab = "", sortKey = "tgl", sortDir = -1, vis = [], cbs = {}, fSaran = "", gandaIdx = {};
+  var SORT_AWAL = { abjad: 1, tgl: -1, paket: 1, skor: -1 };
   var $ = function (id) { return document.getElementById(id); };
   function sess() { try { return JSON.parse(localStorage.getItem(SK)); } catch (e) { return null; } }
   function cfg() { return window.PETAQU_CFG; }
@@ -222,6 +222,7 @@
 
   function group(r) { return r.role === "pending" || r.role === "trial" ? "tunggu" : r.role === "blocked" ? "blok" : berakhir(r) ? "berakhir" : "aktif"; }
   function cocok(r) {
+    if (tab === "tunggu" && fSaran && (r.saran || "waspada") !== fSaran) return false;
     if (!q) return true;
     var s = [r.email, r.nama, r.instansi, r.hp, r.paket].join(" ").toLowerCase();
     return q.split(/\s+/).every(function (k) { return s.indexOf(k) >= 0; });
@@ -252,6 +253,20 @@
     si.placeholder = "Cari nama, instansi, email, WhatsApp…"; si.value = q;
     si.oninput = function () { q = si.value.trim().toLowerCase(); var pos = si.selectionStart; renderList(); si.focus(); try { si.setSelectionRange(pos, pos); } catch (e) { /* abaikan */ } };
     tools.appendChild(si);
+    if (tab === "tunggu") {   // saring cepat menurut saran skor kepercayaan
+      var cs = {}; rows.forEach(function (r) { if (group(r) === "tunggu") { var k = r.saran || "waspada"; cs[k] = (cs[k] || 0) + 1; } });
+      var ks = Object.keys(SARAN).filter(function (k) { return cs[k]; });
+      if (ks.length > 1 || (fSaran && ks.length)) {
+        var cw = el("div", "flex:1 1 100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center");
+        cw.appendChild(el("span", "font-size:11px;color:#94a3b8", "Saring:"));
+        ks.forEach(function (k) {
+          var on = fSaran === k, w = SARAN[k][1];
+          var c = el("button", "border-radius:14px;padding:3px 10px;cursor:pointer;font:700 11.5px system-ui;border:1px solid " + w + "88;background:" + (on ? w : w + "18") + ";color:" + (on ? "#04121a" : w), SARAN[k][0] + " (" + cs[k] + ")");
+          c.onclick = function () { fSaran = on ? "" : k; render(); }; cw.appendChild(c);
+        });
+        tools.appendChild(cw);
+      }
+    }
     var saran = rows.filter(function (r) { return group(r) === "tunggu" && r.saran === "setujui" && r.role !== "blocked"; });
     if (tab === "tunggu" && saran.length) {
       var bk = el("button", btnCss("#16a34a", "#fff"), "Setujui " + saran.length + " yang disarankan");
@@ -283,7 +298,8 @@
     if (lastErr && !rows.length) { list.appendChild(errCard(lastErr)); vis = []; renderBar(); return; }
     var rk = (tab === "aktif" || tab === "berakhir") ? ringkasan() : null; if (rk) list.appendChild(rk);
     if (notice) list.appendChild(noticeBox());
-    if (selTab !== tab) { cek = {}; selTab = tab; }
+    if (selTab !== tab) { cek = {}; selTab = tab; if (tab !== "tunggu" && sortKey === "skor") { sortKey = "tgl"; sortDir = -1; } }
+    gandaIdx = {}; rows.forEach(function (r) { gKeys(r).forEach(function (k) { (gandaIdx[k] = gandaIdx[k] || []).push(r); }); });
     var ada = {}; rows.forEach(function (r) { ada[r.id] = 1; }); Object.keys(cek).forEach(function (k) { if (!ada[k]) delete cek[k]; });
     var sh = urut(rows.filter(function (r) { return group(r) === tab && cocok(r); }));
     vis = sh; cbs = {};
@@ -297,6 +313,7 @@
   function kunci(r) {
     if (sortKey === "abjad") return namaR(r).toLowerCase();
     if (sortKey === "tgl") return Date.parse(r.created_at) || 0;
+    if (sortKey === "skor") return +r.skor || 0;
     if (r.aktif_sampai) return Date.parse(String(r.aktif_sampai).slice(0, 10)) || 0;
     return r.paket_bulan ? Date.parse(hariIni()) + r.paket_bulan * 30 * 864e5 : Infinity;   // belum disetujui: pakai paket yang diminta; tanpa batas = paling akhir
   }
@@ -309,7 +326,8 @@
   var SORT_LBL = {
     abjad: ["Abjad", { 1: "A → Z", "-1": "Z → A" }],
     tgl: ["Tanggal daftar", { 1: "Terlama", "-1": "Terbaru" }],
-    paket: ["Masa paket", { 1: "Segera habis", "-1": "Terpanjang" }]
+    paket: ["Masa paket", { 1: "Segera habis", "-1": "Terpanjang" }],
+    skor: ["Skor", { 1: "Terendah", "-1": "Tertinggi" }]
   };
   function tandai(r) {   // sinkronkan tampilan kartu dengan status centang tanpa merender ulang daftar
     var o = cbs[r.id]; if (!o) return;
@@ -336,7 +354,8 @@
 
     var sw = el("div", "display:flex;align-items:center;gap:5px;flex-wrap:wrap");
     sw.appendChild(el("span", "font-size:11px;color:#94a3b8", "Urutkan:"));
-    ["abjad", "tgl", "paket"].forEach(function (k) {
+    ["abjad", "tgl", "paket", "skor"].forEach(function (k) {
+      if (k === "skor" && tab !== "tunggu") return;
       var on = sortKey === k, d = SORT_LBL[k];
       var b = el("button", "border-radius:14px;padding:4px 10px;cursor:pointer;font:600 11.5px system-ui;white-space:nowrap;border:1px solid " + (on ? "#22d3ee" : "#ffffff30") + ";background:" + (on ? "#22d3ee22" : "transparent") + ";color:" + (on ? "#67e8f9" : "#e6f1ff"),
         on ? d[0] + ": " + d[1][sortDir] + (sortDir === 1 ? " ↑" : " ↓") : d[0] + " ⇅");
@@ -348,6 +367,10 @@
 
     var aks = el("div", "display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto");
     if (n) aks.appendChild(el("span", "font:700 12px system-ui;color:#67e8f9", n + " dipilih"));
+    var ex = el("button", btnCss("transparent", "#e6f1ff", "#ffffff40"), "Ekspor CSV" + (n ? " (" + n + ")" : ""));
+    ex.title = n ? "Unduh akun yang dicentang sebagai CSV" : "Unduh semua akun yang tampil sebagai CSV";
+    ex.onclick = function () { var a = n ? tp : pilih.concat(vis.filter(function (r) { return r.role === "admin"; })); csvSel(a); T("CSV diunduh (" + a.length + " akun)"); };
+    aks.appendChild(ex);
     var punyaHp = tp.filter(function (r) { return r.hp; });
     if (n) {
       var wm = el("button", btnCss("transparent", "#4ade80", "#4ade80"), "WhatsApp" + (semua0(tp, pilih) ? " semua" : "") + " (" + punyaHp.length + ")");
@@ -371,6 +394,24 @@
     hp.onclick = function () { if (!n) { T("Centang akun dulu, atau tekan “Pilih semua”"); return; } hapusMassal(hp, tp); };
     aks.appendChild(hp);
     bar.appendChild(aks);
+  }
+  function gKeys(r) {
+    var k = [], nm = String(r.nama || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (r.hp) k.push("h:" + r.hp); if (nm.length >= 4) k.push("n:" + nm);
+    return k;
+  }
+  function ganda(r) {   // akun lain dengan nomor WhatsApp atau nama yang sama
+    var o = {}; gKeys(r).forEach(function (k) { (gandaIdx[k] || []).forEach(function (x) { if (x.id !== r.id) o[x.id] = x; }); });
+    return Object.keys(o).map(function (i) { return o[i]; });
+  }
+  function csvSel(a) {
+    var H = ["Nama", "Email", "WhatsApp", "Status", "Instansi", "Tujuan", "Tanggal daftar", "Aktif sampai", "Paket diminta (bulan)", "Skor", "Saran"];
+    var esc = function (v) { v = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+    var L = [H.map(esc).join(",")].concat(a.map(function (r) {
+      return [r.nama, r.email, r.hp ? "+" + r.hp : "", (STATUS[r.role] || [r.role])[0], r.instansi, r.tujuan, String(r.created_at || "").slice(0, 10), r.aktif_sampai, r.paket_bulan, r.skor, r.saran].map(esc).join(",");
+    }));
+    var b = new Blob(["\ufeff" + L.join("\r\n")], { type: "text/csv;charset=utf-8" }), u = URL.createObjectURL(b), x = document.createElement("a");
+    x.href = u; x.download = "petaqu-pengguna-" + tab + "-" + hariIni() + ".csv"; document.body.appendChild(x); x.click(); x.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 3000);
   }
   function semua0(tp, pilih) { return tp.length > 0 && tp.length === pilih.length; }
   function waLink(r) {   // pesan menyesuaikan status akun, sama seperti tombol WhatsApp di kartu
@@ -483,6 +524,12 @@
     if (group(r) === "tunggu" && r.saran && SARAN[r.saran]) {
       var sg = SARAN[r.saran];
       meta.appendChild(el("span", "display:inline-block;margin-right:8px;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;background:" + sg[1] + "22;color:" + sg[1], sg[0] + " · skor " + (r.skor || 0)));
+    }
+    var gd = ganda(r);
+    if (gd.length && r.role !== "admin") {
+      var gc = el("span", "display:inline-block;margin-right:8px;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#a78bfa22;color:#c4b5fd;border:1px solid #a78bfa66", "Mungkin ganda (" + gd.length + ")");
+      gc.title = "Nomor WhatsApp / nama sama dengan: " + gd.map(function (x) { return (x.email || x.nama) + " [" + (STATUS[x.role] || [x.role])[0] + "]"; }).join(", ");
+      meta.appendChild(gc);
     }
     meta.appendChild(document.createTextNode("daftar " + rel(r.created_at) + " · masuk terakhir " + rel(r.last_sign_in_at) + (r.provider ? " · " + r.provider : "") + (r.trial_dipakai ? " · sudah pakai uji coba" : "")));
     info.appendChild(meta);
