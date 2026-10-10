@@ -332,7 +332,7 @@
 
   /* ---------- muat jalan nasional semua provinsi (server BIG, hanya saat diminta) ---------- */
   var BIGQ = "https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/547/query";
-  var BIGW = "AUTRJL=1 AND (TOLRJL IS NULL OR TOLRJL<>1)";
+  var BIGW = "AUTRJL=1 AND (TOLRJL IS NULL OR TOLRJL<>1)", BIGW2 = "FGSRJL IN (1,2) AND (TOLRJL IS NULL OR TOLRJL<>1)", lastErr = "";
   var LS_PV = "pq_jnprov_v1", NAS_COLOR = "#38bdf8";
   /* kotak perkiraan [selatan, barat, utara, timur]; segmen ditetapkan ke provinsi berpusat terdekat di antara kotak yang memuatnya */
   var PBB = {"Aceh":[1.9,94.9,6.1,98.4],"Sumatera Utara":[-0.1,97,4.4,100.5],"Sumatera Barat":[-3.4,98.5,0.9,101.9],"Riau":[-1.2,100,2.5,103.9],"Kepulauan Riau":[-1.3,103.4,4.2,109.2],"Jambi":[-2.8,101,-0.7,104.6],"Sumatera Selatan":[-4.9,102.1,-1.6,106.2],"Kepulauan Bangka Belitung":[-3.2,105,-1.4,108.3],"Bengkulu":[-5.6,101,-2.2,103.9],"Lampung":[-6.2,103.5,-3.7,106.3],"DKI Jakarta":[-6.4,106.65,-5.9,107],"Banten":[-7,105.1,-5.8,106.8],"Jawa Barat":[-7.9,106.4,-5.9,108.9],"Jawa Timur":[-8.8,110.9,-6.7,114.7],"Bali":[-8.9,114.4,-8,115.8],"Nusa Tenggara Barat":[-9.2,115.7,-8,119.2],"Nusa Tenggara Timur":[-11,118.9,-8.1,125.3],"Kalimantan Barat":[-3.1,108.7,2.1,114.3],"Kalimantan Tengah":[-3.6,110.7,0,115.9],"Kalimantan Selatan":[-4.3,114.3,-1.3,116.6],"Kalimantan Timur":[-2.6,113.8,2.4,119.1],"Kalimantan Utara":[1,114.8,4.4,118.1],"Sulawesi Utara":[0.2,123,5.6,127.2],"Gorontalo":[0.2,121.1,1,123.6],"Sulawesi Tengah":[-3.7,119.4,1.5,124.4],"Sulawesi Barat":[-3.6,118.7,-1,119.9],"Sulawesi Selatan":[-7.9,118.9,-1.9,121.9],"Sulawesi Tenggara":[-6.3,120.8,-2.8,124.6],"Maluku":[-8.4,125.7,-2.7,134.9],"Maluku Utara":[-2.5,124.2,2.6,129.2],"Papua":[-4,136,-1,141.1],"Papua Barat":[-4.3,131,-0.5,135.2],"Papua Barat Daya":[-1.7,129.3,0,132.6],"Papua Selatan":[-9.2,137.7,-5,141.1],"Papua Tengah":[-5.2,134.5,-3,138.5],"Papua Pegunungan":[-5,137.5,-3.6,141]};
@@ -359,13 +359,13 @@
     items.sort(function (a, b) { return b.km - a.km; });
     G.push({ ki: ki, name: "Jalan Nasional " + pn, n: pn, prov: pn, items: items, km: items.reduce(function (t, v) { return t + v.km; }, 0) });
   }
-  async function fetchProv(pn) {
+  async function fetchProv(pn, where) {
     var b = PBB[pn], T = 2, by = {}, seenId = {}, jobs = [], i, j, fail = 0;
     for (i = b[0]; i < b[2]; i += T) for (j = b[1]; j < b[3]; j += T) jobs.push([i, j, Math.min(i + T, b[2]), Math.min(j + T, b[3])]);
     async function cell(c) {
       var off = 0;
       for (var pg = 0; pg < 4; pg++) {
-        var q = new URLSearchParams({ where: BIGW, geometry: c[1] + "," + c[0] + "," + c[3] + "," + c[2], geometryType: "esriGeometryEnvelope", inSR: "4326", outSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "OBJECTID,NAMRJL", returnGeometry: "true", maxAllowableOffset: "0.0006", resultOffset: String(off), resultRecordCount: "1000", f: "geojson" });
+        var q = new URLSearchParams({ where: where, geometry: c[1] + "," + c[0] + "," + c[3] + "," + c[2], geometryType: "esriGeometryEnvelope", inSR: "4326", outSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "OBJECTID,NAMRJL", returnGeometry: "true", maxAllowableOffset: "0.0006", resultOffset: String(off), resultRecordCount: "1000", f: "geojson" });
         var ac = new AbortController(), to = setTimeout(function () { ac.abort(); }, 25000), r, jn;
         try { r = await fetch(BIGQ + "?" + q.toString(), { signal: ac.signal }); if (!r.ok) throw new Error("HTTP " + r.status); jn = await r.json(); } finally { clearTimeout(to); }
         if (jn.error) throw new Error(jn.error.message || "server error");
@@ -388,7 +388,7 @@
       }
     }
     for (i = 0; i < jobs.length; i += 3) {
-      await Promise.all(jobs.slice(i, i + 3).map(function (c) { return cell(c).catch(function () { fail++; }); }));
+      await Promise.all(jobs.slice(i, i + 3).map(function (c) { return cell(c).catch(function (er) { fail++; lastErr = (er && er.message) || String(er); }); }));
       var inf = document.getElementById("jkInfo"); if (inf) inf.textContent = "Memuat " + pn + "… " + Math.min(jobs.length, i + 3) + "/" + jobs.length + " kotak";
     }
     return { by: by, fail: fail, total: jobs.length };
@@ -397,11 +397,15 @@
     if (!PBB[pn] || !G) return 0;
     var c = pvLoad();
     if (c[pn]) { addProvGroup(pn, c[pn]); return 1; }
-    var r = await fetchProv(pn);
-    if (!Object.keys(r.by).length) { if (!quiet) toast(pn + ": server tidak mengembalikan data" + (r.fail ? " (" + r.fail + " kotak gagal, cek koneksi)" : ""), true); return 0; }
+    var r = await fetchProv(pn, BIGW);
+    if (!Object.keys(r.by).length) r = await fetchProv(pn, BIGW2); /* cadangan: arteri + kolektor primer = jalan nasional */
+    if (!Object.keys(r.by).length) { if (!quiet) toast(pn + ": tidak ada data dari server" + (lastErr ? " — " + lastErr : "") + (r.fail ? " (" + r.fail + " kotak gagal)" : ""), true); return 0; }
     if (!r.fail) { c[pn] = r.by; pvSave(); }
     addProvGroup(pn, r.by);
-    if (!quiet) toast(pn + ": " + Object.keys(r.by).length + " ruas dimuat" + (r.fail ? " (sebagian kotak gagal, tekan lagi untuk melengkapi)" : ""));
+    if (!quiet) {
+      var gg = G.filter(function (g) { return g.prov === pn; })[0]; if (gg) setKab(gg, true);
+      toast(pn + ": " + Object.keys(r.by).length + " ruas dimuat & ditampilkan" + (r.fail ? " (sebagian kotak gagal, tekan lagi untuk melengkapi)" : ""));
+    }
     return 1;
   }
   async function loadProvList(list) {
