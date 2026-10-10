@@ -118,11 +118,11 @@
   function play() { if (!R) return; if (!raf && !S.playing) { var done = S.race ? S.t >= Math.max.apply(null, rows.map(function (x) { return x.T; })) : S.t >= cur().T; if (done) reset(); } S.playing = true; setPlayBtn(); cancelAnimationFrame(raf); last = null; raf = requestAnimationFrame(tick); }
   function pause() { S.playing = false; setPlayBtn(); }
   function reset() { S.playing = false; S.t = 0; cancelAnimationFrame(raf); raf = 0; buildMap(); setPlayBtn(); hud(null); svAt = null; var b = $("pqdsRace"); if (b) b.innerHTML = ""; if (!S.race) { var p = rt(0); svSync(p, false, true); } }
-  function setPlayBtn() { var b = $("pqdsPlay"); if (b) b.textContent = S.playing ? "⏸ Jeda" : "▶ Terbang"; }
+  function setPlayBtn() { var b = $("pqdsPlay"); if (b) b.innerHTML = '<i class="fa-solid ' + (S.playing ? "fa-pause" : "fa-play") + '"></i>'; }
 
   /* ---------- Street View (embed tanpa kunci) ---------- */
   function svSync(p, force, first) {
-    var f = $("pqdsSv"); if (!f || !S.sv || S.race) return; var now = Date.now();
+    var f = $("pqdsSv"); if (!f || !S.sv || S.race || S.min) return; var now = Date.now();
     if (!first && !force && svAt && now - svT < 2500 && mtr(svAt, p) < 40) return;
     if (!first && svAt && now - svT < 1200 && !force) return;
     svAt = { lat: p.lat, lng: p.lng }; svT = now;
@@ -169,6 +169,8 @@
       "@media(max-width:860px){#pqDS{left:0;right:0;top:auto;bottom:0;width:auto;max-height:64dvh;border-radius:16px 16px 0 0}}" +
       "#pqDS h3{margin:0 0 6px;font-size:14px;color:#38bdf8;display:flex;justify-content:space-between;align-items:center;gap:6px}#pqDS .x{background:#ffffff14;border:1px solid #ffffff25;color:#fff;border-radius:8px;padding:3px 9px;cursor:pointer}" +
       "#pqDS select{width:100%;box-sizing:border-box;margin:2px 0 6px;background:#0b1520;border:1px solid #ffffff2a;border-radius:7px;color:#e6edf5;padding:5px;font:inherit}#pqDS .sub{color:#8aa4bd;font-size:11px}" +
+      "#pqDS .tb{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:6px}#pqDS .tb>.body{display:contents}#pqDS .tb .sp{flex:1}#pqDS .ib{width:34px;height:34px;border-radius:50%;border:1px solid #38bdf855;background:#0b1520;color:#7dd3fc;font-size:14px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center}#pqDS .ib:hover{background:#0e7490;color:#fff}#pqDS .ib.on{background:#0e7490;color:#fff;border-color:#22d3ee}#pqDS #pqdsPlay{background:#0284c7;color:#fff}" +
+      "#pqDS.min{left:auto;right:10px;top:70px;bottom:auto;width:auto;max-width:calc(100vw - 20px);padding:6px 8px;border-radius:22px;background:#07111ccc}#pqDS.min .body,#pqDS.min .tb .body{display:none}#pqDS.min .tb{margin:0;flex-wrap:nowrap}#pqDS.min #pqdsHud .bar,#pqDS.min #pqdsHud .sub,#pqDS.min #pqdsHud .ok{display:none}#pqDS.min #pqdsHud .g{font-size:11px;margin-top:4px;justify-content:center}#pqDS.min #pqdsHud .g span:nth-child(n+4){display:none}" +
       "#pqDS .row2{display:grid;grid-template-columns:1fr 1fr;gap:6px}#pqDS .bt{background:#0284c7;color:#fff;border:0;border-radius:8px;padding:7px 6px;font:700 12px system-ui;cursor:pointer}#pqDS .bt.g{background:#ffffff1a;border:1px solid #ffffff30}#pqDS .bt.on{background:#16a34a}" +
       "#pqDS .ls{max-height:210px;overflow:auto;margin:6px 0;border:1px solid #ffffff18;border-radius:10px}#pqDS .dr{display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #ffffff10;cursor:pointer}#pqDS .dr:hover{background:#38bdf814}#pqDS .dr.sel{background:#0e749088}#pqDS .dr.x{opacity:.55}" +
       "#pqDS .dr .n{flex:1;min-width:0}#pqDS .dr .n b{display:block;font-size:12px}#pqDS .dr .m{text-align:right;font-variant-numeric:tabular-nums;color:#cfe0f0;font-size:11px;white-space:nowrap}#pqDS .dr .pz{color:#fde68a}" +
@@ -178,27 +180,27 @@
       ".rowbtn-drone{color:#38bdf8!important}";
     document.head.appendChild(s);
   }
+  function ib(id, ic, t, on) { return '<button class="ib' + (on ? " on" : "") + '" id="' + id + '" title="' + t + '" aria-label="' + t + '"><i class="fa-solid ' + ic + '"></i></button>'; }
   function draw() {
-    if (!panel) return; var c = cur(), road = ROADS().filter(function (r) { return r.points && r.points.length >= 2; });
-    var P = PQDrone.purposes;
-    var h = '<h3>✈ Simulasi Terbang Drone <button class="x" id="pqdsX">✕</button></h3>' +
+    if (!panel) return; var road = ROADS().filter(function (r) { return r.points && r.points.length >= 2; }), P = PQDrone.purposes;
+    panel.classList.toggle("min", !!S.min);
+    var h = '<div class="tb">' + ib("pqdsPlay", "fa-play", "Terbang / jeda") + ib("pqdsReset", "fa-rotate-left", "Ulang dari awal") + ib("pqdsRc", "fa-flag-checkered", "Balapan semua merek", S.race) + ib("pqdsFl", "fa-location-crosshairs", "Kamera ikut drone", S.follow) + ib("pqdsSvb", "fa-street-view", "Street View di titik drone", S.sv) + ib("pqdsSvF", "fa-up-right-from-square", "Street View penuh di titik ini") +
+      '<span class="body">' + ib("pqdsPl", "fa-calculator", "Perencana misi & biaya") + ib("pqdsKml", "fa-globe", "Ekspor misi KML (Google Earth)") + ib("pqdsLit", "fa-file-csv", "Ekspor misi CSV Litchi") + "</span>" +
+      '<span class="sp"></span>' + ib("pqdsMin", S.min ? "fa-expand" : "fa-window-minimize", S.min ? "Perbesar panel" : "Kecilkan panel (lihat peta)") + ib("pqdsX", "fa-xmark", "Tutup") + "</div>" +
+      '<div id="pqdsHud"></div><div class="body">' +
       '<select id="pqdsRoad">' + road.map(function (r) { var l = 0; for (var i = 1; i < r.points.length; i++) l += mtr(r.points[i - 1], r.points[i]); return '<option value="' + esc(r.id) + '"' + (r.id === S.rid ? " selected" : "") + ">" + esc(r.name) + " · " + f1(l / 1000, 2) + " km</option>"; }).join("") + "</select>" +
       '<select id="pqdsTj">' + Object.keys(P).map(function (k) { return '<option value="' + k + '"' + (k === S.tujuan ? " selected" : "") + ">" + esc(P[k].t) + "</option>"; }).join("") + "</select>" +
-      '<div class="sub">Pilih drone (termurah → termahal). Simulasi = belum perlu punya alat. Rute pulang-pergi ' + f1(2 * R.L / 1000, 2) + ' km.</div><div class="ls">' +
+      '<select id="pqdsSx" title="Percepatan waktu"><option value="auto">Kecepatan: otomatis (±45 dtk)</option><option value="1">×1 (waktu nyata)</option><option value="10">×10</option><option value="60">×60</option><option value="300">×300</option></select>' +
+      '<div class="sub">Drone termurah → termahal. Simulasi = belum perlu punya alat. Rute pulang-pergi ' + f1(2 * R.L / 1000, 2) + ' km.</div><div class="ls">' +
       rows.map(function (x) { var st = x.r.st; return '<div class="dr ' + (x.d.id === S.did ? "sel " : "") + (st === "x" ? "x" : "") + '" data-id="' + x.d.id + '" title="' + esc((x.r.fail.concat(x.r.warn)).join("; ")) + '"><span>' + (st === "ok" ? "✔" : st === "w" ? "⚠" : "✖") + '</span><div class="n"><b>' + esc(x.d.n) + '</b><span class="sub">' + esc(x.d.tier) + " · " + x.d.fly + " mnt</span></div><div class='m'><span class='pz'>Rp " + idr(x.d.p[0]) + "–" + idr(x.d.p[1]) + "</span><br>" + fmtT(x.T) + " · " + x.sort + " sortie</div></div>"; }).join("") + "</div>" +
-      '<div class="row2"><button class="bt" id="pqdsPlay">▶ Terbang</button><button class="bt g" id="pqdsReset">⟲ Ulang</button></div>' +
-      '<div class="row2" style="margin-top:6px"><select id="pqdsSx" title="Percepatan waktu"><option value="auto">Kecepatan: otomatis (±45 dtk)</option><option value="1">×1 (waktu nyata)</option><option value="10">×10</option><option value="60">×60</option><option value="300">×300</option></select><button class="bt g' + (S.race ? " on" : "") + '" id="pqdsRc">🏁 Balapan semua merek</button></div>' +
-      '<div class="row2"><button class="bt g' + (S.follow ? " on" : "") + '" id="pqdsFl">📍 Kamera ikut</button><button class="bt g' + (S.sv ? " on" : "") + '" id="pqdsSvb">🛣 Street View</button></div>' +
-      '<div id="pqdsHud" style="margin-top:8px"></div><div id="pqdsRace"></div>' +
-      (S.sv && !S.race ? '<iframe id="pqdsSv" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe><div class="sub">Street View = pandangan level jalan di titik drone saat ini (arah mengikuti heading). Untuk layar penuh pakai tombol di bawah.</div>' : "") +
-      '<div class="row2" style="margin-top:8px"><button class="bt g" id="pqdsSvF">Street View penuh di titik ini</button><button class="bt g" id="pqdsPl">Perencana misi (biaya)</button></div>' +
-      '<div class="sub" style="margin-top:8px"><b>Sudah punya alatnya?</b> Ekspor misi pulang-pergi untuk drone Anda:</div><div class="row2"><button class="bt g" id="pqdsKml">KML (Google Earth)</button><button class="bt g" id="pqdsLit">CSV Litchi</button></div>' +
-      '<div class="sub" style="margin-top:6px">' + (R.L > 500 ? "⚠ Ruas > 500 m: melampaui jarak pandang (VLOS) — perlu pengamat/pindah titik lepas-landas per sortie. " : "") + "Harga & spesifikasi perkiraan; patuhi izin & batas tinggi 120 m.</div>";
+      '<div id="pqdsRace"></div>' +
+      (S.sv && !S.race ? '<iframe id="pqdsSv" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe><div class="sub">Street View = pandangan level jalan di titik drone (arah mengikuti heading).</div>' : "") +
+      '<div class="sub" style="margin-top:6px">' + (R.L > 500 ? "⚠ Ruas > 500 m: melampaui jarak pandang (VLOS) — perlu pengamat/pindah titik lepas-landas per sortie. " : "") + "Ikon atas: 🧮 perencana biaya · 🌐 KML · CSV Litchi untuk drone Anda. Harga & spesifikasi perkiraan; patuhi izin & batas tinggi 120 m.</div></div>";
     panel.innerHTML = h; bind(); setPlayBtn(); hud(null); if (S.race) raceBoard();
   }
   function bind() {
     var g = function (id, f) { var e = $(id); if (e) e.onclick = f; };
-    g("pqdsX", close); g("pqdsPlay", function () { S.playing ? pause() : play(); }); g("pqdsReset", reset);
+    g("pqdsX", close); g("pqdsMin", function () { S.min = !S.min; draw(); if (S.sv && !S.min && !S.race) svSync(rt(Math.min(2 * R.L, cur().v * S.t)), true, true); }); g("pqdsPlay", function () { S.playing ? pause() : play(); }); g("pqdsReset", reset);
     g("pqdsRc", function () { S.race = !S.race; S.t = 0; reset(); draw(); });
     g("pqdsFl", function () { S.follow = !S.follow; draw(); }); g("pqdsSvb", function () { S.sv = !S.sv; draw(); if (S.sv) svSync(rt(Math.min(2 * R.L, cur().v * S.t)), true, true); });
     g("pqdsSvF", function () { var p = rt(Math.min(2 * R.L, cur().v * S.t)); pause(); if (window.openStreetViewForGeoResult) openStreetViewForGeoResult(p.lat, p.lng, R.name + " (drone)"); });
