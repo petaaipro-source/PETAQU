@@ -271,7 +271,7 @@
     "#pqAn select,#pqAn input[type=text]{width:100%;box-sizing:border-box;margin:3px 0;padding:7px 9px;border-radius:9px;border:1px solid #ffffff22;background:#0f1726;color:#dbe7f3;font:12.5px system-ui}" +
     "#pqAn .an-h{margin:14px 0 6px;font:700 10px/1 system-ui;letter-spacing:.8px;text-transform:uppercase;color:#8fa6bd}" +
     "#pqAn .an-c{display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:3px 0;cursor:pointer}#pqAn .an-c input{margin-top:2px;accent-color:#22d3ee}" +
-    "#pqAn .an-b{display:inline-block;margin:3px 5px 3px 0;padding:7px 11px;border:0;border-radius:9px;background:#22d3ee22;color:#a5f3fc;font:600 12px system-ui;cursor:pointer}#pqAn .an-b:hover{background:#22d3ee40}" +
+    "#pqAn .an-b{display:inline-block;margin:3px 5px 3px 0;padding:7px 11px;border:0;border-radius:9px;background:#22d3ee22;color:#a5f3fc;font:600 12px system-ui;cursor:pointer}#pqAn .an-b:hover{background:#22d3ee40}#pqAn .an-dg{background:#ef444422;color:#fecaca}#pqAn .an-dg:hover{background:#ef444444}" +
     "#pqAn .an-ch{display:inline-block;margin:3px 4px 0 0;padding:4px 9px;border:1px solid #ffffff22;border-radius:99px;background:transparent;color:#c6d4e6;font:11.5px system-ui;cursor:pointer}#pqAn .an-ch:hover{border-color:#22d3ee;color:#fff}" +
     "#pqAn .an-sc{display:flex;gap:14px;align-items:center;padding:10px;border-radius:12px;background:#ffffff0a}" +
     "#pqAn .an-ring{--p:0;--c:#22d3ee;width:78px;height:78px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:conic-gradient(var(--c) calc(var(--p)*1%),#ffffff1a 0)}" +
@@ -300,6 +300,10 @@
       '<div class="an-h">Tanya data</div>' +
       '<input type="text" id="anQ" placeholder="mis. bahu tidak ada lebih dari 500 m" autocomplete="off">' +
       '<div id="anChips"></div><div id="anAsk" style="margin-top:6px"></div>' +
+      '<div class="an-h">Kelola data</div>' +
+      '<button class="an-b" id="anRef" type="button">⟳ Segarkan &amp; simpan semua</button><button class="an-b" id="anRst" type="button">Reset tampilan</button>' +
+      '<button class="an-b an-dg" id="anDelR" type="button">Hapus ruas ini</button><button class="an-b an-dg" id="anDelA" type="button">Hapus semua daftar</button>' +
+      '<div class="an-note" id="anInfo"></div>' +
       '<div class="an-h">Laporan</div>' +
       '<button class="an-b" id="anXls" type="button">Unduh Excel</button><button class="an-b" id="anPrt" type="button">Laporan cetak / PDF</button>' +
       '<div class="an-note">Skor dan temuan adalah estimasi dari foto Street View dan citra, bukan hasil survei lapangan. Titik berkeyakinan rendah sebaiknya diverifikasi langsung.</div>';
@@ -311,12 +315,52 @@
     $("anRuas").onchange = function () { current = this.value; clearHi(); $("anAsk").innerHTML = ""; render(); };
     $("anAuto").onchange = function () { jset(K_AUTO, this.checked ? 1 : 0); toast_("Simpan otomatis: " + (this.checked ? "ON" : "OFF")); };
     $("anQ").addEventListener("keydown", function (e) { if (e.key === "Enter") ask(this.value); });
+    $("anRef").onclick = refreshAll; $("anRst").onclick = resetView; $("anDelR").onclick = delRuas; $("anDelA").onclick = delAll;
     $("anXls").onclick = exportXls; $("anPrt").onclick = printReport;
     panel.addEventListener("click", function (e) {
       var ch = e.target.closest("[data-q]"); if (ch) { $("anQ").value = ch.dataset.q; ask(ch.dataset.q); return; }
       var pt = e.target.closest("[data-i]"); if (pt && an) { focusPoint(+pt.dataset.i); return; }
       var qi = e.target.closest("[data-qi]"); if (qi) { gotoItem(qItems[+qi.dataset.qi]); }
     });
+  }
+
+  /* ---- kelola data: segarkan, reset, hapus ---- */
+  function info_(t) { var e = $("anInfo"); if (e) e.textContent = t; }
+  /* Simpan pengukuran yang sedang tampil TANPA syarat (auto-simpan OFF, keyakinan rendah, lebar kosong tetap masuk),
+     lalu baca ulang seluruh daftar tersimpan. */
+  function refreshAll() {
+    var J = window.PQJeda, before = rowsAll().length, forced = false;
+    try {
+      var st = J && J.state && J.state();
+      if (st && st.A && !st.busy && st.c && st.c.key && J.save) { J.save(); lastKey = st.key; forced = true; }
+    } catch (e) {}
+    lastSig = ""; refreshList(); render(); tick();
+    var after = rowsAll().length;
+    var msg = "Disegarkan: " + after + " titik di " + Object.keys(groups()).length + " ruas" + (forced ? " · pengukuran saat ini ikut disimpan" : "") + (after > before ? " (+" + (after - before) + " baru)" : "");
+    info_(msg); toast_(msg);
+  }
+  function resetView() {
+    clearHi(); qItems = []; an = null;
+    var q = $("anQ"), a = $("anAsk"); if (q) q.value = ""; if (a) a.innerHTML = "";
+    current = ""; lastKey = ""; lastSig = ""; refreshList(); render();
+    info_("Tampilan direset. Data tersimpan tidak berubah."); toast_("Tampilan direset");
+  }
+  function delRuas() {
+    var J = window.PQJeda; if (!J || !J.remove) { toast_("Perlu petaqu-ukurjeda.js versi terbaru", true); return; }
+    if (!current || current === "*") { toast_("Pilih satu ruas dulu (bukan 'Semua ruas')", true); return; }
+    var n = (groups()[current] || []).length; if (!n) { toast_("Ruas ini belum punya data", true); return; }
+    if (!confirm("Hapus " + n + " titik pada ruas \"" + current + "\"?\nTidak bisa dibatalkan. Disarankan Unduh Excel dulu.")) return;
+    var nm = current; J.remove(function (r) { return ruasName(r) === nm; });
+    clearHi(); current = ""; lastSig = ""; refreshList(); render();
+    info_(n + " titik ruas dihapus."); toast_(n + " titik dihapus");
+  }
+  function delAll() {
+    var J = window.PQJeda, n = rowsAll().length; if (!J) return;
+    if (!n) { toast_("Daftar sudah kosong"); return; }
+    if (!confirm("Hapus SEMUA " + n + " titik pengukuran dari semua ruas?\nTidak bisa dibatalkan. Disarankan Unduh Excel dulu.")) return;
+    if (!confirm("Yakin? Semua data Ukur Jeda akan dikosongkan.")) return;
+    J.clear(); clearHi(); current = ""; lastKey = ""; lastSig = ""; refreshList(); render();
+    info_("Semua data dihapus."); toast_("Semua data dihapus");
   }
 
   function open() { if (!panel) return; panel.classList.add("open"); refreshList(); render(); var b = $("pqAnBtn"); if (b) b.classList.add("active"); }
