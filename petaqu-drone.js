@@ -28,6 +28,11 @@
     { id: "m350p1", n: "DJI Matrice 350 RTK + Zenmuse P1", tier: "Profesional", p: [15000, 22000], sw: 35.9, f: 35, w: 8192, h: 5460, fly: 38, v: 15, shot: 0.7, rtk: 1, mech: 1, lidar: 0, wind: 15, avoid: 1, g: 6470, note: "full-frame 45 MP, IP55; fotogrametri akurasi tinggi" },
     { id: "wingtra", n: "WingtraOne GEN II (VTOL + PPK)", tier: "Fixed-wing", p: [25000, 40000], sw: 35.9, f: 35, w: 8000, h: 5320, fly: 59, v: 16, shot: 1.5, rtk: 1, mech: 1, lidar: 0, wind: 12, avoid: 0, g: 3700, note: "sayap tetap: koridor panjang sangat efisien (butuh area lepas-landas)" },
     { id: "m350l2", n: "DJI Matrice 350 RTK + Zenmuse L2 (LiDAR)", tier: "LiDAR", p: [25000, 38000], sw: 17.3, f: 12, w: 5280, h: 3956, fly: 35, v: 10, shot: 0.7, rtk: 1, mech: 1, lidar: 1, wind: 15, avoid: 1, g: 6470, note: "LiDAR + RGB: DTM menembus pohon, kabel & struktur" },
+    { id: "evolite", n: "Autel EVO Lite+", tier: "Prosumer", p: [1000, 1400], sw: 13.2, f: 8.6, w: 5472, h: 3648, fly: 40, v: 13, shot: 2, rtk: 0, mech: 0, lidar: 0, wind: 12, avoid: 1, g: 835, note: "sensor 1\", 40 mnt; alternatif non-DJI" },
+    { id: "anafiai", n: "Parrot ANAFI Ai", tier: "Survei", p: [4500, 7000], sw: 6.4, f: 4.7, w: 8000, h: 6000, fly: 32, v: 14, shot: 2, rtk: 1, mech: 0, lidar: 0, wind: 12.5, avoid: 1, g: 898, note: "RTK/PPK, 4G, hindar rintangan; data aman (Eropa)" },
+    { id: "evomax", n: "Autel EVO Max 4T", tier: "Survei", p: [4500, 7500], sw: 9.6, f: 6.9, w: 8192, h: 6144, fly: 42, v: 15, shot: 1.5, rtk: 0, mech: 0, lidar: 0, wind: 12, avoid: 1, g: 1600, note: "kamera termal + zoom; inspeksi infrastruktur" },
+    { id: "skydiox10", n: "Skydio X10", tier: "Profesional", p: [11000, 16000], sw: 9.6, f: 6.9, w: 8192, h: 6144, fly: 40, v: 15, shot: 1.5, rtk: 1, mech: 0, lidar: 0, wind: 12.5, avoid: 1, g: 2100, note: "autonomi & hindar rintangan terbaik; inspeksi jembatan/struktur" },
+    { id: "ebeex", n: "AgEagle eBee X (sayap tetap)", tier: "Fixed-wing", p: [15000, 30000], sw: 13.2, f: 10.6, w: 5472, h: 3648, fly: 90, v: 18, shot: 1.5, rtk: 1, mech: 1, lidar: 0, wind: 12, avoid: 0, g: 1400, note: "terbang 90 mnt; koridor puluhan km per sortie" },
     { id: "ent", n: "Kelas enterprise survei (LiDAR long-range / sayap tetap premium)", tier: "Enterprise", p: [45000, 120000], sw: 35.9, f: 35, w: 9504, h: 6336, fly: 60, v: 18, shot: 1, rtk: 1, mech: 1, lidar: 1, wind: 14, avoid: 0, g: 9000, note: "survei nasional skala besar; sewa/jasa sering lebih ekonomis" }
   ];
   var P = {
@@ -99,7 +104,7 @@
   }
   function css() {
     if ($("pq-drone-css")) return; var st = document.createElement("style"); st.id = "pq-drone-css";
-    st.textContent = "#pqDroneBtn{position:fixed;left:10px;bottom:calc(150px + env(safe-area-inset-bottom,0px));z-index:7;width:42px;height:42px;border-radius:50%;border:1px solid #38bdf866;background:#080c14e6;color:#38bdf8;font-size:19px;cursor:pointer}#pqDroneBtn:hover{background:#38bdf8;color:#04121a}" +
+    st.textContent = "" +
       "#pqDrone{position:fixed;inset:0;z-index:99999;background:#050a12f2;display:none;overflow:auto;color:#e6edf5;font:12px/1.45 system-ui,sans-serif;padding:max(10px,env(safe-area-inset-top)) 10px 30px}#pqDrone.show{display:block}" +
       "#pqDrone .w{max-width:880px;margin:0 auto}#pqDrone h2{margin:6px 0;font-size:16px;color:#38bdf8;display:flex;justify-content:space-between;align-items:center}#pqDrone .x{background:#ffffff12;border:1px solid #ffffff22;color:#fff;border-radius:8px;padding:4px 10px;cursor:pointer}" +
       "#pqDrone .f{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;background:#ffffff0a;border:1px solid #ffffff18;border-radius:12px;padding:10px;margin:8px 0}#pqDrone label{display:block;color:#9db3c9;font-size:10.5px}#pqDrone input,#pqDrone select{width:100%;box-sizing:border-box;margin-top:2px;background:#0b1520;border:1px solid #ffffff2a;border-radius:7px;color:#fff;padding:6px;font:inherit}" +
@@ -134,11 +139,17 @@
       $(q[0]).onchange = function () { var v = this.value; I[q[1]] = q[2] ? Math.max(0, +v || 0) : v; if (q[1] === "lebar" || q[1] === "pohon") I.auto = 0; if (q[1] === "kurs" && !I.kurs) I.kurs = 16500; if (q[1] === "panjang" && !I.panjang) I.panjang = 1; jset(K, I); render(); };
     });
   }
-  function open_() { css(); var h = $("pqDrone"); if (!h) { h = document.createElement("div"); h.id = "pqDrone"; document.body.appendChild(h); } fromJeda(); jset(K, I); render(); h.classList.add("show"); }
+  function open_(o) { if (o && typeof o === "object" && o.panjang > 0) { I.panjang = +o.panjang.toFixed(2); if (o.lebar) I.lebar = o.lebar; if (o.tujuan && P[o.tujuan]) I.tujuan = o.tujuan; I.auto = 0; jset(K, I); css(); var hh = $("pqDrone"); if (!hh) { hh = document.createElement("div"); hh.id = "pqDrone"; document.body.appendChild(hh); } render(); hh.classList.add("show"); return; } css(); var h = $("pqDrone"); if (!h) { h = document.createElement("div"); h.id = "pqDrone"; document.body.appendChild(h); } fromJeda(); jset(K, I); render(); h.classList.add("show"); }
   function close() { var h = $("pqDrone"); if (h) h.classList.remove("show"); }
   function init() {
-    css(); if ($("pqDroneBtn")) return; var b = document.createElement("button"); b.id = "pqDroneBtn"; b.title = "Drone survei: termurah → termahal + perencana misi"; b.textContent = "🛩"; b.addEventListener("click", open_); document.body.appendChild(b);
+    if ($("pqDroneBtn")) return; css();
+    var b = document.createElement("button"); b.id = "pqDroneBtn"; b.type = "button"; b.innerHTML = '<i class="fa-solid fa-plane"></i>'; b.addEventListener("click", open_);
+    /* dimasukkan ke folder PETAQU (bukan lagi tombol melayang yang menimpa daftar ruas) */
+    var n = 0, iv = setInterval(function () {
+      if (window.PQ_DOCK && PQ_DOCK.adopt) { clearInterval(iv); PQ_DOCK.adopt(b, "Drone survei: murah → mahal"); }
+      else if (++n > 60) { clearInterval(iv); b.style.cssText = "display:none"; document.body.appendChild(b); }
+    }, 250);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
-  window.PQDrone = { open: open_, close: close, catalog: D, plan: plan, analyse: analyse };
+  window.PQDrone = { purposes: P, open: open_, close: close, catalog: D, plan: plan, analyse: analyse };
 })();
