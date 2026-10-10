@@ -124,7 +124,7 @@
   }
   var ACT = [
     ["staEdit", "⇄ STA", "Atur / tukar STA awal–akhir, kalibrasi lapangan"], ["renameRoad", "✎ Nama", "Ganti nama ruas"],
-    ["playRouteAnimation", "▶ Animasi", "Putar animasi rute"], ["openDashcamUpload", "🎥 Video", "Sinkron video dashcam"],
+    ["playRouteAnimation", "▶ Animasi", "Putar animasi rute"], ["pqDroneRoad", "✈ Drone", "Terbangkan / simulasikan drone di ruas ini (pulang-pergi + Street View)"], ["openDashcamUpload", "🎥 Video", "Sinkron video dashcam"],
     ["openIriAnalysis", "📊 IRI", "Analisis IRI"], ["reIntervalRoad", "📏 Interval", "Edit interval STA"],
     ["autoFillRoadKm", "🧮 KM", "Hitung otomatis KM"], ["quickRoadPdf", "📄 PDF", "Unduh PDF ruas"],
     ["openExportModal", "⤴ Ekspor", "Ekspor ruas"], ["deleteRoad", "🗑 Hapus", "Hapus ruas"]

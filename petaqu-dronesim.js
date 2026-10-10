@@ -248,5 +248,6 @@
   }
   function init() { css(); dock(); setInterval(addRowBtns, 900); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  window.pqDroneRoad = function (id) { open_(id); };
   window.PQDroneSim = { open: open_, close: close, play: play, pause: pause };
 })();
