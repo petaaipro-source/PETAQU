@@ -111,7 +111,9 @@
     var txt = cnt ? String(cnt) : "";
     if (badge.textContent !== txt) badge.textContent = txt;
 
-    var s = JSON.stringify([L, T, D.map(function (d) { return d.t; })]);
+    var W = [];
+    try { if (window.PETAQU_CUACA && PETAQU_CUACA.rows) W = PETAQU_CUACA.rows(); } catch (e) { W = []; }
+    var s = JSON.stringify([L, T, W, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
     sig = s;
 
@@ -130,6 +132,15 @@
         '<button type="button" class="pqf-row" data-k="T" style="--c:#22d3ee">' +
         '<span class="pqf-ic">\u25D0</span><span class="pqf-t">Transparansi luar Jawa Tengah</span>' +
         '<span class="pqf-st' + (T.on ? "" : " off") + '">' + (T.on ? "ON" : "OFF") + "</span></button>";
+    }
+    if (W.length) {
+      h += '<div class="pqf-h">Cuaca Indonesia</div>';
+      W.forEach(function (x) {
+        h += '<button type="button" class="pqf-row" data-k="W:' + x.id + '" style="--c:' + x.c + '">' +
+          '<span class="pqf-ic"><i class="pq-fi">' + x.ic + "</i></span>" +
+          '<span class="pqf-t">' + esc(x.name) + "</span>" +
+          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
+      });
     }
     if (D.length) {
       h += '<div class="pqf-h">Alat PETAQU</div>';
@@ -152,6 +163,10 @@
       closeJt();
       var b = $(id);
       if (b) b.click();
+    } else if (k.charAt(0) === "W") {
+      closePanels();
+      closeJt();
+      try { PETAQU_CUACA.act(k.slice(2)); } catch (e) { }
     } else if (k === "T") {
       closePanels();
       var j = jtParts();
