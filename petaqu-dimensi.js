@@ -81,8 +81,12 @@
       /* S (bahu coklat): lebih "merah/hangat" dari aspal (a* naik, rona bergeser ke oranye) — dicek SEBELUM aspal/bayangan agar bahu tanah gelap
          tidak terbaca sebagai aspal ternaungi (yang membuat lebar jalan terlalu besar dan bahu "hilang") */
       var hueR = Math.atan2(r.lab[2], r.lab[1]) / D2R, hueS = Math.atan2(seed.lab[2], seed.lab[1]) / D2R;
-      if (dd >= Math.max(6, seed.sd * 1.5) && r.lab[1] - seed.lab[1] >= 2 && hueS - hueR >= 8 && ch >= 9 && L >= 22) return "S";
+      var dA = r.lab[1] - seed.lab[1], warm = dA + 0.5 * (r.lab[2] - seed.lab[2]), far = dd >= Math.max(6, seed.sd * 1.5);
+      if (far && L >= 22 && ((dA >= 2 && hueS - hueR >= 8 && ch >= 9) ||                 /* coklat gelap: rona bergeser ke oranye */
+                             (dA >= 1.5 && warm >= 3.5 && ch >= 7))) return "S";         /* abu-coklat/tanah kering: lebih hangat dari aspal netral */
       if (dd <= T) return "R";
+      /* tanah/kerikil coklat terang (tan): kroma hangat jelas, bukan marka putih (kroma rendah) maupun marka kuning (b* tinggi) */
+      if (r.lab[1] >= 4 && r.lab[2] >= 12 && r.lab[2] < 30 && ch >= 14 && L >= 30 && L <= 90) return "S";
       /* H = aspal TERNAUNGI (bayangan pohon/bangunan): gelap tetapi rona (a,b) tetap mirip aspal */
       var dab = Math.abs(r.lab[1] - seed.lab[1]) + Math.abs(r.lab[2] - seed.lab[2]);
       /* sangat gelap & jauh lebih gelap dari aspal = dinding/pasangan batu berlumut/tembok penahan (bukan bayangan di jalan) */
