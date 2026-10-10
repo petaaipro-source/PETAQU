@@ -47,7 +47,7 @@
     function sal(S, ok) { if (!ok) return null; return S.sal && S.salConf >= 0.4 ? S.sal.w * k : 0; }   /* 0 = tidak ada; null = tak diketahui */
     return {
       W: fin(res.W) ? res.W * k : null, bl: bahu(L, okL), br: bahu(R, okR), dl: okL ? sal(L, okL) : null, dr: okR ? sal(R, okR) : null,
-      blo: !!(okL && L.bahuOpen), bro: !!(okR && R.bahuOpen),
+      blo: !!(okL && L.bahuOpen), bro: !!(okR && R.bahuOpen), eL: okL && fin(L.edge) ? L.edge * k : null, eR: okR && fin(R.edge) ? R.edge * k : null,
       pl: okL ? (L.bahuPaved || 0) * k : null, pr: okR ? (R.bahuPaved || 0) * k : null, tl: okL ? (L.bahuType || "") : "", tr: okR ? (R.bahuType || "") : "",
       mkc: res.mkc || null, conf: fin(res.conf) ? res.conf : 0, err: fin(res.err) ? res.err * k : null, okL: okL, okR: okR,
       obs: !!((L && L.obstacle) || (R && R.obstacle)), shade: !!((L && L.shaded) || (R && R.shaded))
@@ -290,7 +290,7 @@
       if (my !== seq) return;
       cur.busy = false; cur.A = A;
       if (!A) cur.note = cur.note || "Foto terbaca tetapi tepi jalan tidak ditemukan (gelap / tertutup)";
-      else { cache[c.key] = A; if (!A.ai && !A.km) readKm(my, c, S, A); }
+      else { cache[c.key] = A; if (!A.ai) { readTrees(S, A); if (!A.km) readKm(my, c, S, A); else S.forEach(function (x) { if (x) delete x._im; }); } }
       paint();
     } catch (e) {
       if (my !== seq) return;
@@ -443,6 +443,51 @@
     return out;
   }
 
+  /* ---------- POHON TEPI JALAN: dideteksi otomatis dari foto kiri/kanan yang sama (tanpa foto tambahan) ----------
+     Pohon = piksel hijau di ATAS cakrawala kamera (lebih tinggi dari kamera ±2,5 m). Rumput/semak di tanah tidak ikut.
+     Tinggi dihitung dari sudut puncak tajuk + jarak lateral nyata (tepi jalan + bahu) → ≈ m; tajuk terpotong tepi foto = "≥". */
+  function treeOne(im, D) {
+    var O = CORE().OPT, W = im.width, Hh = im.height, d = im.data, f = (W / 2) / Math.tan(O.fov * Math.PI / 360), th = O.pitch * Math.PI / 180;
+    var yh = Math.max(20, Math.min(Hh - 1, Math.round(Hh / 2 + f * Math.tan(th)))), bs = 5, gw = Math.floor(W / bs), gh = Math.floor(yh / bs), g = new Uint8Array(gw * gh), n = 0, x, y;
+    for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) { var i = ((y * bs + 2) * W + (x * bs + 2)) * 4, r = d[i], gg = d[i + 1], b = d[i + 2]; if (gg >= r * 1.04 && gg >= b * 1.12 && gg > 22) { g[y * gw + x] = 1; n++; } }
+    var tot = gw * gh; if (!tot) return null;
+    var seen = new Uint8Array(tot), best = null;
+    for (var s0 = 0; s0 < tot; s0++) {
+      if (!g[s0] || seen[s0]) continue;
+      var q = [s0], qi = 0, a = 0, mnY = 1e9, mnX = 1e9, mxX = -1; seen[s0] = 1;
+      while (qi < q.length) { var c = q[qi++], cx = c % gw, cy = (c / gw) | 0; a++; if (cy < mnY) mnY = cy; if (cx < mnX) mnX = cx; if (cx > mxX) mxX = cx;
+        [c - 1, c + 1, c - gw, c + gw].forEach(function (k, j) { if (k < 0 || k >= tot || seen[k] || !g[k]) return; if (j < 2 && ((k / gw) | 0) !== cy) return; seen[k] = 1; q.push(k); }); }
+      if (!best || a > best.a) best = { a: a, mnY: mnY, mnX: mnX, mxX: mxX };
+    }
+    var cover = n / tot; if (!best || best.a < 12 || cover < 0.03) return { has: false };
+    var cut = best.mnY <= 0, ytop = best.mnY * bs, el = th + Math.atan((Hh / 2 - ytop) / f), h = O.camH + D * Math.tan(Math.max(0, el));
+    return { has: true, cover: cover, w: (best.mxX - best.mnX + 1) / gw, cut: cut, h: Math.max(O.camH, Math.min(30, h)) };
+  }
+  function treeSide(list) {
+    var ok = list.filter(function (r) { return r && r.has; }); if (!ok.length || ok.length * 2 < list.length) return null;
+    var cv = med(ok.map(function (r) { return r.cover; })), h = med(ok.map(function (r) { return r.h; })), w = med(ok.map(function (r) { return r.w; })), cut = ok.filter(function (r) { return r.cut; }).length * 2 >= ok.length;
+    var kind = h < 4 ? "semak" : cv >= 0.45 || w >= 0.7 && cv >= 0.3 ? "rapat" : cv >= 0.15 ? "sedang" : "jarang";
+    return { kind: kind, cover: cv, h: h, cut: cut && h >= 4, w: w };
+  }
+  function readTrees(S, A) {
+    var L = [], R = [];
+    try {
+      S.forEach(function (x) {
+        if (!x || !x._im) return;
+        function D(e, b, dr) { return Math.max(2.5, Math.min(25, (fin(e) ? e : (x.W || 7) / 2) + (b > 0.15 ? b : 0) + (dr > 0 ? dr : 0) + 1.0)); }
+        L.push(treeOne(x._im[0], D(x.eL, x.bl, x.dl))); R.push(treeOne(x._im[1], D(x.eR, x.br, x.dr)));
+      });
+    } catch (e) { return; }
+    if (!L.length) return;
+    A.tree = { L: treeSide(L), R: treeSide(R) };
+  }
+  var TK = { rapat: "tajuk rapat", sedang: "pohon sedang", jarang: "pohon jarang", semak: "semak/pohon rendah" };
+  function treeT(T) {
+    if (!T || (!T.L && !T.R)) return "";
+    function one(r) { return r ? TK[r.kind] + " · tajuk " + Math.round(r.cover * 100) + "% · " + (r.cut ? "≥ " : "≈ ") + r.h.toFixed(1) + " m" : "tidak ada"; }
+    return "kiri: " + one(T.L) + "; kanan: " + one(T.R);
+  }
+
   /* ---------- PATOK KM: baca pelat putih (angka) dari foto kiri/kanan yang sudah diambil — tanpa foto tambahan ---------- */
   var TESS_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js", LANG_URL = "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int", kmW = null, kmWL = null;
   function kmWorker() {
@@ -544,6 +589,15 @@
       '<rect x="' + (rx0 + 12) + '" y="' + (Y - 18) + '" width="10" height="9" fill="#33414f"/><rect x="' + (rx0 + 30) + '" y="' + (Y - 18) + '" width="10" height="9" fill="#33414f"/>' +
       '<rect x="' + (rx0 + 4) + '" y="' + (Y - 10) + '" width="' + (bw - 4) + '" height="10" fill="#2f9e44"/><path d="M' + (rx0 + 4) + " " + (Y - 7) + "h" + (bw - 4) + 'M' + (rx0 + 4) + " " + (Y - 3.5) + "h" + (bw - 4) + '" stroke="#1b6b2d" stroke-width=".8"/>' +
       '<rect x="' + (rx0 - 1) + '" y="' + (Y - 46) + '" width="2" height="46" fill="#6b7480"/><path d="M' + (rx0 - 12) + " " + (Y - 44) + "h24M" + (rx0 - 12) + " " + (Y - 40) + 'h24" stroke="#6b7480" stroke-width="1"/>';
+    /* pohon tepi jalan (hasil deteksi otomatis): batang + tajuk, tinggi digambar sebanding (skala vertikal ringkas) */
+    if (A.tree) [["L", pxL + 16], ["R", pxR - 16]].forEach(function (q) {
+      var T = A.tree[q[0]]; if (!T) return;
+      var hp = Math.max(22, Math.min(50, T.h * 5.5)), cx = q[1], rxx = T.kind === "rapat" ? 20 : T.kind === "sedang" ? 14 : T.kind === "jarang" ? 10 : 11, ry = T.kind === "semak" ? hp * 0.32 : hp * 0.5, cy = Y - hp + ry, g1 = T.kind === "jarang" ? "#3f9d4f" : "#1f7a33";
+      if (T.kind !== "semak") o += '<rect x="' + (cx - 1.6) + '" y="' + cy + '" width="3.2" height="' + (Y - cy) + '" fill="#6b4a2b"/>';
+      o += '<ellipse cx="' + cx + '" cy="' + cy.toFixed(1) + '" rx="' + rxx + '" ry="' + ry.toFixed(1) + '" fill="' + g1 + '" opacity="' + (T.kind === "jarang" ? ".8" : ".95") + '"/>' +
+        '<circle cx="' + (cx - rxx * 0.35).toFixed(1) + '" cy="' + (cy - ry * 0.25).toFixed(1) + '" r="' + (ry * 0.35).toFixed(1) + '" fill="#4ade80" opacity=".55"/><circle cx="' + (cx + rxx * 0.4).toFixed(1) + '" cy="' + (cy + ry * 0.1).toFixed(1) + '" r="' + (ry * 0.3).toFixed(1) + '" fill="#2f9e44" opacity=".7"/>' +
+        '<text x="' + cx + '" y="' + Math.max(7, cy - ry - 2).toFixed(1) + '" text-anchor="middle" font-size="7" font-weight="700" fill="#dcfce7" stroke="#0b1520" stroke-width="2.2" paint-order="stroke">' + (T.cut ? "≥" : "≈") + T.h.toFixed(0) + " m</text>";
+    });
     o += rel(pxL, 1) + patok(pxL) + rel(pxR, -1) + patok(pxR);
     if (A.km && A.km.ok) {   /* patok KM: badan kuning-oranye, pelat putih (2 baris), kaki merah */
       var kx = A.km.side === "L" ? pxL + 44 : pxR - 44, kw = 12, kh = 32, kt = Y - kh;
@@ -566,8 +620,11 @@
     /* legenda */
     var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen"], ["url(#pqGr)", "rumput"], ["#9aa3ad", "bangunan"]], lx0 = 5;
     lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="92" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="99.5" font-size="7.5" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 46; });
-    if (A.km && A.km.ok) o += '<rect x="' + lx0 + '" y="92" width="8" height="8" rx="1" fill="#e0a22b"/><text x="' + (lx0 + 11) + '" y="99.5" font-size="7.5" fill="#9db3c9">patok KM</text>';
-    return '<svg viewBox="0 0 ' + Wd + ' 104" role="img" aria-label="Penampang jalan">' + defs + o + "</svg>";
+    var row2 = [];
+    if (A.km && A.km.ok) row2.push(["#e0a22b", "patok KM"]);
+    if (A.tree && (A.tree.L || A.tree.R)) row2.push(["#1f7a33", "pohon"]);
+    var l2 = 5; row2.forEach(function (q) { o += '<rect x="' + l2 + '" y="104" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (l2 + 11) + '" y="111.5" font-size="7.5" fill="#9db3c9">' + q[1] + "</text>"; l2 += 62; });
+    return '<svg viewBox="0 0 ' + Wd + ' ' + (row2.length ? 116 : 104) + '" role="img" aria-label="Penampang jalan">' + defs + o + "</svg>";
   }
 
   function setCard(h, html) { if (h.__h !== html) { h.innerHTML = html; h.__h = html; } }
@@ -598,7 +655,7 @@
         '<div class="row"><span>Lebar bahu</span><div class="v"><span><i>kiri</i><b>' + bahuT(A.bl, A.blo) + "</b></span><span><i>kanan</i><b>" + bahuT(A.br, A.bro) + "</b></span></div></div>" +
         '<div class="row"><span>Marka tepi</span><div class="v"><b style="font-size:11px">' + esc(mkU(A) ? mkU(A).edge : A.ai ? "butuh foto Google" : mkText(A.mk).edge) + "</b></div></div>" +
         '<div class="row"><span>Marka tengah</span><div class="v"><b style="font-size:11px">' + esc(mkU(A) ? mkU(A).mid : A.ai ? "butuh foto Google" : mkText(A.mk).mid) + "</b><small>" + esc(mkU(A) ? mkU(A).lanes : A.ai ? "" : mkText(A.mk).lanes) + "</small></div></div>" +
-        (cur.kmBusy ? '<div class="row"><span>Patok KM</span><div class="v"><small>membaca…</small></div></div>' : A.km ? '<div class="row"><span>Patok KM</span><div class="v"><b style="font-size:11px">' + (A.km.ok ? esc(kmT(A.km)) : "tidak terlihat") + "</b></div></div>" : "") +
+        (A.tree ? '<div class="row"><span>Pohon tepi</span><div class="v"><b style="font-size:11px">' + esc(treeT(A.tree) || "tidak terlihat") + "</b></div></div>" : "") + (cur.kmBusy ? '<div class="row"><span>Patok KM</span><div class="v"><small>membaca…</small></div></div>' : A.km ? '<div class="row"><span>Patok KM</span><div class="v"><b style="font-size:11px">' + (A.km.ok ? esc(kmT(A.km)) : "tidak terlihat") + "</b></div></div>" : "") +
         '<div class="row"><span>Lebar drainase</span><div class="v"><span><i>kiri</i><b>' + drT(A.dl) + "</b></span><span><i>kanan</i><b>" + drT(A.dr) + "</b></span></div></div>" +
         '<div class="sub">keyakinan <b class="' + cls(A.conf) + '">' + (A.conf >= 0.7 ? "tinggi" : A.conf >= 0.45 ? "sedang" : "rendah") + "</b> · " + (A.ai ? A.n + " sumber" : A.n + " panorama") + " · " + src + (c.axis === "pandang" ? " · arah jalan ditebak dari arah pandang" : "") + (A.warn ? "<br>⚠ " + esc(A.warn) : "") + (cur.note ? "<br>" + esc(cur.note) : "") + "</div>" +
         mkChips(A) +
@@ -613,7 +670,7 @@
   function summary() {
     if (!cur || !cur.A) return ""; var A = cur.A;
     return "Ukur Jeda " + ctxLabel(cur.c).replace(/&amp;/g, "&") + (cur.c.name ? " · " + cur.c.name : "") + " — Lebar jalan " + f1(A.W) + (A.err != null && A.W != null ? " (±" + A.err.toFixed(1) + ")" : "") +
-      (kmT(A.km) ? " · Patok KM " + kmT(A.km) : "") + " · Bahu kiri " + bahuT(A.bl, A.blo) + ", kanan " + bahuT(A.br, A.bro) + " · Drainase kiri " + drT(A.dl) + ", kanan " + drT(A.dr) + (A.mk ? " · Marka tepi " + mkText(A.mk).edge + "; tengah " + mkText(A.mk).mid + " (" + mkText(A.mk).lanes + ")" : "") + " · keyakinan " + Math.round(A.conf * 100) + "%";
+      (kmT(A.km) ? " · Patok KM " + kmT(A.km) : "") + (treeT(A.tree) ? " · Pohon " + treeT(A.tree) : "") + " · Bahu kiri " + bahuT(A.bl, A.blo) + ", kanan " + bahuT(A.br, A.bro) + " · Drainase kiri " + drT(A.dl) + ", kanan " + drT(A.dr) + (A.mk ? " · Marka tepi " + mkText(A.mk).edge + "; tengah " + mkText(A.mk).mid + " (" + mkText(A.mk).lanes + ")" : "") + " · keyakinan " + Math.round(A.conf * 100) + "%";
   }
   function copyText() {
     var t = summary(); if (!t) return;
@@ -622,13 +679,13 @@
   function saveCur() {
     if (!cur || !cur.A) return; var A = cur.A, c = cur.c;
     DB = DB.filter(function (x) { return x.k !== c.key; });
-    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, mt: A.mk ? mkText(A.mk).edge : "", mm: A.mk ? mkText(A.mk).mid : "", kmt: kmT(A.km), ln: A.mk ? A.mk.lanes : "", conf: +A.conf.toFixed(2), lj: A.lanes || "", w0: fin(A.W0) && A.lanes && Math.abs(A.W0 - A.W) > 0.05 ? +A.W0.toFixed(2) : null, n: A.n, ai: A.ai ? 1 : 0, t: new Date().toISOString() });
+    DB.push({ k: c.key, ruas: c.name || "", sta: c.sta || "", lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), W: A.W, bl: A.bl, br: A.br, dl: A.dl, dr: A.dr, blo: A.blo ? 1 : 0, bro: A.bro ? 1 : 0, mt: A.mk ? mkText(A.mk).edge : "", mm: A.mk ? mkText(A.mk).mid : "", kmt: kmT(A.km), pht: treeT(A.tree), ln: A.mk ? A.mk.lanes : "", conf: +A.conf.toFixed(2), lj: A.lanes || "", w0: fin(A.W0) && A.lanes && Math.abs(A.W0 - A.W) > 0.05 ? +A.W0.toFixed(2) : null, n: A.n, ai: A.ai ? 1 : 0, t: new Date().toISOString() });
     if (DB.length > 800) DB = DB.slice(-800); jset(K_DB, DB); toast_("Tersimpan (" + DB.length + " titik)"); paint();
   }
   function csv() {
     if (!DB.length) return; function r1(v, o) { return v == null ? "" : (o ? "≥" : "") + (+v).toFixed(2); }
-    var head = ["Ruas", "STA", "Lat", "Lng", "Lebar jalan (m)", "Bahu kiri (m)", "Bahu kanan (m)", "Drainase kiri (m)", "Drainase kanan (m)", "Marka tepi", "Marka tengah", "Lajur", "Patok KM", "Keyakinan", "Panorama", "Waktu"];
-    var rows = DB.map(function (x) { return [x.ruas, x.sta, x.lat, x.lng, r1(x.W), r1(x.bl, x.blo), r1(x.br, x.bro), r1(x.dl), r1(x.dr), x.mt || "", x.mm || "", x.ln || "", x.kmt || "", x.conf, x.n, x.t]; });
+    var head = ["Ruas", "STA", "Lat", "Lng", "Lebar jalan (m)", "Bahu kiri (m)", "Bahu kanan (m)", "Drainase kiri (m)", "Drainase kanan (m)", "Marka tepi", "Marka tengah", "Lajur", "Patok KM", "Pohon tepi", "Keyakinan", "Panorama", "Waktu"];
+    var rows = DB.map(function (x) { return [x.ruas, x.sta, x.lat, x.lng, r1(x.W), r1(x.bl, x.blo), r1(x.br, x.bro), r1(x.dl), r1(x.dr), x.mt || "", x.mm || "", x.ln || "", x.kmt || "", x.pht || "", x.conf, x.n, x.t]; });
     var txt = "\ufeff" + [head].concat(rows).map(function (l) { return l.map(function (v) { v = v == null ? "" : String(v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","); }).join("\n");
     var u = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })), a = document.createElement("a");
     a.href = u; a.download = "petaqu-ukur-jeda-" + new Date().toISOString().slice(0, 10) + ".csv"; document.body.appendChild(a); a.click();
