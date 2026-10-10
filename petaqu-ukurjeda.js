@@ -471,7 +471,7 @@
   window.PQJeda = {
     agg: agg, aggMarks: aggMarks, mkText: mkText, toEntry: toEntry, axisFrom: axisFrom, metaProblem: metaProblem,
     on: function (v) { if (v !== undefined) { on = !!v; jset(K_ON, on ? 1 : 0); syncBtn(); if (!on) hideCard(); } return on; },
-    now: measureNow, state: function () { return cur; },
+    now: measureNow, state: function () { return cur; }, save: saveCur,
     csv: csv, saved: function () { return DB.slice(); }, clear: function () { DB = []; jset(K_DB, DB); paint(); },
     _set: function (o) { if (o.meta) hooks.meta = o.meta; if (o.img) hooks.img = o.img; }
   };
