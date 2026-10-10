@@ -431,16 +431,85 @@
     await new Promise(function (res) { try { var tx = db.transaction("p", "readwrite"); tx.objectStore("p").put(v, pn); tx.oncomplete = tx.onerror = tx.onabort = function () { res(); }; } catch (e) { res(); } });
   }
 
+  /* ---------- deteksi kabupaten otomatis: ruas provinsi dipotong per batas kabupaten/kota ---------- */
+  var KB = {};   /* cache batas per provinsi: [{n, rings:[[[lat,lng]..]], bb:[s,w,n,e]}] */
+  function kabBounds(pn) {
+    if (KB[pn]) return KB[pn];
+    var src = W.PQ_KABBATAS && W.PQ_KABBATAS[pn]; if (!src) return (KB[pn] = []);
+    return (KB[pn] = src.map(function (k) {
+      var bb = [90, 180, -90, -180], rings = k[1].map(function (s) {
+        var r = decode(s); r.forEach(function (p) { if (p[0] < bb[0]) bb[0] = p[0]; if (p[0] > bb[2]) bb[2] = p[0]; if (p[1] < bb[1]) bb[1] = p[1]; if (p[1] > bb[3]) bb[3] = p[1]; }); return r;
+      });
+      return { n: k[0], rings: rings, bb: bb };
+    }));
+  }
+  function inKab(pt, k) {
+    if (pt[0] < k.bb[0] || pt[0] > k.bb[2] || pt[1] < k.bb[1] || pt[1] > k.bb[3]) return false;
+    var c = false;   /* even-odd lintas semua cincin (lubang ikut benar) */
+    for (var r = 0; r < k.rings.length; r++) {
+      var ring = k.rings[r];
+      for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        var yi = ring[i][0], xi = ring[i][1], yj = ring[j][0], xj = ring[j][1];
+        if ((yi > pt[0]) !== (yj > pt[0]) && pt[1] < (xj - xi) * (pt[0] - yi) / (yj - yi) + xi) c = !c;
+      }
+    }
+    return c;
+  }
+  function kabAt(pt, ks, hint) {
+    if (hint >= 0 && inKab(pt, ks[hint])) return hint;
+    for (var i = 0; i < ks.length; i++) if (i !== hint && inKab(pt, ks[i])) return i;
+    return -1;
+  }
+  /* potong satu garis jadi bagian-bagian per kabupaten; titik batas dicari dengan bagi-dua agar presisi */
+  function splitLine(pts, ks) {
+    var ids = [], last = -1, i, firstOk = -1;
+    for (i = 0; i < pts.length; i++) { var k = kabAt(pts[i], ks, last); if (k >= 0) { last = k; if (firstOk < 0) firstOk = k; } ids.push(k >= 0 ? k : -2); }
+    last = firstOk; for (i = 0; i < ids.length; i++) { if (ids[i] === -2) ids[i] = last; else last = ids[i]; }
+    var parts = [], cur = [pts[0]], ck = ids[0];
+    for (i = 1; i < pts.length; i++) {
+      if (ids[i] === ck) { cur.push(pts[i]); continue; }
+      var a = pts[i - 1], b = pts[i], lo = 0, hi = 1, m;
+      for (var it = 0; it < 9; it++) { m = (lo + hi) / 2; var q = [a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m]; if (kabAt(q, ks, ck) === ck) lo = m; else hi = m; }
+      var cut = [Math.round((a[0] + (b[0] - a[0]) * lo) * 1e5) / 1e5, Math.round((a[1] + (b[1] - a[1]) * lo) * 1e5) / 1e5];
+      cur.push(cut); parts.push({ k: ck, p: cur });
+      cur = [cut, pts[i]]; ck = ids[i];
+    }
+    parts.push({ k: ck, p: cur });
+    return parts;
+  }
+  function plen(c) { var l = 0; for (var z = 1; z < c.length; z++) l += hav(c[z - 1], c[z]); return l; }
+
   function addProvGroup(pn, byName, src) {
     if (G.some(function (g) { return g.prov === pn; })) return;
-    var items = [], ki = 1000 + Object.keys(PBB).indexOf(pn);
-    Object.keys(byName).forEach(function (k) {
-      var v = byName[k];
-      items.push({ key: k.toUpperCase() + "|", ri: -1, name: v.nm, no: v.r || "", lintas: null, color: NAS_COLOR, km: v.km || 0, lines: v.l });
-    });
+    var ks = kabBounds(pn), pi = Math.max(0, PROV_ALL.indexOf(pn)), base = 1000 + pi * 1000;
+    var names = Object.keys(byName), groups = {};
+    if (ks.length) {
+      names.forEach(function (key) {
+        var v = byName[key], acc = {};
+        v.l.forEach(function (line) {
+          var pts = decode(line); if (pts.length < 2) return;
+          splitLine(pts, ks).forEach(function (pt) {
+            if (pt.p.length < 2) return; var len = plen(pt.p); if (len < 20) return;
+            var a = acc[pt.k] || (acc[pt.k] = { km: 0, l: [] }); a.km += len / 1000; a.l.push(encode(pt.p));
+          });
+        });
+        Object.keys(acc).forEach(function (ki) {
+          if (acc[ki].km < 0.05) return;
+          var gr = groups[ki] || (groups[ki] = []);
+          gr.push({ key: key.toUpperCase() + "|", ri: -1, name: v.nm, no: v.r || "", lintas: null, color: NAS_COLOR, km: acc[ki].km, lines: acc[ki].l });
+        });
+      });
+      Object.keys(groups).map(Number).sort(function (a, b) { return ks[a].n.localeCompare(ks[b].n); }).forEach(function (ki) {
+        var items = groups[ki]; items.sort(function (a, b) { return b.km - a.km; });
+        G.push({ ki: base + ki, name: ks[ki].n, n: ks[ki].n.replace(/^(Kabupaten|Kota) /, ""), prov: pn, src: src, items: items, km: items.reduce(function (t, v) { return t + v.km; }, 0) });
+      });
+      return;
+    }
+    /* provinsi tanpa data batas kabupaten: tetap satu kelompok per provinsi */
+    var items = names.map(function (k) { var v = byName[k]; return { key: k.toUpperCase() + "|", ri: -1, name: v.nm, no: v.r || "", lintas: null, color: NAS_COLOR, km: v.km || 0, lines: v.l }; });
     if (!items.length) return;
     items.sort(function (a, b) { return b.km - a.km; });
-    G.push({ ki: ki, name: "Jalan Nasional " + pn, n: pn, prov: pn, src: src, items: items, km: items.reduce(function (t, v) { return t + v.km; }, 0) });
+    G.push({ ki: base + 999, name: "Jalan Nasional " + pn, n: pn, prov: pn, src: src, items: items, km: items.reduce(function (t, v) { return t + v.km; }, 0) });
   }
 
   /* --- sumber 1: server BIG (kotak 2°, bertahap) --- */
@@ -589,8 +658,8 @@
     var pn = list[0]; provBusy = true; stopReq = false; diagMsg = ""; render();
     try {
       var r = await loadOne(pn);
-      var gg = G.filter(function (g) { return g.prov === pn; })[0];
-      if (gg) { setKab(gg, true); toast(pn + ": " + gg.items.length + " ruas dimuat & ditampilkan"); }
+      var gs = G.filter(function (g) { return g.prov === pn; });
+      if (gs.length) { gs.forEach(function (g) { setKab(g, true, true); }); toast(pn + ": " + gs.length + " kab/kota, " + gs.reduce(function (t, g) { return t + g.items.length; }, 0) + " ruas dimuat & ditampilkan"); }
       else toast(pn + ": tidak ada data jalan nasional" + (r === "empty" ? "" : ""), true);
     } catch (e) { diagMsg = pn + ": " + msgOf(e); toast(pn + " gagal — " + msgOf(e), true); }
     finally { provBusy = false; progress(""); render(); }
@@ -658,7 +727,7 @@
     } catch (e) {}
     return true;
   }
-  W.PQ_JNKAB = { openSta: openSta, build: build, decode: decode, render: render, loadAll: function () { return loadAll(false); }, _t: { simplify: simplify, chain: chain, encode: encode, osmToBy: osmToBy } };
+  W.PQ_JNKAB = { openSta: openSta, build: build, decode: decode, render: render, loadAll: function () { return loadAll(false); }, _t: { group: function (pn, by, src) { G = G || []; addProvGroup(pn, by, src); return G; }, simplify: simplify, chain: chain, encode: encode, osmToBy: osmToBy } };
   if (typeof document !== "undefined" && document.addEventListener) {
     var n = 0, t = setInterval(function () { if (mount() || ++n > 40) clearInterval(t); }, 500);
   }
