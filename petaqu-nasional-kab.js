@@ -78,11 +78,14 @@
     return (kLayers[id] = grp);
   }
   function setItem(g, it, on, fit) {
+    legSoon();
     var m = getMap(), l = lyr(g, it); if (!m || !l) return;
     if (on) { if (!m.hasLayer(l)) l.addTo(m); if (fit) try { m.fitBounds(l.getBounds(), { padding: [40, 40], maxZoom: 14 }); } catch (e) {} }
     else m.removeLayer(l);
   }
   function itemOn(g, it) { var m = getMap(), l = kLayers[g.ki + "|" + it.key]; return !!(m && l && m.hasLayer(l)); }
+  W.__pqNasInfo = function () { var n = 0, km = 0; (G || []).forEach(function (g) { g.items.forEach(function (it) { if (itemOn(g, it)) { n++; km += it.km || 0; } }); }); return { n: n, km: km }; };
+  function legSoon() { try { if (typeof W.__pqLegendRefresh === "function") setTimeout(W.__pqLegendRefresh, 80); } catch (e) {} }
   function kabOn(g) { return g.items.some(function (it) { return itemOn(g, it); }); }
   function setKab(g, on, noFit) {
     g.items.forEach(function (it) { setItem(g, it, on, false); });
