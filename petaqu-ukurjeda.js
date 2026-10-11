@@ -212,6 +212,31 @@
       return { pano: p.getPano(), lat: pos.lat(), lng: pos.lng(), pov: pov.heading, links: links };
     } catch (e) { return null; }
   }
+  /* konteks dari state Street View (tanpa panorama live & tanpa animasi): titik ruas / patok KM / lokasi → arah jalan dari titik ruas terdekat */
+  function bearing(a, b) {
+    var t = Math.PI / 180, dl = (b.lng - a.lng) * t, y = Math.sin(dl) * Math.cos(b.lat * t), x = Math.cos(a.lat * t) * Math.sin(b.lat * t) - Math.sin(a.lat * t) * Math.cos(b.lat * t) * Math.cos(dl);
+    return (Math.atan2(y, x) / t + 360) % 360;
+  }
+  function svStateCtx() {
+    try {
+      var st = typeof svState !== "undefined" ? svState : null, R = typeof roads !== "undefined" ? roads : []; if (!st) return null;
+      var lat, lng, road = null, idx = -1, label = st.label || "";
+      if (st.type === "road") {
+        road = R.filter(function (r) { return r.id === st.roadId; })[0]; if (!road || !road.points[st.index]) return null;
+        idx = st.index; lat = +road.points[idx].lat; lng = +road.points[idx].lng;
+      } else if (st.type === "geo" && isFinite(st.lat) && isFinite(st.lng)) {
+        lat = +st.lat; lng = +st.lng; var bd = 80;
+        R.forEach(function (r) { (r.points || []).forEach(function (p, i) { var d = meters({ lat: lat, lng: lng }, { lat: +p.lat, lng: +p.lng }); if (d < bd) { bd = d; road = r; idx = i; } }); });
+      } else return null;
+      var rh = 0, axis = "pandang", sta = "", name = label;
+      if (road && idx >= 0) {
+        var P = road.points, nb = P[idx + 1] || P[idx - 1];
+        if (nb) { rh = Math.round(bearing({ lat: lat, lng: lng }, { lat: +nb.lat, lng: +nb.lng })); if (!P[idx + 1]) rh = (rh + 180) % 360; axis = "rute"; }
+        sta = P[idx].sta || ""; name = road.name || label;
+      }
+      return { lat: lat, lng: lng, rh: rh, pano: null, sta: sta, name: name, live: false, axis: axis };
+    } catch (e) { return null; }
+  }
   function resolveCtx(a) {
     var base = null; try { base = a && window.PQSvAuto ? PQSvAuto.info(a) : null; } catch (e) { base = null; }
     var lv = liveInfo(), c = null;
@@ -224,6 +249,7 @@
     } else if (base) {
       c = { lat: base.lat, lng: base.lng, rh: base.rh, pano: null, sta: base.sta, name: base.name, live: false, axis: "rute" };
     }
+    if (!c) c = svStateCtx();     /* Embed / Street View dibuka dari patok KM, titik STA atau lokasi tanpa animasi rute */
     if (c) c.key = (c.pano || (c.lat.toFixed(5) + "," + c.lng.toFixed(5))) + "|" + Math.round(c.rh / 10);
     return c;
   }
