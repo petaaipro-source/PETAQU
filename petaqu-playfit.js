@@ -15,6 +15,8 @@
      ditunjukkan ikon kendaraan, jadi tidak ada lagi dua penanda yang bertumpuk. (b) Panel selalu berada DI ATAS
      kontrol peta (z-index) dan tombol zoom +/− beserta skala jarak otomatis NAIK tepat di atas panel bila
      bertabrakan (HP/layar sempit); toolbar kanan ikut memendek agar tidak menimpa tombol zoom.
+   • v5: LEGENDA kiri-bawah ikut naik tepat di atas panel animasi bila bertabrakan (HP/layar sempit); isi legenda menyusut
+     & bisa di-scroll agar tidak menimpa kartu pencarian/filter di atas. Kembali ke posisi semula saat panel ditutup / layar melebar.
    • Ringan: tanpa timer polling; ResizeObserver/MutationObserver + 1 rAF per perubahan; rect di-cache 250 ms. */
 (function () {
   "use strict";
@@ -46,6 +48,10 @@
     "html body.pqf-lift .leaflet-bottom.leaflet-right{margin-bottom:var(--pqf-zb,0px)}",
     "html body.pqf-tbfit #mapToolbar{bottom:max(118px,var(--pqf-tb,0px))!important}",
     "@media(max-width:860px){html body.pqf-tbfit #mapToolbar{bottom:max(128px,var(--pqf-tb,0px))!important}}",
+    /* v5: legenda naik di atas panel animasi bila bertabrakan (kiri-bawah); isinya menyusut & bisa di-scroll agar tidak menimpa panel/pencarian di atas */
+    "html body #legend{transition:bottom .22s ease}",
+    "html body.pqf-lg #legend{bottom:var(--pqf-lgb,14px)!important}",
+    "html body.pqf-lg #legend #legendContent{max-height:min(var(--pqf-lgc,999px),46vh,380px)!important}",
     /* ruang kolom kanan terlalu pendek untuk toolbar + zoom → zoom bergeser ke kiri toolbar */
     "html body.pqf-side .leaflet-bottom.leaflet-right{padding-right:calc(var(--pq-edge) + 54px)}",
     ".pqf-sta{position:absolute;left:50%;bottom:calc(100% + 7px);transform:translateX(-50%);pointer-events:none;white-space:nowrap;display:flex;flex-direction:column;align-items:center;z-index:6}",
@@ -168,7 +174,7 @@
     if (!m || !m.panTo || !window.L) return setTimeout(patchMap, 600);
     wrapFrame();
     if (m.__pqf) return; m.__pqf = 1;
-    try { console.info("[PETAQU] panel & panah animasi adaptif aktif (playfit v4)"); } catch (e) {}
+    try { console.info("[PETAQU] panel & panah animasi adaptif aktif (playfit v5)"); } catch (e) {}
     var oPan = m.panTo, oFly = m.flyTo;
     m.panTo = function (ll, o) {
       try { if (isVeh(ll)) ll = shifted(this, L.latLng(ll)); } catch (e) {}
@@ -240,22 +246,42 @@
 
   /* v4: tandai mode animasi di <body> & angkat zoom/skala bila panel menutupinya (hanya ubah kelas bila berubah → tanpa loop). */
   function flag(cls, on) { var c = document.body.classList; if (c.contains(cls) !== on) c.toggle(cls, on); }
+  /* v5: legenda (kiri-bawah) naik tepat di atas panel animasi bila bertabrakan secara horizontal; tinggi isinya menyusut
+     sesuai ruang tersisa di bawah kartu pencarian/filter (min ±70px, selebihnya di-scroll). Idempoten → tanpa loop. */
+  var TOPKEEP = 215;   // ruang atas yang dijaga: kotak pencarian + kartu filter di kiri-atas
+  function legendDodge(active, bl, br, barUp, mapR) {
+    var lg = document.getElementById("legend"), root = document.documentElement.style, on = false;
+    if (active && lg && lg.offsetWidth > 0 && getComputedStyle(lg).display !== "none") {
+      var lr = lg.getBoundingClientRect();
+      if (lr.right > bl - 6 && lr.left < br + 6) {
+        on = true;
+        var lgb = Math.max(14, barUp);
+        root.setProperty("--pqf-lgb", lgb + "px");
+        var ct = document.getElementById("legendContent");
+        if (ct && ct.offsetHeight > 0) {
+          var head = lg.offsetHeight - ct.offsetHeight, room = mapR.height - lgb - TOPKEEP - head;
+          root.setProperty("--pqf-lgc", Math.max(70, Math.floor(room)) + "px");
+        } else root.removeProperty("--pqf-lgc");
+      }
+    }
+    flag("pqf-lg", on);
+  }
   function dodge(bar, pr, f, cx, avail, b) {
     var shown = bar.classList.contains("show"), root = document.documentElement.style;
     flag("pqf-anim", shown);
-    var lift = 0;
+    var lift = 0, w = Math.min(580, avail);
+    var bl = pr.left + cx - w / 2, br = bl + w, top = null;    // kotak panel (target, bukan nilai tengah-transisi)
+    if (bar.classList.contains("dragged")) {                   // digeser manual → pakai kotak aktual
+      var rr = bar.getBoundingClientRect(); bl = rr.left; br = rr.right; top = rr.top;
+    }
+    var mapR = document.getElementById("map").getBoundingClientRect(), mb = mapR.bottom;
+    var barUp = Math.max(0, Math.round(top == null ? b + bar.offsetHeight + 8 : mb - top + 8));   // tinggi ruang yang dipakai panel dari dasar peta
     var z = document.querySelector(".leaflet-control-zoom");
     if (shown && !f.over && z && z.offsetWidth > 0) {
-      var zr = z.getBoundingClientRect(), w = Math.min(580, avail);
-      var bl = pr.left + cx - w / 2, br = bl + w, top = null;  // kotak panel (target, bukan nilai tengah-transisi)
-      if (bar.classList.contains("dragged")) {                 // digeser manual → pakai kotak aktual
-        var rr = bar.getBoundingClientRect(); bl = rr.left; br = rr.right; top = rr.top;
-      }
-      if (br > zr.left - 6 && bl < zr.right + 6) {
-        var mb = document.getElementById("map").getBoundingClientRect().bottom;
-        lift = Math.max(0, Math.round(top == null ? b + bar.offsetHeight + 8 : mb - top + 8));
-      }
+      var zr = z.getBoundingClientRect();
+      if (br > zr.left - 6 && bl < zr.right + 6) lift = barUp;
     }
+    legendDodge(shown && !f.over, bl, br, barUp, mapR);
     var fit = false, side = false;
     if (lift > 0) {
       root.setProperty("--pqf-zb", lift + "px"); root.setProperty("--pqf-tb", (lift + 92) + "px");
@@ -284,6 +310,8 @@
     } catch (e) {}
     function hookWx() { var c = $("pqwxCard"); if (!c || c._pqf) return; c._pqf = 1; try { ro && ro.observe(c); mo && mo.observe(c, { attributes: true, attributeFilter: ["class"] }); } catch (e) {} schedule(); }
     hookWx(); try { new MutationObserver(function () { var c = $("pqwxCard"); if (c && !c._pqf) hookWx(); }).observe(document.body, { childList: true }); } catch (e) {}
+    function hookLg() { var l = $("legend"); if (!l || l._pqf) return; l._pqf = 1; try { ro && ro.observe(l); mo && mo.observe(l, { attributes: true, attributeFilter: ["class", "style"] }); } catch (e) {} schedule(); }
+    hookLg(); try { new MutationObserver(function () { var l = $("legend"); if (l && !l._pqf) hookLg(); }).observe(document.body, { childList: true }); } catch (e) {}
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", function () { setTimeout(schedule, 250); });
     document.addEventListener("transitionend", function (e) {
@@ -294,6 +322,6 @@
     schedule(); patchMap();
   }
 
-  window.__pqPlayFit = { v: 4, calcFree: calcFree, apply: apply, shrink: shrink };
+  window.__pqPlayFit = { v: 5, calcFree: calcFree, apply: apply, shrink: shrink };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
