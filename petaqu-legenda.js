@@ -7,15 +7,19 @@
    • Semua tombol (mode warna, urutan, buka/tutup semua, warna otomatis, reset) berupa ikon SVG + tooltip — hemat ruang.
    • Mode "Per kabupaten": swatch kabupaten di kepala grup bisa diklik untuk ganti warna; mode IRI memakai legenda aslinya.
    • Bar komposisi Aspal / Rigid Beton / Belum ditandai (km) tetap ada; Jalan Nasional per kabupaten/provinsi tetap didaftar.
-   • Tombol STA (ikon): tampilkan titik STA/KM HANYA untuk ruas yang aktif di peta & yang masuk layar; makin dekat makin rapat,
-     dan saat zoom ≥ 16 label "STA • KM" tampil permanen. Dimatikan = kembali ke tampilan bawaan (semua titik). Pilihan diingat.
+   • Tombol STA (ikon, kuning) dan tombol KM (ikon patok, hijau) TERPISAH dan masing-masing menampilkan hanya ruas yang aktif di peta
+     & yang masuk layar:
+       - STA : titik STA (label "STA 0+050"), makin dekat makin rapat; digambar sendiri bila mode tampilan ruas "garis saja".
+       - KM  : patok kilometer ("KM 12", "KM 12+500") tiap 1 km (0,5 / 0,1 km saat zoom dekat, 2/5/10 km saat jauh). Memakai KM awal ruas
+               bila sudah diisi; bila belum, dihitung dari STA (patok bergaris putus-putus, ditandai di info).
+     Dimatikan = kembali ke tampilan bawaan. Pilihan diingat.
    • Ringan: pembaruan ditunda (debounce); posisi gulir & fokus kolom cari dipertahankan saat legenda diperbarui. */
 (function () {
   "use strict";
   if (window.__pqLegenda) return;
   var W = window, T = 0, busy = false, LIM = 400;
-  var S = { q: "", sort: "km", pick: null, open: {}, nasOpen: true, sta: false, staTxt: "" };
-  try { S.sta = localStorage.getItem("pq_lg_sta") === "1"; } catch (e) {}
+  var S = { q: "", sort: "km", pick: null, open: {}, nasOpen: true, sta: false, staTxt: "", km: false, kmTxt: "" };
+  try { S.sta = localStorage.getItem("pq_lg_sta") === "1"; S.km = localStorage.getItem("pq_lg_km") === "1"; } catch (e) {}
   var SORTS = { km: "Km terbesar dulu", az: "Nama A–Z", ord: "Urutan data" };
 
   /* ---------- ikon SVG (tanpa teks, ikut warna tombol) ---------- */
@@ -33,6 +37,7 @@
     zoom: '<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
     chev: '<path d="M9 6l6 6-6 6"/>',
     sta: '<circle cx="5" cy="13" r="1.7"/><circle cx="12" cy="13" r="1.7"/><circle cx="19" cy="13" r="1.7"/><path d="M6.7 13h3.6M13.7 13h3.6M5 7v3M12 5v5M19 7v3"/>',
+    km: '<path d="M12 3v18M8 21h8"/><path d="M5 5h11l3 3-3 3H5z"/><path d="M5 14h8"/>',
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     eyepart: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="1.2"/>',
     eyeoff: '<path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 9 6 9 6a15 15 0 0 1-3 3.5M6.5 7.5C4 9.2 3 12 3 12s4 6 9 6c1.2 0 2.3-.3 3.3-.7M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
@@ -82,6 +87,10 @@
     ".pqlg-gb{display:none;margin-left:9px;padding-left:5px;border-left:1px solid #ffffff1f}.pqlg-g.open>.pqlg-gb{display:block}",
     ".pqlg-n{color:#9fb6c3;font-size:10px;padding:2px 4px}",
     ".pqlg-ib.pqlg-sta.on{background:#b45309;border-color:#fbbf24;color:#fff}",
+    ".pqlg-ib.pqlg-kmb.on{background:#047857;border-color:#34d399;color:#fff}",
+    ".pqlg-seg .pqlg-ib.pqlg-eye{border:0;border-right:1px solid #2b3a52;border-radius:0}.pqlg-seg .pqlg-ib.pqlg-eye:last-child,.pqlg-seg .pqlg-ib:last-child{border-right:0}",
+    ".pqlg-kminfo{color:#6ee7b7;font-size:10px;padding:2px 4px 0;line-height:1.3}",
+    ".pqlg-kmpin{pointer-events:none}.pqlg-kmpin b{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - 7px));white-space:nowrap;font:800 10px ui-monospace,monospace;color:#ecfdf5;background:#052e22ee;border:1.5px solid var(--c,#34d399);border-radius:5px;padding:1px 5px;box-shadow:0 2px 6px #0008}.pqlg-kmpin b:after{content:\"\";position:absolute;left:50%;top:100%;width:7px;height:7px;margin:1px 0 0 -3.5px;border-radius:50%;background:var(--c,#34d399);border:1.5px solid #052e22}.pqlg-kmpin.est b{border-style:dashed;background:#1e293bee;color:#e2e8f0}",
     ".pqlg-stainfo{color:#fcd34d;font-size:10px;padding:3px 4px 0;line-height:1.3}",
     ".pqlg-stalabel{pointer-events:none}",
     ".pqlg-empty{color:#9fb6c3;font-style:italic;padding:3px 0}",
@@ -263,8 +272,11 @@
     });
     h += '</div>';
     var nv = cache.rs.length, na = cache.all.length;
+    h += '<div class="pqlg-seg" role="group" aria-label="Tampilan peta">';
     h += ibtn2('data-eyeall="' + (nv === na ? 0 : 1) + '"', nv === na ? "eye" : nv ? "eyepart" : "eyeoff", nv === na ? "Sembunyikan SEMUA ruas dari peta" : "Tampilkan SEMUA ruas di peta (" + nv + " dari " + na + " tampil)", (nv === na ? "" : nv ? "part" : "off") + " pqlg-ib");
-    h += ibtn('data-sta="1" aria-pressed="' + S.sta + '"', "sta", S.sta ? "STA/KM: hanya ruas aktif di peta & layar (ON) — klik untuk kembali ke semua titik" : "Tampilkan STA/KM hanya untuk ruas aktif di peta & layar", "pqlg-sta" + (S.sta ? " on" : ""));
+    h += ibtn('data-sta="1" aria-pressed="' + S.sta + '"', "sta", S.sta ? "Titik STA: ON (hanya ruas aktif di peta & layar) — klik untuk mematikan" : "Titik STA: tampilkan hanya untuk ruas aktif di peta & layar", "pqlg-sta" + (S.sta ? " on" : ""));
+    h += ibtn('data-kmb="1" aria-pressed="' + S.km + '"', "km", S.km ? "Patok KM: ON (hanya ruas aktif di peta & layar) — klik untuk mematikan" : "Patok KM: tampilkan hanya untuk ruas aktif di peta & layar", "pqlg-kmb" + (S.km ? " on" : ""));
+    h += '</div>';
     if (m === "road" && !iri) h += ibtn('data-auto="1"', "palette", "Warna otomatis semua ruas");
     if (m === "kab" && !iri) h += ibtn('data-resetkab="1"', "reset", "Reset warna kabupaten");
     if (nKab > 1 || cache.all.length > 6) {
@@ -276,8 +288,10 @@
   }
 
 
-  /* ---------- STA/KM: hanya ruas AKTIF di peta & yang masuk layar ---------- */
-  var STA = { t: 0, ap: false, touched: false, cache: {}, MAX: 1500, LAB: 150 };
+  /* ---------- STA & KM: tombol terpisah, hanya ruas AKTIF di peta & yang masuk layar ---------- */
+  var STA = { t: 0, ap: false, touched: false, cache: {}, MAX: 1500, LAB: 150, own: null, canvas: null };
+  var KMX = { t: 0, ap: false, touched: false, grp: null, MAX: 450 };
+  function isNum(v) { return v !== undefined && v !== null && v !== "" && !isNaN(v); }
   function isSta(l) {
     if (!W.L) return false;
     if (l instanceof L.Polyline || l instanceof L.Polygon) return false;
@@ -292,57 +306,144 @@
     for (var i = 1; i < ms.length; i++) { try { tot += m.distance(ms[i - 1].getLatLng(), ms[i].getLatLng()); } catch (e) {} }
     return (STA.cache[id] = { g: g, n: n, ms: ms, sp: ms.length > 1 ? Math.max(5, tot / (ms.length - 1)) : 50 });
   }
+  function stripKm(c) { return typeof c === "string" ? c.replace(/\s*•\s*KM\s*[0-9+.,\-]+/g, "") : c; }
   function labelOn(mk) {
     if (mk.__pqlgT) return; var tp = mk.getTooltip && mk.getTooltip(); if (!tp) return;
     mk.__pqlgT = { c: tp.getContent(), o: Object.assign({}, tp.options) };
-    mk.unbindTooltip(); mk.bindTooltip(mk.__pqlgT.c, { permanent: true, direction: "top", offset: mk.__pqlgT.o.offset, className: "sta-label pqlg-stalabel" });
+    mk.unbindTooltip(); mk.bindTooltip(stripKm(mk.__pqlgT.c), { permanent: true, direction: "top", offset: mk.__pqlgT.o.offset, className: "sta-label pqlg-stalabel" });
   }
   function labelOff(mk) {
     var o = mk.__pqlgT; if (!o) return; delete mk.__pqlgT;
     mk.unbindTooltip(); mk.bindTooltip(o.c, o.o);
   }
-  function staInfo(txt) { S.staTxt = txt; var e = document.getElementById("pqlgStaInfo"); if (e) e.textContent = txt; }
+  function setInfo(kind, txt) { S[kind + "Txt"] = txt; var e = document.getElementById(kind === "sta" ? "pqlgStaInfo" : "pqlgKmInfo"); if (e) e.textContent = txt; }
+  function activeRoads(m, ly, rs) { var a = []; rs.forEach(function (r) { var o = ly[r.id]; if (!o || !o.group) return; if (r.visible === false || !m.hasLayer(o.group)) return; a.push(r); }); return a; }
+  function circleCanvas() { if (!STA.canvas) STA.canvas = L.canvas({ padding: 0.5 }); return STA.canvas; }
+
+  /* ----- STA ----- */
   function staApply() {
     var m = G("map"), ly = G("layers"), rs = G("roads"); if (!m || !ly || !rs || !W.L) return;
     if (!S.sta && !STA.touched) return;
     STA.ap = true;
     try {
-      var act = [], total = 0;
-      rs.forEach(function (r) { var o = ly[r.id]; if (!o || !o.group) return; if (r.visible === false || !m.hasLayer(o.group)) return; var c = staMarkers(r.id, o.group, m); act.push(c); total += c.ms.length; });
-      if (!S.sta) {                                   /* OFF → kembalikan tampilan bawaan: semua titik, tooltip asli */
-        act.forEach(function (c) { c.ms.forEach(function (mk) { labelOff(mk); if (!m.hasLayer(mk)) m.addLayer(mk); }); });
-        STA.touched = false; staInfo(""); return;
+      var items = [], total = 0;
+      activeRoads(m, ly, rs).forEach(function (r) {
+        var c = staMarkers(r.id, ly[r.id].group, m);
+        if (c.ms.length) { items.push({ r: r, app: c, n: c.ms.length, sp: c.sp, ll: function (i) { return c.ms[i].getLatLng(); } }); total += c.ms.length; return; }
+        var pts = (r.points || []).filter(function (p) { return isNum(p.lat) && isNum(p.lng); });
+        if (pts.length < 1) return;
+        var tot = 0; for (var i = 1; i < pts.length; i++) { try { tot += m.distance([pts[i - 1].lat, pts[i - 1].lng], [pts[i].lat, pts[i].lng]); } catch (e) {} }
+        items.push({ r: r, own: pts, n: pts.length, sp: pts.length > 1 ? Math.max(5, tot / (pts.length - 1)) : 50, ll: function (i) { return L.latLng(pts[i].lat, pts[i].lng); } }); total += pts.length;
+      });
+      if (!STA.own) STA.own = L.layerGroup();
+      if (!S.sta) {                                   /* OFF → kembalikan tampilan bawaan */
+        STA.own.clearLayers(); if (m.hasLayer(STA.own)) m.removeLayer(STA.own);
+        items.forEach(function (it) { if (it.app) it.app.ms.forEach(function (mk) { labelOff(mk); if (!m.hasLayer(mk)) m.addLayer(mk); }); });
+        STA.touched = false; setInfo("sta", ""); return;
       }
       STA.touched = true;
       var z = m.getZoom(), b = m.getBounds().pad(0.2), mpp = 156543.03 * Math.cos(m.getCenter().lat * Math.PI / 180) / Math.pow(2, z);
       var near = z >= 10, f = 1, want, shown = 0;
       function pass() {
         want = []; shown = 0;
-        act.forEach(function (c, ci) {
-          var ms = c.ms, n = ms.length, step = Math.max(1, Math.ceil(26 * mpp * f / c.sp)), set = [];
-          if (near) for (var i = 0; i < n; i++) { if (i % step === 0 || i === 0 || i === n - 1) { try { if (b.contains(ms[i].getLatLng())) { set.push(i); shown++; } } catch (e) {} } }
+        items.forEach(function (it, ci) {
+          var n = it.n, step = Math.max(1, Math.ceil(26 * mpp * f / it.sp)), set = [];
+          if (near) for (var i = 0; i < n; i++) { if (i % step === 0 || i === 0 || i === n - 1) { try { if (b.contains(it.ll(i))) { set.push(i); shown++; } } catch (e) {} } }
           want[ci] = set;
         });
       }
       pass(); for (var k = 0; k < 4 && shown > STA.MAX; k++) { f *= Math.ceil(shown / STA.MAX); pass(); }
-      var lab = near && z >= 16 && shown <= STA.LAB;
-      act.forEach(function (c, ci) {
-        var keep = {}; want[ci].forEach(function (i) { keep[i] = 1; });
-        c.ms.forEach(function (mk, i) {
-          var has = m.hasLayer(mk), w = !!keep[i];
-          if (lab && w) labelOn(mk); else labelOff(mk);
-          if (w && !has) m.addLayer(mk); else if (!w && has) m.removeLayer(mk);
-        });
+      var lab = near && z >= 16 && shown <= STA.LAB, rad = z >= 16 ? 5 : z >= 14 ? 4 : 3;
+      STA.own.clearLayers();
+      var nOwn = 0;
+      items.forEach(function (it, ci) {
+        if (it.app) {
+          var keep = {}; want[ci].forEach(function (i) { keep[i] = 1; });
+          it.app.ms.forEach(function (mk, i) {
+            var has = m.hasLayer(mk), w = !!keep[i];
+            if (lab && w) labelOn(mk); else labelOff(mk);
+            if (w && !has) m.addLayer(mk); else if (!w && has) m.removeLayer(mk);
+          });
+        } else {
+          var col = effColor(it.r), cv = circleCanvas();
+          want[ci].forEach(function (i) {
+            var p = it.own[i], mk = L.circleMarker([p.lat, p.lng], { renderer: cv, radius: rad, color: col, weight: 2, fillColor: "#0a0e17", fillOpacity: 0.9 });
+            mk.bindTooltip('<span class="pq-label-rotate">STA ' + esc(p.sta) + '</span>', lab ? { permanent: true, direction: "top", offset: [0, -6], className: "sta-label pqlg-stalabel" } : { direction: "top", offset: [0, -6], className: "sta-label" });
+            (function (rid, idx) { mk.on("click", function () { try { if (typeof W.editMode !== "undefined" && W.editMode && typeof W.openPointEditor === "function") W.openPointEditor(rid, idx); else if (typeof W.openStreetView === "function") W.openStreetView(rid, idx); } catch (e) {} }); })(it.r.id, i);
+            STA.own.addLayer(mk); nOwn++;
+          });
+        }
       });
-      staInfo(!near ? "STA/KM aktif — dekatkan zoom (≥ 10) untuk menampilkan titik" : "STA/KM " + shown + " dari " + total + " titik · " + act.length + " ruas aktif" + (lab ? " · label tampil" : z < 16 ? " · zoom ≥ 16 untuk label" : " · label muncul bila ≤ " + STA.LAB + " titik"));
+      if (nOwn && !m.hasLayer(STA.own)) STA.own.addTo(m); else if (!nOwn && m.hasLayer(STA.own)) m.removeLayer(STA.own);
+      setInfo("sta", !near ? "STA aktif — dekatkan zoom (≥ 10) untuk menampilkan titik" : "STA " + shown + " dari " + total + " titik · " + items.length + " ruas aktif" + (lab ? " · label tampil" : z < 16 ? " · zoom ≥ 16 untuk label" : " · label muncul bila ≤ " + STA.LAB + " titik"));
     } catch (e) { try { console.warn("PETAQU legenda STA:", e); } catch (e2) {} }
     STA.ap = false;
   }
   function staSched() { if (STA.ap) return; if (!S.sta && !STA.touched) return; clearTimeout(STA.t); STA.t = setTimeout(staApply, 90); }
-  function toggleSta() {
-    S.sta = !S.sta; try { localStorage.setItem("pq_lg_sta", S.sta ? "1" : "0"); } catch (e) {}
-    try { if (typeof W.toast === "function") W.toast(S.sta ? "STA/KM: hanya ruas aktif di peta & layar" : "STA/KM: semua titik (bawaan)"); } catch (e) {}
-    staApply(); build();
+
+  /* ----- KM: patok kilometer ----- */
+  function staMeters(sta) { var mm = /^\s*(\d+)\s*\+\s*(\d{1,3})\s*$/.exec(String(sta == null ? "" : sta)); return mm ? (+mm[1]) * 1000 + (+mm[2]) : null; }
+  function fmtKm(k) { var a = Math.abs(k), n = Math.floor(a + 1e-9), o = Math.round((a - n) * 1000); if (o >= 1000) { o -= 1000; n++; } return (k < 0 ? "-" : "") + n + (o ? "+" + ("00" + o).slice(-3) : ""); }
+  function kmSeries(r, m) {
+    var ps = (r.points || []).filter(function (p) { return isNum(p.lat) && isNum(p.lng); }), real = ps.some(function (p) { return isNum(p.km); }), out = [];
+    if (real) { ps.forEach(function (p) { if (isNum(p.km)) out.push({ lat: +p.lat, lng: +p.lng, km: +p.km }); }); return { s: out, real: true }; }
+    var allSta = ps.length > 0 && ps.every(function (p) { return staMeters(p.sta) != null; }), cum = 0;
+    ps.forEach(function (p, i) {
+      var km;
+      if (allSta) km = staMeters(p.sta) / 1000;
+      else { if (i) { try { cum += m.distance([ps[i - 1].lat, ps[i - 1].lng], [p.lat, p.lng]) / 1000; } catch (e) {} } km = cum; }
+      out.push({ lat: +p.lat, lng: +p.lng, km: km });
+    });
+    return { s: out, real: false };
+  }
+  function kmApply() {
+    var m = G("map"), ly = G("layers"), rs = G("roads"); if (!m || !ly || !rs || !W.L) return;
+    if (!S.km && !KMX.touched) return;
+    KMX.ap = true;
+    try {
+      if (!KMX.grp) KMX.grp = L.layerGroup();
+      KMX.grp.clearLayers();
+      if (!S.km) { if (m.hasLayer(KMX.grp)) m.removeLayer(KMX.grp); KMX.touched = false; setInfo("km", ""); return; }
+      KMX.touched = true;
+      var act = activeRoads(m, ly, rs), z = m.getZoom(), b = m.getBounds().pad(0.15), mpp = 156543.03 * Math.cos(m.getCenter().lat * Math.PI / 180) / Math.pow(2, z);
+      if (z < 9) { if (m.hasLayer(KMX.grp)) m.removeLayer(KMX.grp); setInfo("km", "KM aktif — dekatkan zoom (≥ 9) untuk menampilkan patok"); KMX.ap = false; return; }
+      var STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50], si = 0, pxKm = 1000 / mpp;
+      while (si < STEPS.length - 1 && STEPS[si] * pxKm < 90) si++;
+      var series = act.map(function (r) { return { r: r, k: kmSeries(r, m) }; }), pins, step;
+      function gen() {
+        step = STEPS[si]; pins = [];
+        series.forEach(function (it) {
+          var a = it.k.s;
+          for (var i = 1; i < a.length; i++) {
+            var p0 = a[i - 1], p1 = a[i], d = p1.km - p0.km; if (!d) continue;
+            var lo = Math.min(p0.km, p1.km), hi = Math.max(p0.km, p1.km), K0 = Math.ceil(lo / step - 1e-9) * step;
+            for (var K = K0; K <= hi + 1e-9; K += step) {
+              var t = (K - p0.km) / d; if (t < 0 || t > 1 || (t === 1 && i < a.length - 1)) continue;
+              var la = p0.lat + (p1.lat - p0.lat) * t, lo2 = p0.lng + (p1.lng - p0.lng) * t;
+              if (b.contains([la, lo2])) pins.push({ r: it.r, real: it.k.real, la: la, lo: lo2, K: Math.round(K * 1000) / 1000 });
+            }
+          }
+        });
+      }
+      gen(); while (pins.length > KMX.MAX && si < STEPS.length - 1) { si++; gen(); }
+      pins.forEach(function (q) {
+        var whole = Math.abs(q.K - Math.round(q.K)) < 1e-6, txt = "KM " + (whole ? Math.round(q.K) : fmtKm(q.K));
+        L.marker([q.la, q.lo], { interactive: false, keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: "pqlg-kmpin" + (q.real ? "" : " est"), iconSize: [0, 0], iconAnchor: [0, 0], html: '<b style="--c:' + esc(effColor(q.r)) + '">' + txt + '</b>' }) }).addTo(KMX.grp);
+      });
+      if (pins.length && !m.hasLayer(KMX.grp)) KMX.grp.addTo(m); else if (!pins.length && m.hasLayer(KMX.grp)) m.removeLayer(KMX.grp);
+      var est = series.filter(function (it) { return !it.k.real && it.k.s.length; }).length;
+      setInfo("km", "KM " + pins.length + " patok · tiap " + String(step).replace(".", ",") + " km · " + act.length + " ruas aktif" + (est ? " · " + est + " ruas KM dari STA (KM awal belum diisi)" : ""));
+    } catch (e) { try { console.warn("PETAQU legenda KM:", e); } catch (e2) {} }
+    KMX.ap = false;
+  }
+  function kmSched() { if (KMX.ap) return; if (!S.km && !KMX.touched) return; clearTimeout(KMX.t); KMX.t = setTimeout(kmApply, 110); }
+
+  function toggleFlag(which) {
+    S[which] = !S[which]; try { localStorage.setItem("pq_lg_" + which, S[which] ? "1" : "0"); } catch (e) {}
+    var nm = which === "sta" ? "STA" : "KM";
+    try { if (typeof W.toast === "function") W.toast(S[which] ? nm + ": hanya ruas aktif di peta & layar" : nm + ": dimatikan (tampilan bawaan)"); } catch (e) {}
+    if (which === "sta") staApply(); else kmApply();
+    build();
   }
 
   function build() {
@@ -382,7 +483,7 @@
       h += '<div class="pqlg-top"><b>Ruas tersurvei</b><span>' + nKabV + ' kab · ' + (rs.length < cache.all.length ? rs.length + " dari " + cache.all.length : rs.length) + ' ruas</span><em>' + km1(tot) + ' km</em></div>';
       var sum = bd.aspal + bd.rigid + bd.belum;
       if (surf && sum > 0.001) h += '<div class="pqlg-bar" title="Aspal / Rigid Beton / Belum ditandai">' + ["aspal", "rigid", "belum"].map(function (k) { return bd[k] > 0.0005 ? '<s style="width:' + (bd[k] / sum * 100).toFixed(2) + '%;background:' + (cols[k] || { aspal: "#f59e0b", rigid: "#38bdf8", belum: "#7c8aa0" }[k]) + '"></s>' : ""; }).join("") + '</div>';
-      h += toolbarHtml(rs, nKab) + (S.sta ? '<div class="pqlg-stainfo" id="pqlgStaInfo">' + esc(S.staTxt) + '</div>' : "") + paletteHtml();
+      h += toolbarHtml(rs, nKab) + (S.sta ? '<div class="pqlg-stainfo" id="pqlgStaInfo">' + esc(S.staTxt) + '</div>' : "") + (S.km ? '<div class="pqlg-kminfo" id="pqlgKmInfo">' + esc(S.kmTxt) + '</div>' : "") + paletteHtml();
     } else if (!(info && info.n)) h += '<div class="pqlg-empty">Belum ada data tampil di peta</div>';
     h += '</div>';
     if (cache.all.length) h += '<div id="pqlgList">' + listHtml() + '</div>';
@@ -398,7 +499,7 @@
     box.scrollTop = sc;
     if (qa) { var q2 = document.getElementById("pqlgQ"); if (q2) { try { q2.focus(); q2.setSelectionRange(qs, qs); } catch (e) {} } }
   }
-  function refresh() { staSched(); if (busy) return; busy = true; clearTimeout(T); T = setTimeout(build, 140); }
+  function refresh() { staSched(); kmSched(); if (busy) return; busy = true; clearTimeout(T); T = setTimeout(build, 140); }
   W.__pqLegendRefresh = refresh;
 
   function focusRoad(id) {
@@ -420,7 +521,8 @@
   }
   function act(t, ev) {
     var solo1 = !!(ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey));
-    if (t.closest("[data-sta]")) { toggleSta(); return true; }
+    if (t.closest("[data-sta]")) { toggleFlag("sta"); return true; }
+    if (t.closest("[data-kmb]")) { toggleFlag("km"); return true; }
     var md = t.closest("[data-mode]"); if (md) { if (!md.disabled) setMode(md.getAttribute("data-mode")); return true; }
     var cl = t.closest("[data-col]"); if (cl) { setColor(cl.getAttribute("data-col")); return true; }
     if (t.closest("[data-pickclose]")) { S.pick = null; refresh(); return true; }
@@ -460,9 +562,9 @@
     box.addEventListener("change", function (e) { if (e.target && e.target.id === "pqlgCol") setColor(e.target.value); });
     box.addEventListener("input", function (e) { if (e.target && e.target.id === "pqlgQ") { S.q = e.target.value; renderList(); } });
     ["updateLegendForMode", "toggleRoadVisibility", "showAll", "hideAll", "renderRoadLayer", "clearLayer", "persist", "toggleIriMode", "toggleColorByKabupaten"].forEach(wrap);
-    var mp = G("map"); if (mp && mp.on) mp.on("zoomend moveend", staSched);
-    refresh(); setTimeout(refresh, 1500); if (S.sta) setTimeout(staApply, 1800);
+    var mp = G("map"); if (mp && mp.on) mp.on("zoomend moveend", function () { staSched(); kmSched(); });
+    refresh(); setTimeout(refresh, 1500); if (S.sta) setTimeout(staApply, 1800); if (S.km) setTimeout(kmApply, 1900);
   }
-  W.__pqLegenda = { v: 5, refresh: refresh, sta: function (on) { if (on !== undefined && !!on !== S.sta) toggleSta(); return S.sta; } };
+  W.__pqLegenda = { v: 6, refresh: refresh, sta: function (on) { if (on !== undefined && !!on !== S.sta) toggleFlag("sta"); return S.sta; }, km: function (on) { if (on !== undefined && !!on !== S.km) toggleFlag("km"); return S.km; } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
