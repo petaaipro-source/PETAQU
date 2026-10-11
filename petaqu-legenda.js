@@ -18,8 +18,8 @@
   "use strict";
   if (window.__pqLegenda) return;
   var W = window, T = 0, busy = false, LIM = 400;
-  var S = { q: "", sort: "km", pick: null, open: {}, nasOpen: true, sta: false, staTxt: "", km: false, kmTxt: "" };
-  try { S.sta = localStorage.getItem("pq_lg_sta") === "1"; S.km = localStorage.getItem("pq_lg_km") === "1"; } catch (e) {}
+  var S = { q: "", sort: "km", pick: null, open: {}, nasOpen: true, sta: false, staTxt: "", km: false, kmTxt: "", edit: false };
+  try { S.sta = localStorage.getItem("pq_lg_sta") === "1"; S.km = localStorage.getItem("pq_lg_km") === "1"; S.edit = localStorage.getItem("pq_lg_edit") === "1"; } catch (e) {}
   var SORTS = { km: "Km terbesar dulu", az: "Nama A–Z", ord: "Urutan data" };
 
   /* ---------- ikon SVG (tanpa teks, ikut warna tombol) ---------- */
@@ -28,6 +28,7 @@
     kab: '<path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
     all: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
     km: '<path d="M4 6h16M4 12h11M4 18h6"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     az: '<path d="M7 4v16M3.5 16.5 7 20l3.5-3.5M14 9h5l-5 6h5"/>',
     ord: '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>',
     expand: '<path d="M7 9l5-5 5 5M7 15l5 5 5-5"/>',
@@ -276,6 +277,7 @@
     h += ibtn2('data-eyeall="' + (nv === na ? 0 : 1) + '"', nv === na ? "eye" : nv ? "eyepart" : "eyeoff", nv === na ? "Sembunyikan SEMUA ruas dari peta" : "Tampilkan SEMUA ruas di peta (" + nv + " dari " + na + " tampil)", (nv === na ? "" : nv ? "part" : "off") + " pqlg-ib");
     h += ibtn('data-sta="1" aria-pressed="' + S.sta + '"', "sta", S.sta ? "Titik STA: ON (hanya ruas aktif di peta & layar) — klik untuk mematikan" : "Titik STA: tampilkan hanya untuk ruas aktif di peta & layar", "pqlg-sta" + (S.sta ? " on" : ""));
     h += ibtn('data-kmb="1" aria-pressed="' + S.km + '"', "km", S.km ? "Patok KM: ON (hanya ruas aktif di peta & layar) — klik untuk mematikan" : "Patok KM: tampilkan hanya untuk ruas aktif di peta & layar", "pqlg-kmb" + (S.km ? " on" : ""));
+    h += ibtn('data-medit="1" aria-pressed="' + S.edit + '"', "edit", S.edit ? "Edit STA & KM di peta: ON — klik titik/garis ruas di peta untuk mengubah. Klik untuk mematikan" : "Edit STA & KM langsung di peta", "pqlg-kmb" + (S.edit ? " on" : ""));
     h += '</div>';
     if (m === "road" && !iri) h += ibtn('data-auto="1"', "palette", "Warna otomatis semua ruas");
     if (m === "kab" && !iri) h += ibtn('data-resetkab="1"', "reset", "Reset warna kabupaten");
@@ -385,6 +387,7 @@
   function staMeters(sta) { var mm = /^\s*(\d+)\s*\+\s*(\d{1,3})\s*$/.exec(String(sta == null ? "" : sta)); return mm ? (+mm[1]) * 1000 + (+mm[2]) : null; }
   function fmtKm(k) { var a = Math.abs(k), n = Math.floor(a + 1e-9), o = Math.round((a - n) * 1000); if (o >= 1000) { o -= 1000; n++; } return (k < 0 ? "-" : "") + n + (o ? "+" + ("00" + o).slice(-3) : ""); }
   function kmSeries(r, m) {
+    try { if (W.PQKm && W.PQKm.series) { var q0 = W.PQKm.series(r); if (q0 && q0.s.length) return q0; } } catch (e) {}   /* sumber tunggal: KM ruas (manual / patok) — selaras dengan daftar ruas & lapisan Patok KM */
     var ps = (r.points || []).filter(function (p) { return isNum(p.lat) && isNum(p.lng); }), real = ps.some(function (p) { return isNum(p.km); }), out = [];
     if (real) { ps.forEach(function (p) { if (isNum(p.km)) out.push({ lat: +p.lat, lng: +p.lng, km: +p.km }); }); return { s: out, real: true }; }
     var allSta = ps.length > 0 && ps.every(function (p) { return staMeters(p.sta) != null; }), cum = 0;
@@ -413,11 +416,11 @@
       function gen() {
         step = STEPS[si]; pins = [];
         series.forEach(function (it) {
-          var a = it.k.s;
+          var a = it.k.s, st = it.r.kmStep > 0 ? Math.max(+it.r.kmStep, step / 5) : step;
           for (var i = 1; i < a.length; i++) {
             var p0 = a[i - 1], p1 = a[i], d = p1.km - p0.km; if (!d) continue;
-            var lo = Math.min(p0.km, p1.km), hi = Math.max(p0.km, p1.km), K0 = Math.ceil(lo / step - 1e-9) * step;
-            for (var K = K0; K <= hi + 1e-9; K += step) {
+            var lo = Math.min(p0.km, p1.km), hi = Math.max(p0.km, p1.km), K0 = Math.ceil(lo / st - 1e-9) * st;
+            for (var K = K0; K <= hi + 1e-9; K += st) {
               var t = (K - p0.km) / d; if (t < 0 || t > 1 || (t === 1 && i < a.length - 1)) continue;
               var la = p0.lat + (p1.lat - p0.lat) * t, lo2 = p0.lng + (p1.lng - p0.lng) * t;
               if (b.contains([la, lo2])) pins.push({ r: it.r, real: it.k.real, la: la, lo: lo2, K: Math.round(K * 1000) / 1000 });
@@ -431,8 +434,8 @@
         L.marker([q.la, q.lo], { interactive: false, keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: "pqlg-kmpin" + (q.real ? "" : " est"), iconSize: [0, 0], iconAnchor: [0, 0], html: '<b style="--c:' + esc(effColor(q.r)) + '">' + txt + '</b>' }) }).addTo(KMX.grp);
       });
       if (pins.length && !m.hasLayer(KMX.grp)) KMX.grp.addTo(m); else if (!pins.length && m.hasLayer(KMX.grp)) m.removeLayer(KMX.grp);
-      var est = series.filter(function (it) { return !it.k.real && it.k.s.length; }).length;
-      setInfo("km", "KM " + pins.length + " patok · tiap " + String(step).replace(".", ",") + " km · " + act.length + " ruas aktif" + (est ? " · " + est + " ruas KM dari STA (KM awal belum diisi)" : ""));
+      var est = series.filter(function (it) { return !it.k.real && it.k.s.length; }).length, pat = series.filter(function (it) { return it.k.src === "patok"; }).length;
+      setInfo("km", "KM " + pins.length + " patok · tiap " + String(step).replace(".", ",") + " km · " + act.length + " ruas aktif" + (pat ? " · " + pat + " ruas KM otomatis dari Patok KM" : "") + (est ? " · " + est + " ruas KM ≈ dari STA (tak ada patok/KM awal)" : ""));
     } catch (e) { try { console.warn("PETAQU legenda KM:", e); } catch (e2) {} }
     KMX.ap = false;
   }
@@ -523,6 +526,7 @@
     var solo1 = !!(ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey));
     if (t.closest("[data-sta]")) { toggleFlag("sta"); return true; }
     if (t.closest("[data-kmb]")) { toggleFlag("km"); return true; }
+    if (t.closest("[data-medit]")) { S.edit = !S.edit; try { localStorage.setItem("pq_lg_edit", S.edit ? "1" : "0"); } catch (e) {} try { W.PQMapEdit && W.PQMapEdit.set(S.edit); } catch (e) {} build(); return true; }
     var md = t.closest("[data-mode]"); if (md) { if (!md.disabled) setMode(md.getAttribute("data-mode")); return true; }
     var cl = t.closest("[data-col]"); if (cl) { setColor(cl.getAttribute("data-col")); return true; }
     if (t.closest("[data-pickclose]")) { S.pick = null; refresh(); return true; }

@@ -101,6 +101,7 @@
     '#pqKmBox{width:min(440px,100%);max-height:92vh;overflow:auto;background:var(--panel,#0f1626);color:var(--text,#e5e9f5);border:1px solid var(--line,#2a3550);border-radius:14px;padding:16px 16px 14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}' +
     '#pqKmBox h3{margin:0 0 4px;font-size:15px}#pqKmBox .pq-km-sub{margin:0 0 12px;font-size:12px;color:var(--text-dim,#8a96b0)}' +
     '#pqKmBox label{display:block;font-size:12px;font-weight:600;margin:10px 0 5px}' +
+    '#pqKmBox select{width:100%;padding:8px;border-radius:9px;border:1px solid var(--line,#2a3550);background:var(--panel-2,#161f33);color:inherit}' +
     '#pqKmBox input[type=text]{width:100%;box-sizing:border-box;padding:9px 10px;border-radius:9px;border:1px solid var(--line,#2a3550);background:var(--panel-2,rgba(255,255,255,.05));color:inherit;font:600 14px var(--mono,monospace)}' +
     '#pqKmBox .pq-km-seg{display:flex;gap:6px}#pqKmBox .pq-km-seg button{flex:1;padding:8px 6px;border-radius:9px;border:1px solid var(--line,#2a3550);background:transparent;color:inherit;font:600 12px inherit;cursor:pointer}' +
     '#pqKmBox .pq-km-seg button.on{background:var(--cyan-dim,rgba(0,200,255,.18));border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}' +
@@ -130,7 +131,7 @@
       d.forEach(function (r) {
         var q = o[r[0] + ',' + r[1] + '|' + r[3]], km = q && isNum(q.km) ? +q.km : parseKm(String(r[2]).replace(/\s/g, ''));
         if (km == null || isNaN(km)) return;
-        PK.push({ lat: r[0], lng: r[1], km: km, ruas: r[3], ocr: !!q });
+        PK.push({ lat: r[0], lng: r[1], km: km, ruas: r[3], ocr: !!q, flag: q ? 0 : r[9] });
       });
     } catch (e) {}
     return PK;
@@ -139,7 +140,8 @@
     if (!p) return [];
     var out = [], list = patok();
     for (var i = 0; i < list.length; i++) {
-      var q = list[i]; if (Math.abs(q.lat - p.lat) > 0.01 || Math.abs(q.lng - p.lng) > 0.01) continue;
+      var q = list[i]; if (q.flag > 2) continue;   /* estimasi geometri bukan patok sungguhan */
+      if (Math.abs(q.lat - p.lat) > 0.01 || Math.abs(q.lng - p.lng) > 0.01) continue;
       var dm = 0; try { dm = haversine(p.lat, p.lng, q.lat, q.lng) * 1000; } catch (e) { continue; }
       if (dm <= 400) out.push({ q: q, dm: dm });
     }
@@ -152,6 +154,77 @@
     return '<div class="pq-km-sug"><span class="lb">Patok terdekat:</span>' + l.map(function (x) {
       return '<button type="button" data-t="' + tgt + '" data-km="' + x.q.km + '" title="' + esc(x.q.ruas) + '">KM ' + esc(fmt(x.q.km)) + ' · ' + Math.round(x.dm) + ' m' + (x.q.ocr ? ' ✓' : '') + '</button>';
     }).join('') + '</div>';
+  }
+
+
+  /* ---------- KM OTOMATIS dari data Patok KM (sumber yang sama dengan lapisan Patok KM → legenda, daftar ruas & peta selaras) ---------- */
+  var AUTO = {};
+  function median(a) { a = a.slice().sort(function (x, y) { return x - y; }); var n = a.length; return n % 2 ? a[(n - 1) >> 1] : (a[n / 2 - 1] + a[n / 2]) / 2; }
+  function auto(road) {
+    var P = (road && road.points || []).filter(function (p) { return isNum(p.lat) && isNum(p.lng); });
+    if (P.length < 2) return null;
+    var key = road.id + '|' + P.length + '|' + P[0].lat + ',' + P[0].lng + '|' + P[P.length - 1].lat + ',' + P[P.length - 1].lng + '|' + (patok().length);
+    if (AUTO[key] !== undefined) return AUTO[key];
+    var ky = 110.57, kx = 111.32 * Math.cos(P[0].lat * Math.PI / 180), cum = [0], xs = [], ys = [], mnA = 99, mxA = -99, mnO = 999, mxO = -999;
+    P.forEach(function (p, i) {
+      xs[i] = p.lng * kx; ys[i] = p.lat * ky;
+      if (i) cum[i] = cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1]);
+      mnA = Math.min(mnA, p.lat); mxA = Math.max(mxA, p.lat); mnO = Math.min(mnO, p.lng); mxO = Math.max(mxO, p.lng);
+    });
+    var M = 0.0006, an = [];
+    patok().forEach(function (q) {
+      if (q.flag > 1 || q.lat < mnA - M || q.lat > mxA + M || q.lng < mnO - M || q.lng > mxO + M) return;
+      var qx = q.lng * kx, qy = q.lat * ky, best = null;
+      for (var i = 1; i < P.length; i++) {
+        var dx = xs[i] - xs[i - 1], dy = ys[i] - ys[i - 1], L2 = dx * dx + dy * dy, t = L2 ? ((qx - xs[i - 1]) * dx + (qy - ys[i - 1]) * dy) / L2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        var d = Math.hypot(qx - (xs[i - 1] + dx * t), qy - (ys[i - 1] + dy * t));
+        if (!best || d < best.d) best = { d: d, s: cum[i - 1] + t * Math.sqrt(L2) };
+      }
+      if (best && best.d <= 0.045) an.push({ s: best.s, km: q.km, d: best.d });
+    });
+    var res = null;
+    if (an.length) {
+      var bestFit = null;
+      [1, -1].forEach(function (dir) {
+        var offs = an.map(function (a) { return a.km - dir * a.s; }), med = median(offs), inl = an.filter(function (a, i) { return Math.abs(offs[i] - med) <= 0.3; });
+        if (inl.length) { var m2 = median(inl.map(function (a) { return a.km - dir * a.s; })); if (!bestFit || inl.length > bestFit.n) bestFit = { dir: dir, off: m2, n: inl.length }; }
+      });
+      if (bestFit) {
+        var dirW = bestFit.dir;
+        if (an.length === 1 || (bestFit.n === 1)) dirW = road.kmDir === 'down' ? -1 : 1, bestFit = { dir: dirW, off: an[0].km - dirW * an[0].s, n: 1 };
+        res = { kmStart: +bestFit.off.toFixed(3), dir: bestFit.dir < 0 ? 'down' : 'up', n: bestFit.n, tot: an.length, conf: bestFit.n >= 2 ? 'tinggi' : 'rendah' };
+      }
+    }
+    AUTO[key] = res; return res;
+  }
+  function copyPts(road) { return (road.points || []).map(function (p) { var q = Object.assign({}, p); if (q.kmAuto === true) { delete q.km; delete q.kmAuto; } return q; }); }
+  /* deret KM efektif satu ruas: {s:[{lat,lng,km}], real, src:'manual'|'patok'} atau null (→ pemanggil pakai STA) */
+  function series(road) {
+    var ps = (road && road.points || []).filter(function (p) { return isNum(p.lat) && isNum(p.lng); });
+    if (isNum(road.kmStart) || ps.some(function (p) { return isNum(p.km); })) {
+      return { s: ps.filter(function (p) { return isNum(p.km); }).map(function (p) { return { lat: +p.lat, lng: +p.lng, km: +p.km }; }), real: true, src: 'manual' };
+    }
+    var a = auto(road); if (!a) return null;
+    var sim = { points: copyPts(road).filter(function (p) { return isNum(p.lat) && isNum(p.lng); }), kmStart: a.kmStart, kmDir: a.dir };
+    if (isNum(road.kmEnd)) sim.kmEnd = +road.kmEnd;
+    apply(sim);
+    return { s: sim.points.map(function (p) { return { lat: +p.lat, lng: +p.lng, km: +p.km }; }), real: true, src: 'patok', auto: a };
+  }
+  /* jadikan hasil patok sebagai pengaturan ruas (tersimpan) */
+  function adopt(road, silent) {
+    var a = auto(road); if (!a) { if (!silent) note('Tidak ada patok KM dalam 45 m dari ruas ini — isi manual.', true); return false; }
+    road.kmStart = a.kmStart; road.kmDir = a.dir; delete road.kmEnd; apply(road);
+    try { persist(); } catch (e) {}
+    try { if (typeof renderRoadLayer === 'function') renderRoadLayer(road); } catch (e) {}
+    try { if (typeof renderRoadList === 'function') renderRoadList(); } catch (e) {}
+    try { window.__pqLegenda && window.__pqLegenda.refresh(); } catch (e) {}
+    if (!silent) note('KM "' + road.name + '" disetel dari ' + a.n + ' patok: KM awal ' + fmt(a.kmStart) + (a.conf === 'rendah' ? ' (1 patok — periksa arah)' : ''));
+    return true;
+  }
+  /* indeks titik terdekat ke koordinat (untuk editor di peta) */
+  function nearestIdx(road, lat, lng) {
+    var b = -1, bd = 1e9; (road.points || []).forEach(function (p, i) { var d = Math.hypot(p.lat - lat, p.lng - lng); if (d < bd) { bd = d; b = i; } }); return b;
   }
 
   function simulate(road, v, ke, dir) {
@@ -191,9 +264,11 @@
       '<label class="pq-km-ck"><input type="checkbox" id="pqStaMid"> Hitung ulang STA titik tengah (proporsional jarak)</label>' +
       '<div class="pq-km-2"><div><label for="pqKmIn">KM awal</label>' + inp('pqKmIn', isNum(road.kmStart) ? fmt(+road.kmStart) : '', 'Kosong = tanpa KM') + '</div>' +
       '<div><label for="pqKmEnd">KM akhir <span class="opt">(opsional)</span></label>' + inp('pqKmEnd', isNum(road.kmEnd) ? fmt(+road.kmEnd) : '', 'Mis. 36+400') + '</div></div>' +
-      '<div id="pqKmSugA">' + sugHtml(F, 'pqKmIn') + '</div><div id="pqKmSugB">' + (P.length > 1 ? sugHtml(L, 'pqKmEnd') : '') + '</div>' +
+      '<div class="pq-km-sug"><button type="button" data-a="auto" title="Hitung KM awal dari patok yang menempel di ruas">⚡ Otomatis dari Patok KM</button></div><div id="pqKmSugA">' + sugHtml(F, 'pqKmIn') + '</div><div id="pqKmSugB">' + (P.length > 1 ? sugHtml(L, 'pqKmEnd') : '') + '</div>' +
       '<label>Arah KM <span class="opt">(otomatis bila KM akhir diisi)</span></label>' +
       '<div class="pq-km-seg"><button type="button" data-d="up">KM naik (searah titik)</button><button type="button" data-d="down">KM turun</button></div>' +
+      '<label for="pqKmStep">Interval patok di peta <span class="opt">(legenda)</span></label>' +
+      '<select id="pqKmStep"><option value="">Otomatis (ikut zoom)</option>' + [0.1, 0.2, 0.5, 1, 2, 5, 10].map(function (v) { return '<option value="' + v + '"' + (+road.kmStep === v ? ' selected' : '') + '>Tiap ' + String(v).replace('.', ',') + ' km</option>'; }).join('') + '</select>' +
       '<div id="pqKmPrev"></div>' +
       '<div class="pq-km-note">Sumber KM: ketik manual (12.5 atau 12+500) atau ketuk saran dari data <b>Patok KM</b>. Hanya KM awal → KM titik lain dihitung dari jarak STA. ' +
       'KM awal + akhir → KM titik tengah dibagi proporsional. KM yang diisi manual pada satu titik (Edit Titik STA) tetap jadi patokan.</div>' +
@@ -211,6 +286,11 @@
       var b = e.target.closest('button'); if (!b) return;
       if (b.dataset.t) { document.getElementById(b.dataset.t).value = fmt(+b.dataset.km); autoDir(); preview(); }
       else if (b.dataset.d) { cur.dir = b.dataset.d; segPaint(); preview(); }
+      else if (b.dataset.a === 'auto') {
+        var a = auto(road); if (!a) { note('Tidak ada patok KM dalam 45 m dari ruas ini — isi manual.', true); return; }
+        document.getElementById('pqKmIn').value = fmt(a.kmStart); document.getElementById('pqKmEnd').value = ''; cur.dir = a.dir; segPaint(); preview();
+        note('Terbaca dari ' + a.n + ' patok' + (a.conf === 'rendah' ? ' (hanya 1 patok — periksa arah)' : ''));
+      }
       else if (b.dataset.a === 'cancel') close();
       else if (b.dataset.a === 'clear') { document.getElementById('pqKmIn').value = ''; document.getElementById('pqKmEnd').value = ''; save(true); }
       else if (b.dataset.a === 'save') save(false);
@@ -245,6 +325,7 @@
     var ke = clear ? null : parseKm(document.getElementById('pqKmEnd').value);
     if ((v !== null && isNaN(v)) || (ke !== null && isNaN(ke))) { note('Format KM tidak dikenali. Contoh: 12.5 atau 12+500', true); return; }
     if (!applySta(road)) return;
+    var stp = document.getElementById('pqKmStep'); if (stp && stp.value) road.kmStep = +stp.value; else delete road.kmStep;
     if (v === null) { delete road.kmStart; delete road.kmEnd; delete road.kmDir; }
     else {
       road.kmStart = +v.toFixed(3); road.kmDir = cur.dir;
@@ -268,10 +349,10 @@
         var rid = it.dataset.roadId; if (!rid) return;
         var road = roads.find(function (r) { return r.id === rid; }); if (!road) return;
         var info = it.querySelector('.road-info'); if (!info) return;
-        var chip = info.querySelector('.pq-km-chip'), pts = road.points || [];
-        var f = ptKm(pts[0]), l = ptKm(pts[pts.length - 1]);
+        var chip = info.querySelector('.pq-km-chip'), sr = series(road), pts = sr ? sr.s : [];
+        var f = pts.length ? pts[0].km : null, l = pts.length ? pts[pts.length - 1].km : null;
         if (f == null && l == null) { if (chip) chip.parentNode.removeChild(chip); return; }
-        var html = '<i class="fa-solid fa-signs-post"></i> KM ' + (f != null ? fmt(f) : '-') + ' → ' + (l != null ? fmt(l) : '-');
+        var html = '<i class="fa-solid fa-signs-post"></i> KM ' + (f != null ? fmt(f) : '-') + ' → ' + (l != null ? fmt(l) : '-') + (sr.src === 'patok' ? ' <span title="Dihitung otomatis dari data Patok KM">≈ patok</span>' : '');
         if (!chip) { chip = document.createElement('div'); chip.className = 'rm pq-km-chip'; info.appendChild(chip); }
         if (chip.__h !== html) { chip.innerHTML = html; chip.__h = html; }
       });
@@ -284,7 +365,7 @@
     /* hitung ulang otomatis tiap data disimpan */
     var orig = window.persist;
     if (!orig.__pqKm) {
-      var w = function () { reapplyAll(); return orig.apply(this, arguments); };
+      var w = function () { reapplyAll(); var rv = orig.apply(this, arguments); try { clearTimeout(w.__t); w.__t = setTimeout(function () { try { window.__pqLegenda && window.__pqLegenda.refresh(); } catch (e) {} }, 250); } catch (e) {} return rv; };
       w.__pqKm = 1; window.persist = w;
     }
     reapplyAll();
@@ -294,5 +375,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.PQKm = { open: open, apply: apply, parse: parseKm, interp: interp, interpText: interpText, routeKm: routeKm, routeText: routeText, routeSuffix: routeSuffix, reapplyAll: reapplyAll };
+  window.PQKm = { series: series, auto: auto, adopt: adopt, nearestIdx: nearestIdx, patok: patok, nearPatok: nearPatok, open: open, apply: apply, parse: parseKm, interp: interp, interpText: interpText, routeKm: routeKm, routeText: routeText, routeSuffix: routeSuffix, reapplyAll: reapplyAll };
 })();
