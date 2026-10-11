@@ -252,7 +252,7 @@
   }
   function removeLayers() {
     const m = getMap(); if (!m || !G) return; m.off("moveend zoomend", softRefresh); m.off("click", onMapClick);
-    m.removeLayer(G); m.removeLayer(LG); m.removeLayer(SELG); G = LG = SELG = null; R.forEach(r => { r.poly = null; });
+    orbClear(); m.removeLayer(G); m.removeLayer(LG); m.removeLayer(SELG); G = LG = SELG = null; R.forEach(r => { r.poly = null; });
     try { m.getPane("pqwlPane").remove(); delete m._panes.pqwlPane; } catch (e) { }
   }
   function restyle() {
@@ -266,21 +266,51 @@
     const c = colorOf(ly, v) || "#38bdf8", wind = ly === "wind" ? '<i style="display:inline-block;transform:rotate(' + Math.round(v.wd) + 'deg)">↓</i> ' : "";
     return '<div class="pqwl-lb' + (big ? " big" : "") + '" style="--c:' + c + '"><span>' + (ly === "wind" ? wind : emojiOf(v) + " ") + "<b>" + labelOf(ly, v) + "</b></span>" + (name ? "<small>" + esc(name) + "</small>" : "") + "</div>";
   }
+  /* ---------- label = orb animasi yang sama dengan klik-BMKG (Scene dari petaqu-cuaca.js) ---------- */
+  const ORB = new Map(), ANIM_MAX = 26;
+  function orbClear() { ORB.forEach(o => { try { o.sc.stop(); } catch (e) { } }); ORB.clear(); if (LG) LG.clearLayers(); }
+  function orbSlot(v, lat, lng, off) {
+    const w = WX(); return w.mkSlot({ t: T[S.k], src: "bmkg", desc: CLS[v.cls].t, temp: v.temp, hum: v.hum, rain: v.rain, ws: v.ws / 3.6, wdir: v.wd }, lat, lng, off);
+  }
+  function chipHtml(v, name, ly, sl, big) {
+    const c = colorOf(ly, v) || "#38bdf8", em = sl.day ? CLS[v.cls].e : CLS[v.cls].en;
+    const wind = ly === "wind" ? '<i style="display:inline-block;transform:rotate(' + Math.round(v.wd) + 'deg)">↓</i> ' : "";
+    return '<div class="pqwl-chip" style="--c:' + c + '">' + wind + labelOf(ly, v) + " " + em + (big && name ? "<small>" + esc(name) + "</small>" : "") + "</div>";
+  }
   function drawLabels() {
-    const m = getMap(); if (!m || !LG || !D.length) return; LG.clearLayers(); const A = agg(S.k), lev = effLevel(), ly = pref.ly, z = m.getZoom(), sz = m.getSize(), items = [];
-    if (lev === "prov") PL.forEach(p => { const v = A.byProv[p.name]; if (v && (!S.filt || S.filt === p.name)) items.push({ v, lat: p.lat, lng: p.lng, name: p.name.replace("Kepulauan ", "Kep. "), t: "p", id: p.name }); });
+    const m = getMap(), w = WX(); if (!m || !LG || !D.length) return; const A = agg(S.k), lev = effLevel(), ly = pref.ly, z = m.getZoom(), sz = m.getSize(), items = [];
+    if (lev === "prov") PL.forEach(p => { const v = A.byProv[p.name]; if (v && (!S.filt || S.filt === p.name)) items.push({ v, lat: p.lat, lng: p.lng, off: p.off, name: p.name.replace("Kepulauan ", "Kep. "), t: "p", id: p.name, key: "p:" + p.name }); });
     else {
       const b = m.getBounds().pad(.1);
-      R.forEach(r => { if (S.filt && r.prov !== S.filt) return; if (!b.contains([r.lat, r.lng])) return; const v = A.V[r.i]; if (v) items.push({ v, lat: r.lat, lng: r.lng, name: r.name, t: "k", id: r.i }); });
+      R.forEach(r => { if (S.filt && r.prov !== S.filt) return; if (!b.contains([r.lat, r.lng])) return; const v = A.V[r.i]; if (v) items.push({ v, lat: r.lat, lng: r.lng, off: r.off, name: r.name, t: "k", id: r.i, key: "k:" + r.i }); });
     }
     items.sort((a, b) => priority(b.v) - priority(a.v));
-    const gap = lev === "prov" ? 70 : z >= 9 ? 90 : z >= 8 ? 62 : 46, placed = [], big = z >= 8 || lev === "prov";
+    const size = w ? Math.round(clamp(50 + (z - 4) * 13, 56, 130)) : 0, big = z >= 7 || lev === "prov";
+    const gx = w ? size * .85 : (lev === "prov" ? 70 : z >= 9 ? 90 : z >= 8 ? 62 : 46), gy = w ? size * .75 + 16 : (big ? 34 : 24), placed = [], keep = new Set(), show = [];
     items.forEach(it => {
-      const p = m.latLngToContainerPoint([it.lat, it.lng]); if (p.x < -20 || p.y < -20 || p.x > sz.x + 20 || p.y > sz.y + 20) return;
-      for (const q of placed) if (Math.abs(q.x - p.x) < gap && Math.abs(q.y - p.y) < (big ? 34 : 24)) return;
-      if (placed.length > 220) return; placed.push(p);
-      const mk = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: "pqwl-ic", html: labelHtml(it.v, big ? it.name : "", ly, big), iconSize: [0, 0] }), keyboard: false, riseOnHover: true });
-      mk.on("click", () => { select(it.t === "p" ? { t: "p", id: it.id } : { t: "k", id: it.id }); }); LG.addLayer(mk);
+      const p = m.latLngToContainerPoint([it.lat, it.lng]); if (p.x < -30 || p.y < -30 || p.x > sz.x + 30 || p.y > sz.y + 30) return;
+      for (const q of placed) if (Math.abs(q.x - p.x) < gx && Math.abs(q.y - p.y) < gy) return;
+      if (placed.length >= (w ? 70 : 220)) return; placed.push(p); keep.add(it.key); show.push(it);
+    });
+    ORB.forEach((o, k) => { if (!keep.has(k)) { try { o.sc.stop(); } catch (e) { } LG.removeLayer(o.mk); ORB.delete(k); } });
+    show.forEach((it, n) => {
+      const anim = n < ANIM_MAX; let o = ORB.get(it.key);
+      if (!w) { /* cadangan: label ringkas bila modul cuaca utama tidak ada */
+        if (o) LG.removeLayer(o.mk);
+        const mk = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: "pqwl-ic", html: labelHtml(it.v, big ? it.name : "", ly, big), iconSize: [0, 0] }), keyboard: false });
+        mk.on("click", () => select({ t: it.t, id: it.id })); LG.addLayer(mk); ORB.set(it.key, { mk, sc: { stop() { } } }); return;
+      }
+      const sl = orbSlot(it.v, it.lat, it.lng, it.off);
+      if (!o) {
+        const mk = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: "pqwl-ic", html: '<div class="pqwl-orb" style="--s:' + size + 'px"><canvas></canvas>' + chipHtml(it.v, it.name, ly, sl, big) + "</div>", iconSize: [0, 0] }), keyboard: false });
+        mk.on("click", () => select({ t: it.t, id: it.id })); LG.addLayer(mk);
+        const root = mk.getElement(), cv = root.querySelector("canvas"), sc = w.Scene(cv, size); sc.resize(size);
+        o = { mk, sc, root, cv, size, anim: null }; ORB.set(it.key, o); sc.set(sl); sc.snap(); sc.draw();
+      } else {
+        if (o.size !== size) { o.size = size; o.root.querySelector(".pqwl-orb").style.setProperty("--s", size + "px"); o.sc.resize(size); }
+        o.sc.set(sl); o.root.querySelector(".pqwl-chip").outerHTML = chipHtml(it.v, it.name, ly, sl, big);
+      }
+      if (anim) { if (o.anim !== true) { o.anim = true; } o.sc.start(); } else { o.anim = false; o.sc.stop(); o.sc.snap(); o.sc.draw(); }
     });
   }
   function drawSel() {
@@ -353,6 +383,10 @@
     ".pqwl-src{display:inline-block;font:800 9.5px system-ui;letter-spacing:.4px;padding:2px 7px;border-radius:8px;margin-top:4px}.pqwl-src.bmkg{background:#14532d;color:#86efac}.pqwl-src.om{background:#713f12;color:#fde68a}",
     ".pqwl-btn{border:0;border-radius:8px;background:#ffffff1a;color:#e6f1f7;padding:6px 10px;font:700 11.5px system-ui;cursor:pointer;margin:6px 6px 0 0}.pqwl-btn.p{background:#0e7490}",
     ".pqwl-ft{margin-top:10px;font-size:10.5px;color:#8fa6bd;line-height:1.45}.pqwl-err{padding:10px;color:#fca5a5}.pqwl-load{padding:14px 4px;color:#a5f3fc;font-weight:700}",
+    ".pqwl-orb{box-sizing:border-box;position:absolute;left:calc(var(--s)/-2);top:calc(var(--s)/-2);width:var(--s);height:var(--s);cursor:pointer}",
+    ".pqwl-orb canvas{display:block;position:absolute;inset:0;pointer-events:none;-webkit-mask-image:radial-gradient(closest-side,#000 52%,transparent 100%);mask-image:radial-gradient(closest-side,#000 52%,transparent 100%)}",
+    ".pqwl-chip{position:absolute;left:50%;top:calc(var(--s)*.86);transform:translateX(-50%);white-space:nowrap;text-align:center;font:800 calc(var(--s)*.15 + 5px)/1.1 system-ui,sans-serif;color:#fff;text-shadow:0 0 3px #000b,0 1px 5px #000d,0 0 14px #0009;padding-bottom:1px;border-bottom:2px solid var(--c)}",
+    ".pqwl-chip small{display:block;font:700 calc(var(--s)*.085 + 3px) system-ui;opacity:.95;margin-top:1px}.pqwl-orb:hover{z-index:9999}.pqwl-orb:hover canvas{filter:brightness(1.15)}",
     ".pqwl-ic{background:none!important;border:0!important;overflow:visible!important}.pqwl-lb{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;text-align:center;cursor:pointer;color:#fff;font:800 11.5px/1.15 system-ui,sans-serif;padding:1px 5px 2px;border-radius:9px;background:#071a26d9;border:1.5px solid var(--c);text-shadow:0 1px 2px #000}",
     ".pqwl-lb small{display:block;font:700 9.5px system-ui;opacity:.92;max-width:96px;overflow:hidden;text-overflow:ellipsis}.pqwl-lb.big{font-size:12.5px;padding:2px 6px 3px}.pqwl-lb:hover{z-index:9999;transform:translate(-50%,-50%) scale(1.12)}"
   ].join("\n");
