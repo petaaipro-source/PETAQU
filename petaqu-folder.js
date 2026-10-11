@@ -113,9 +113,7 @@
 
     var W = [];
     try { if (window.PETAQU_CUACA && PETAQU_CUACA.rows) W = PETAQU_CUACA.rows(); } catch (e) { W = []; }
-    var M = null;
-    try { if (window.__pqLegenda && __pqLegenda.mode) M = __pqLegenda.mode(); } catch (e) { M = null; }
-    var s = JSON.stringify([L, T, W, M, D.map(function (d) { return d.t; })]);
+    var s = JSON.stringify([L, T, W, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
     sig = s;
 
@@ -129,16 +127,8 @@
           '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span></button>";
       });
     }
-    if (T || M) h += '<div class="pqf-h">Tampilan</div>';
-    if (M) {
-      [["road", "Warna per ruas", "#a78bfa"], ["kab", "Warna per kabupaten", "#34d399"], ["all", "Warna satu seragam", "#f59e0b"]].forEach(function (x) {
-        h += '<button type="button" class="pqf-row" data-k="M:' + x[0] + '" style="--c:' + x[2] + '">' +
-          '<span class="pqf-ic">\u25CF</span><span class="pqf-t">' + x[1] + '</span>' +
-          '<span class="pqf-st' + (M === x[0] ? "" : " off") + '">' + (M === x[0] ? "ON" : "OFF") + "</span></button>";
-      });
-    }
     if (T) {
-      h +=
+      h += '<div class="pqf-h">Tampilan</div>' +
         '<button type="button" class="pqf-row" data-k="T" style="--c:#22d3ee">' +
         '<span class="pqf-ic">\u25D0</span><span class="pqf-t">Transparansi luar Jawa Tengah</span>' +
         '<span class="pqf-st' + (T.on ? "" : " off") + '">' + (T.on ? "ON" : "OFF") + "</span></button>";
@@ -177,10 +167,6 @@
       closePanels();
       closeJt();
       try { PETAQU_CUACA.act(k.slice(2)); } catch (e) { }
-    } else if (k.charAt(0) === "M") {
-      closePanels();
-      var m = k.slice(2);
-      try { __pqLegenda.setMode(__pqLegenda.mode() === m ? "road" : m); } catch (e) { }
     } else if (k === "T") {
       closePanels();
       var j = jtParts();
