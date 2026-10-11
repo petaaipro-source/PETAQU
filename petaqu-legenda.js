@@ -50,6 +50,8 @@
     "#legendContent{max-height:min(46vh,380px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#38bdf8aa transparent;padding-right:2px}",
     "@media(max-width:860px){#legendContent{max-height:min(34vh,260px)}}",
     "html body #legend{max-width:min(340px,calc(100vw - 28px))}",
+    /* HP: legenda tampil lagi (aslinya disembunyikan di layar ≤ 860px) — ciut di bawah-kiri, ketuk judulnya untuk membuka */
+    "@media(max-width:860px){html body #legend{display:block!important;left:10px;bottom:40px;max-width:calc(100vw - 84px);z-index:900}html body #legend #legendContent{max-height:min(46vh,340px)}}",
     ".pqlg-head{position:sticky;top:0;z-index:2;background:#0f1521;padding-bottom:5px;margin-bottom:2px}",
     ".pqlg-sec{font:800 9.5px system-ui;letter-spacing:.7px;text-transform:uppercase;color:#7dd3fc;margin:2px 0 5px}",
     ".pqlg-top{display:flex;align-items:baseline;gap:6px;color:var(--text,#e6edf5);font:700 11.5px system-ui}",
@@ -596,6 +598,15 @@
     var mp = G("map"); if (mp && mp.on) mp.on("zoomend moveend", function () { staSched(); kmSched(); });
     refresh(); setTimeout(refresh, 1500); if (S.sta) setTimeout(staApply, 1800); if (S.km) setTimeout(kmApply, 1900);
   }
+  (function mobInit(n) {
+    try {
+      if (innerWidth > 860 || localStorage.getItem("pq_lg_mob1")) return;
+      var b = document.querySelector("#legend .pq-minbtn");
+      if (!b) { if (n < 40) setTimeout(function () { mobInit(n + 1); }, 400); return; }
+      localStorage.setItem("pq_lg_mob1", "1");
+      if (!document.getElementById("legend").classList.contains("pq-lg-min")) b.click();
+    } catch (e) {}
+  })(0);
   W.__pqLegenda = { v: 6, refresh: refresh, sta: function (on) { if (on !== undefined && !!on !== S.sta) toggleFlag("sta"); return S.sta; }, km: function (on) { if (on !== undefined && !!on !== S.km) toggleFlag("km"); return S.km; } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
