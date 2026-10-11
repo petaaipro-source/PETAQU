@@ -338,12 +338,16 @@
   function payHtml(info) {
     var tot = info.total, lines = [];
     lines.push('<div class="pqd-pay"><h4><i class="fa-solid fa-wallet"></i> Pembayaran</h4>');
+    var dyn = window.PQBayar && window.PQBayar.siap();
+    if (dyn) {
+      lines.push('<button type="button" class="pqd-btn" id="pqdQris" style="margin:0 0 8px"><i class="fa-solid fa-qrcode"></i> Bayar sekarang via QRIS — aktif otomatis</button><div class="pqd-hint" style="margin:0 0 4px">Nominal terisi otomatis. Begitu pembayaran masuk, akun langsung aktif tanpa menunggu admin.</div>');
+    }
     lines.push(tot ? '<div class="pqd-total"><span>Total' + (info.plan ? '<small>' + labelPlan(info.plan) + ' · ' + esc(info.mulai) + ' s/d ' + esc(info.sampai) + '</small>' : "") + '</span><b>' + rp(tot) + '</b></div>' : '<div class="pqd-hint">Nominal dikonfirmasi admin lewat WhatsApp.</div>');
-    if (PAY.qris) lines.push('<div class="pqd-qris"><a href="' + esc(PAY.qris) + '" target="_blank" rel="noopener" title="Ketuk untuk memperbesar / menyimpan"><img src="' + esc(PAY.qris) + '" alt="QRIS" onerror="this.parentNode.parentNode.style.display=\'none\'"></a><small>Scan dengan m-banking / e-wallet apa pun · a.n. <b>' + esc(PAY.qrisNama || "PETAQU") + '</b>' + (tot ? '<br>Isi nominal manual: <b>' + rp(tot) + '</b>' : '') + '</small></div>');
+    if (PAY.qris && !dyn) lines.push('<div class="pqd-qris"><a href="' + esc(PAY.qris) + '" target="_blank" rel="noopener" title="Ketuk untuk memperbesar / menyimpan"><img src="' + esc(PAY.qris) + '" alt="QRIS" onerror="this.parentNode.parentNode.style.display=\'none\'"></a><small>Scan dengan m-banking / e-wallet apa pun · a.n. <b>' + esc(PAY.qrisNama || "PETAQU") + '</b>' + (tot ? '<br>Isi nominal manual: <b>' + rp(tot) + '</b>' : '') + '</small></div>');
     (PAY.bank || []).forEach(function (b) {
       lines.push('<div class="pqd-bank"><div><b>' + esc(b.nama) + ' · ' + esc(b.no) + '</b><span>a.n. ' + esc(b.an || "") + '</span></div><button type="button" class="pqd-copy" data-copy="' + esc(String(b.no).replace(/\s/g, "")) + '">Salin</button></div>');
     });
-    lines.push('<div class="pqd-hint" style="margin-top:8px">Setelah membayar, kirim <b>bukti transfer / QRIS</b> ke admin lewat WhatsApp agar akun cepat diaktifkan.</div></div>');
+    lines.push('<div class="pqd-hint" style="margin-top:8px">' + (dyn ? "Memilih transfer bank? Setelah membayar, kirim <b>bukti transfer</b> ke admin agar diaktifkan manual." : "Setelah membayar, kirim <b>bukti transfer / QRIS</b> ke admin lewat WhatsApp agar akun cepat diaktifkan.") + '</div></div>');
     return lines.join("");
   }
   function bukaBayar(info) {
@@ -354,6 +358,7 @@
       '<button type="button" class="pqd-btn sec" id="pqdDone3">Tutup</button>';
     $("pqDaftar").classList.add("show");
     $("pqdX3").onclick = tutup; $("pqdDone3").onclick = tutup;
+    var qb3 = $("pqdQris"); if (qb3) qb3.onclick = function () { tutup(); window.PQBayar.open({ email: info.em, bulan: info.plan }); };
   }
 
   function sukses(info, d) {
@@ -362,13 +367,14 @@
       '<div style="text-align:center;margin:4px 0 10px"><div style="width:58px;height:58px;margin:0 auto 10px;border-radius:50%;background:#34d39922;border:1px solid #34d39988;display:flex;align-items:center;justify-content:center;font-size:24px;color:#34d399"><i class="fa-solid fa-check"></i></div>' +
       "<h3>Pendaftaran terkirim</h3><p class=\"pqd-sub\" style=\"margin:4px 0 0\">" + esc(mask(info.em)) + "</p></div>" +
       (info.konfirmasi ? '<div class="pqd-step"><b>1</b><div><b style="all:unset;font-weight:700">Konfirmasi email.</b> Buka email dari PETAQU lalu ketuk tautannya (cek folder Spam).</div></div>' : "") +
-      '<div class="pqd-step"><b>' + (info.konfirmasi ? "2" : "1") + '</b><div><b style="all:unset;font-weight:700">Bayar & kirim bukti.</b> Transfer atau scan QRIS di bawah, lalu kirim buktinya ke admin.</div></div>' +
-      '<div class="pqd-step"><b>' + (info.konfirmasi ? "3" : "2") + '</b><div><b style="all:unset;font-weight:700">Admin mengaktifkan.</b> Setelah pembayaran dicek dan akun disetujui, masuk lewat <i>Masuk dengan email / username</i>.</div></div>' +
+      '<div class="pqd-step"><b>' + (info.konfirmasi ? "2" : "1") + '</b><div>' + (window.PQBayar && window.PQBayar.siap() ? '<b style="all:unset;font-weight:700">Bayar via QRIS.</b> Ketuk tombol di bawah lalu scan — nominal terisi otomatis.' : '<b style="all:unset;font-weight:700">Bayar & kirim bukti.</b> Transfer atau scan QRIS di bawah, lalu kirim buktinya ke admin.') + '</div></div>' +
+      '<div class="pqd-step"><b>' + (info.konfirmasi ? "3" : "2") + '</b><div>' + (window.PQBayar && window.PQBayar.siap() ? '<b style="all:unset;font-weight:700">Aktif otomatis.</b> Begitu pembayaran masuk (dan email dikonfirmasi), masuk lewat <i>Masuk dengan email / username</i> — tanpa menunggu admin.' : '<b style="all:unset;font-weight:700">Admin mengaktifkan.</b> Setelah pembayaran dicek dan akun disetujui, masuk lewat <i>Masuk dengan email / username</i>.') + '</div></div>' +
       payHtml(info) +
       (wa ? '<a class="pqd-btn" style="text-decoration:none;background:#16a34a" target="_blank" rel="noopener" href="' + wa + '"><i class="fa-brands fa-whatsapp"></i> Kirim bukti bayar via WhatsApp</a>' : "") +
       (info.konfirmasi ? '<button type="button" class="pqd-btn sec" id="pqdResend"><i class="fa-solid fa-envelope"></i> <span>Kirim ulang email konfirmasi</span></button><div class="pqd-hint" id="pqdResendMsg" style="text-align:center"></div>' : "") +
       '<button type="button" class="pqd-btn sec" id="pqdDone">Kembali ke Login</button>';
     $("pqdX2").onclick = tutup; $("pqdDone").onclick = tutup;
+    var qb = $("pqdQris"); if (qb) qb.onclick = function () { tutup(); window.PQBayar.open({ email: info.em, bulan: info.plan }); };
     var rb = $("pqdResend"); if (rb) rb.onclick = function () { kirimUlang(info.em); };
   }
 

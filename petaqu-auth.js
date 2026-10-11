@@ -47,7 +47,7 @@ function ingatkan(w){   // pengguna: pesan sekali sehari bila masa aktif tinggal
     const d=Math.round((Date.parse(String(w.aktif_sampai).slice(0,10))-Date.parse(hariIni()))/864e5);
     if(d<0||d>7||localStorage.getItem("pq_exp_warn")===hariIni())return;
     localStorage.setItem("pq_exp_warn",hariIni());
-    typeof window.toast==="function"&&window.toast(d===0?"Masa aktif akun berakhir HARI INI. Hubungi admin untuk perpanjang.":"Masa aktif akun tinggal "+d+" hari. Hubungi admin untuk perpanjang.")}catch{}}
+    typeof window.toast==="function"&&window.toast(d===0?"Masa aktif akun berakhir HARI INI. Perpanjang lewat menu QRIS di layar login.":"Masa aktif akun tinggal "+d+" hari. Perpanjang lewat menu QRIS di layar login.")}catch{}}
 async function peranNama(tok,uid){   // nama peran dari server; null bila profil tidak ada / gagal cek
   try{if(!tok||!uid)return null;
     const w=await profil(tok,uid);if(!w)return null;
@@ -56,10 +56,10 @@ async function peranNama(tok,uid){   // nama peran dari server; null bila profil
 }
 const peranOk=async(tok,uid)=>PERAN_OK.includes(await peranNama(tok,uid));   // true hanya untuk admin/surveyor/viewer. Gagal cek apa pun = DITOLAK (fail-closed)
 const PESAN_TOLAK={
-  pending:"Akun kamu sudah terdaftar tetapi MASIH MENUNGGU PERSETUJUAN ADMIN. Kamu bisa masuk setelah admin mengizinkan.",
-  trial:"Masa uji coba gratis telah berakhir. Hubungi admin untuk akses penuh.",
+  pending:"Akun kamu sudah terdaftar tetapi MASIH MENUNGGU PERSETUJUAN ADMIN. Mau langsung aktif? Bayar lewat tombol \"Bayar / Perpanjang via QRIS\" di bawah (pakai email yang sama) — aktif otomatis tanpa menunggu admin.",
+  trial:"Masa uji coba gratis telah berakhir. Berlangganan lewat tombol \"Bayar / Perpanjang via QRIS\" di bawah (aktif otomatis).",
   blocked:"Akun ini diblokir oleh admin. Hubungi admin.",
-  expired:"Masa aktif langganan akun ini sudah BERAKHIR. Hubungi admin untuk perpanjang, lalu masuk kembali.",
+  expired:"Masa aktif langganan akun ini sudah BERAKHIR. Perpanjang lewat tombol \"Bayar / Perpanjang via QRIS\" di bawah (aktif otomatis), lalu masuk kembali.",
   none:"Akun ini belum terdaftar. Hubungi admin untuk mendapatkan akses."};
 const pesanTolak=r=>PESAN_TOLAK[r]||PESAN_TOLAK.none;
 async function periksaMasuk(tok,uid){   // {ok} bila diizinkan; bila tidak, sesi dibuang & pesan sesuai status akun

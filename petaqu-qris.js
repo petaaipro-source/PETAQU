@@ -28,7 +28,9 @@
     ov.querySelector('button').onclick = close;
     ov.addEventListener('mousedown', function (e) { if (e.target === ov) close(); });
   }
-  function open() { build(); ov.querySelector('img').classList.remove('z'); ov.classList.add('show'); }
+  function open() {
+    if (window.PQBayar && window.PQBayar.siap()) return window.PQBayar.open();   /* QRIS dinamis + aktif otomatis (petaqu-bayar.js); gambar statis hanya cadangan */
+    build(); ov.querySelector('img').classList.remove('z'); ov.classList.add('show'); }
   function close() { if (ov) ov.classList.remove('show'); }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
   /* link QRIS di panel Cara Bayar (petaqu-daftar.js) → pakai penampil ini */
@@ -41,7 +43,7 @@
     if (document.getElementById('pqQrisIco')) return true;
     var card = document.getElementById('loginCard') || document.getElementById('loginScreen'); if (!card) return false;
     var w = document.createElement('div'); w.id = 'pqQrisWrap';
-    w.innerHTML = '<button type="button" id="pqQrisIco" title="Bayar langganan lewat QRIS"><img src="' + SRC + '" alt=""><span>Bayar via QRIS</span></button>';
+    w.innerHTML = '<button type="button" id="pqQrisIco" title="Bayar langganan lewat QRIS — aktif otomatis"><img src="' + SRC + '" alt=""><span>Bayar / Perpanjang via QRIS</span></button>';
     card.appendChild(w);
     w.firstChild.onclick = open;
     return true;
