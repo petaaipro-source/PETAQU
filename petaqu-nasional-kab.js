@@ -90,8 +90,48 @@
   }
 
   /* ---------- "+ STA": jadikan ruas terkelola penuh ---------- */
+  /* Jalur utama ruas: segmen yang saling menyambung (jarak antar-ujung <= JOIN_M) digabung, segmen terputus jauh dibuang
+     sehingga tidak ada garis lurus "loncat" yang tidak sesuai rute (kecuali celah kecil yang ditutup lurus). */
+  var JOIN_M = 800, JUMP_M = 1500;
+  function pathLen(c) { var d = 0; for (var i = 1; i < c.length; i++) d += hav(c[i - 1], c[i]); return d; }
+  function mainPath(lines) {
+    var ch = []; lines.forEach(function (s) { var c = []; decode(s).forEach(function (p) { var l = c[c.length - 1]; if (!l || l[0] !== p[0] || l[1] !== p[1]) c.push(p); }); if (c.length > 1) ch.push({ c: c, len: 0 }); });
+    if (!ch.length) return [];
+    ch.forEach(function (x) { x.len = pathLen(x.c); }); ch.sort(function (a, b) { return b.len - a.len; });
+    var cur = ch[0].c.slice(), rest = ch.slice(1), moved = true;
+    while (moved && rest.length) {
+      moved = false; var h = cur[0], t = cur[cur.length - 1], bi = -1, bd = JOIN_M + 1, bm = 0;
+      rest.forEach(function (x, i) {
+        var a = x.c[0], b = x.c[x.c.length - 1], d;
+        d = hav(t, a); if (d < bd) { bd = d; bi = i; bm = 1; }
+        d = hav(t, b); if (d < bd) { bd = d; bi = i; bm = 2; }
+        d = hav(h, b); if (d < bd) { bd = d; bi = i; bm = 3; }
+        d = hav(h, a); if (d < bd) { bd = d; bi = i; bm = 4; }
+      });
+      if (bi < 0) break; var c2 = rest.splice(bi, 1)[0].c.slice(); moved = true;
+      if (bm === 1) cur = cur.concat(c2); else if (bm === 2) cur = cur.concat(c2.reverse()); else if (bm === 3) cur = c2.concat(cur); else cur = c2.reverse().concat(cur);
+    }
+    return cur;
+  }
+  /* Bersihkan ruas Jalan Nasional yang sudah tersimpan: titik STA yang meloncat jauh (garis lurus tidak sesuai rute) dibuang */
+  var cleanedN = -1;
+  function cleanRoad(r) {
+    if (!r || r.sourceFile !== "Jalan Nasional (PETAQU)" || r._pqClean || !r.points || r.points.length < 3) return false;
+    var P = r.points, runs = [[0]], i, d;
+    for (i = 1; i < P.length; i++) { d = hav([+P[i - 1].lat, +P[i - 1].lng], [+P[i].lat, +P[i].lng]); if (d > JUMP_M) runs.push([i]); else runs[runs.length - 1].push(i); }
+    r._pqClean = 1; if (runs.length < 2) return false;
+    runs.sort(function (a, b) { return b.length - a.length; });
+    var keep = runs[0].map(function (ix) { return P[ix]; }), cum = 0;
+    keep.forEach(function (p, k) { if (k) cum += hav([+keep[k - 1].lat, +keep[k - 1].lng], [+p.lat, +p.lng]); var km = Math.floor(cum / 1000); p.sta = km + "+" + String(Math.round(cum - km * 1000)).padStart(3, "0"); });
+    r.points = keep; return true;
+  }
+  function cleanAll() {
+    var rs = getRoads(); if (!rs || rs.length === cleanedN) return; cleanedN = rs.length; var ch = 0;
+    rs.forEach(function (r) { try { if (cleanRoad(r)) { ch++; if (typeof W.renderRoadLayer === "function") W.renderRoadLayer(r); } } catch (e) {} });
+    if (ch) { try { W.persist(); W.renderRoadList(); } catch (e) {} toast(ch + " ruas dirapikan: garis lurus yang tidak sesuai rute dihapus otomatis"); }
+  }
   function sampleSta(it) {
-    var pts = []; it.lines.forEach(function (s) { decode(s).forEach(function (p) { var l = pts[pts.length - 1]; if (!l || l[0] !== p[0] || l[1] !== p[1]) pts.push(p); }); });
+    var pts = mainPath(it.lines);
     if (pts.length < 2) return [];
     var out = [], step = 100, cum = 0, next = 0, res = [];
     for (var i = 1; i < pts.length; i++) {
@@ -297,6 +337,7 @@
   var DIY_K = { "Kulon Progo": 1, Bantul: 1, Gunungkidul: 1, Sleman: 1, "Kota Yogyakarta": 1, Yogyakarta: 1 };
   function provOf(g) { return (g.prov) || (DIY_K[g.n] ? "DI Yogyakarta" : "Jawa Tengah"); }
   function render() {
+    cleanAll();
     var box = document.getElementById("jnKab"); if (!box || !G) return;
     var q = filterQ.trim().toLowerCase(), h = "", shown = 0, B = {};
     G.forEach(function (g, gi) {
