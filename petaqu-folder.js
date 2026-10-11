@@ -130,7 +130,7 @@
     if (T) {
       h += '<div class="pqf-h">Tampilan</div>' +
         '<button type="button" class="pqf-row" data-k="T" style="--c:#22d3ee">' +
-        '<span class="pqf-ic">\u25D0</span><span class="pqf-t">Transparansi luar Jawa Tengah</span>' +
+        '<span class="pqf-ic">\u25D0</span><span class="pqf-t">Transparansi wilayah (pilih)</span>' +
         '<span class="pqf-st' + (T.on ? "" : " off") + '">' + (T.on ? "ON" : "OFF") + "</span></button>";
     }
     if (W.length) {
