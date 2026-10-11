@@ -30,3 +30,18 @@ Aspal: tunda saat hujan/permukaan basah. Beton: tunda bila hujan ≥0,5 mm. Dron
 ## Atribusi & batas
 Data cuaca © BMKG (wajib dicantumkan; sudah tampil di panel). Batas BMKG: 60 permintaan/menit/IP (dibatasi cache 20 menit).
 Kode & titik pusat desa: cahyadsn/wilayah_boundaries (MIT), Kepmendagri 300.2.2-2430/2025.
+
+
+## Cuaca seluruh provinsi & kabupaten/kota (tambahan)
+**Cara pakai:** tombol folder → **Cuaca Indonesia** → *Cuaca seluruh provinsi* atau *Cuaca seluruh kabupaten/kota*. Fitur lama (klik-peta BMKG, lokasi saya) tetap ada dan tidak berubah.
+
+- **Peta koroplet** 507 kabupaten/kota (38 provinsi) diwarnai menurut: Kondisi, Hujan, Risiko 24 jam, Suhu, Angin.
+- **Tingkat:** Otomatis (zoom jauh = provinsi, dekat = kab/kota), Provinsi, atau Kab/Kota. Filter 1 provinsi lewat menu, atau cari nama.
+- **Waktu:** penggeser 3 hari (per 3 jam) + tombol Putar. Label peta anti-tumpuk, wilayah paling berisiko diutamakan.
+- **Cerdas:** ringkasan nasional, daftar wilayah terurut Waspada / Hujan / Terpanas / Terkencang, dampak untuk pekerjaan jalan
+  (aspal, beton, drone, lapangan), hari kerja efektif, jumlah ruas PETAQU di wilayah, salin ringkasan.
+- **Sumber:** ringkasan nasional memakai Open-Meteo (±11 permintaan batch, cache 45 menit, tetap tampil dari cache saat offline) agar tidak
+  melewati batas BMKG 60 permintaan/menit. Saat sebuah kabupaten/kota dipilih, detailnya otomatis ditingkatkan ke **BMKG** (desa terdekat dari
+  pusat wilayah) bila terjangkau; tombol *Prakiraan BMKG desa* membuka panel BMKG lama. Provinsi = agregat kab/kota (hujan & angin persentil-90, suhu rata-rata).
+- Peringatan diturunkan dari prakiraan model, **bukan** peringatan dini resmi BMKG.
+- Berkas: `petaqu-cuaca-wilayah.js` (modul baru), memakai `data-kabbatas.js` (dimuat saat pertama dipakai).
