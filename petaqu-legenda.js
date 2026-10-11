@@ -112,9 +112,7 @@
   }
   function resetKab() { var g = GD(); g.kabupatenStyles = {}; applyAll(); }
   function colorPanel() {
-    var iri = !!G("iriMode"), m = curMode(), h = '<div class="pqlg-mode"><span>Warna</span>';
-    [["road", "Per ruas"], ["kab", "Per kabupaten"], ["all", "Satu warna"]].forEach(function (x) { h += '<button type="button" data-mode="' + x[0] + '"' + (m === x[0] && !iri ? ' class="on"' : "") + (iri ? " disabled" : "") + '>' + x[1] + '</button>'; });
-    h += '</div>';
+    var iri = !!G("iriMode"), m = curMode(), h = "";
     if (iri) return h + '<div class="pqlg-n">Mode IRI aktif — warna mengikuti kondisi jalan.</div>';
     var pi = pickInfo();
     if (pi) {
@@ -122,7 +120,7 @@
       var cur = String(pi.cur || "").toLowerCase();
       PAL.forEach(function (c) { h += '<button type="button" data-col="' + c + '" style="background:' + c + '"' + (cur === c ? ' class="on"' : "") + ' aria-label="' + c + '"></button>'; });
       h += '<input type="color" id="pqlgCol" value="' + (/^#[0-9a-f]{6}$/i.test(pi.cur || "") ? pi.cur : "#22d3ee") + '" title="Warna bebas"></div></div>';
-    } else h += '<div class="pqlg-n">' + (m === "road" ? "Klik garis warna di samping nama ruas untuk mengubah warnanya." : "Klik garis warna kabupaten untuk mengubah warnanya.") + '</div>';
+    } else h += '<div class="pqlg-n">' + (m === "road" ? "Klik garis warna di samping nama ruas untuk mengubah warnanya. Mode warna: menu Lapisan › Tampilan." : "Klik garis warna kabupaten untuk mengubah warnanya. Mode warna: menu Lapisan › Tampilan.") + '</div>';
     if (m === "road") h += '<div class="pqlg-act"><button type="button" data-auto="1">🎨 Warna otomatis semua ruas</button></div>';
     if (m === "kab") h += '<div class="pqlg-act"><button type="button" data-resetkab="1">Reset warna kabupaten</button></div>';
     return h;
@@ -226,6 +224,6 @@
     ["updateLegendForMode", "toggleRoadVisibility", "showAll", "hideAll", "renderRoadLayer", "clearLayer", "persist", "toggleIriMode", "toggleColorByKabupaten"].forEach(wrap);
     refresh(); setTimeout(refresh, 1500);
   }
-  W.__pqLegenda = { v: 3, refresh: refresh };
+  W.__pqLegenda = { v: 4, setMode: setMode, mode: curMode, refresh: refresh };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
