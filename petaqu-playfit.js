@@ -72,6 +72,16 @@
   }
 
 
+  /* Kartu cuaca (#pqwxCard) dianggap penghalang: terpasang di kanan -> area bebas menyusut dari kanan;
+     terpasang di bawah (HP) -> panel animasi naik di atas kartu. */
+  function wxRect() { var c = document.getElementById("pqwxCard"); if (!c || !c.classList.contains("open") || !c.offsetWidth) return null; var r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2 ? r : null; }
+  function avoidWx(f, vw) {
+    var w = wxRect(); if (!w || f.over) return f;
+    if (w.width >= vw * 0.85) { if (w.top > f.top + 120) f.bottom = Math.min(f.bottom, w.top - 6); }
+    else if (w.left > f.left + (f.right - f.left) * 0.3 && w.left < f.right) f.right = Math.min(f.right, w.left - 6);
+    return f;
+  }
+
   /* ====== Panah/kendaraan rute: selalu di area terlihat ====== */
   var vis = null, visT = 0, dirty = true, ensureTm = 0, PAD = 24;
   function MAP() { try { return typeof map !== "undefined" ? map : null; } catch (e) { return null; } }
@@ -95,7 +105,7 @@
     var map = $("map"); if (!map) return (vis = null);
     var mr = map.getBoundingClientRect(), ovEl = $("svOverlay"), ov = null;
     if (ovEl && ovEl.classList.contains("show")) ov = ovEl.getBoundingClientRect();
-    var f = calcFree(mr, ov, window.innerWidth, window.innerHeight);
+    var f = avoidWx(calcFree(mr, ov, window.innerWidth, window.innerHeight), window.innerWidth);
     var bar = $("routePlayerBar"), tb = $("mapToolbar");
     var br = bar && bar.classList.contains("show") ? bar.getBoundingClientRect() : null;
     var tr = tb && tb.offsetWidth > 0 ? tb.getBoundingClientRect() : null;
@@ -201,7 +211,7 @@
     var ovEl = $("svOverlay"), ov = null;
     if (ovEl && ovEl.classList.contains("show")) ov = ovEl.getBoundingClientRect();
     var vw = window.innerWidth, vh = window.innerHeight;
-    var f = calcFree(mr, ov, vw, vh);
+    var f = avoidWx(calcFree(mr, ov, vw, vh), vw);
     var avail = Math.max(220, Math.floor(f.right - f.left - M * 2));
     var cx = (f.left + f.right) / 2 - pr.left;
     var base = 18, b;
@@ -260,17 +270,20 @@
   function init() {
     var bar = $("routePlayerBar"), map = $("map"), ov = $("svOverlay");
     if (!bar || !map) return setTimeout(init, 500);
+    var ro = null, mo = null;
     try {
-      var ro = new ResizeObserver(schedule);
+      ro = new ResizeObserver(schedule);
       ro.observe(map); if (ov) ro.observe(ov); ro.observe(document.documentElement);
     } catch (e) {}
     try {
-      var mo = new MutationObserver(schedule);
+      mo = new MutationObserver(schedule);
       if (ov) mo.observe(ov, { attributes: true, attributeFilter: ["class", "style"] });
       mo.observe(bar, { attributes: true, attributeFilter: ["class"] });
       var sb = $("sidebar"); if (sb) mo.observe(sb, { attributes: true, attributeFilter: ["class"] });
       mo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     } catch (e) {}
+    function hookWx() { var c = $("pqwxCard"); if (!c || c._pqf) return; c._pqf = 1; try { ro && ro.observe(c); mo && mo.observe(c, { attributes: true, attributeFilter: ["class"] }); } catch (e) {} schedule(); }
+    hookWx(); try { new MutationObserver(function () { var c = $("pqwxCard"); if (c && !c._pqf) hookWx(); }).observe(document.body, { childList: true }); } catch (e) {}
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", function () { setTimeout(schedule, 250); });
     document.addEventListener("transitionend", function (e) {
