@@ -84,7 +84,8 @@
     else m.removeLayer(l);
   }
   function itemOn(g, it) { var m = getMap(), l = kLayers[g.ki + "|" + it.key]; return !!(m && l && m.hasLayer(l)); }
-  W.__pqNasInfo = function () { var n = 0, km = 0; (G || []).forEach(function (g) { g.items.forEach(function (it) { if (itemOn(g, it)) { n++; km += it.km || 0; } }); }); return { n: n, km: km }; };
+  W.__pqNasInfo = function () { var n = 0, km = 0, gr = []; (G || []).forEach(function (g, gi) { var gn = 0, gk = 0; g.items.forEach(function (it) { if (itemOn(g, it)) { gn++; gk += it.km || 0; } }); if (gn) { n += gn; km += gk; gr.push({ gi: gi, name: g.name, n: gn, km: gk }); } }); gr.sort(function (a, b) { return b.km - a.km; }); return { n: n, km: km, groups: gr }; };
+  W.__pqNasFocus = function (gi) { var g = (G || [])[gi], m = getMap(), b = null; if (!g || !m) return; g.items.forEach(function (it) { var l = kLayers[g.ki + "|" + it.key]; if (l && m.hasLayer(l)) { try { var lb = l.getBounds(); b = b ? b.extend(lb) : L.latLngBounds(lb.getSouthWest(), lb.getNorthEast()); } catch (e) {} } }); if (b) try { m.fitBounds(b, { padding: [40, 40], maxZoom: 14 }); } catch (e) {} };
   function legSoon() { try { if (typeof W.__pqLegendRefresh === "function") setTimeout(W.__pqLegendRefresh, 80); } catch (e) {} }
   function kabOn(g) { return g.items.some(function (it) { return itemOn(g, it); }); }
   function setKab(g, on, noFit) {
