@@ -203,13 +203,13 @@
   function series(road) {
     var ps = (road && road.points || []).filter(function (p) { return isNum(p.lat) && isNum(p.lng); });
     if (isNum(road.kmStart) || ps.some(function (p) { return isNum(p.km); })) {
-      return { s: ps.filter(function (p) { return isNum(p.km); }).map(function (p) { return { lat: +p.lat, lng: +p.lng, km: +p.km }; }), real: true, src: 'manual' };
+      return { s: ps.filter(function (p) { return isNum(p.km); }).map(function (p) { return { lat: +p.lat, lng: +p.lng, km: +p.km, sta: staM(p) }; }), real: true, src: 'manual' };
     }
     var a = auto(road); if (!a) return null;
     var sim = { points: copyPts(road).filter(function (p) { return isNum(p.lat) && isNum(p.lng); }), kmStart: a.kmStart, kmDir: a.dir };
     if (isNum(road.kmEnd)) sim.kmEnd = +road.kmEnd;
     apply(sim);
-    return { s: sim.points.map(function (p) { return { lat: +p.lat, lng: +p.lng, km: +p.km }; }), real: true, src: 'patok', auto: a };
+    return { s: sim.points.map(function (p) { return { lat: +p.lat, lng: +p.lng, km: +p.km, sta: staM(p) }; }), real: true, src: 'patok', auto: a };
   }
   /* jadikan hasil patok sebagai pengaturan ruas (tersimpan) */
   function adopt(road, silent) {

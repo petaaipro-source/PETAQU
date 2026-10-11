@@ -91,7 +91,7 @@
     ".pqlg-ib.pqlg-kmb.on{background:#047857;border-color:#34d399;color:#fff}",
     ".pqlg-seg .pqlg-ib.pqlg-eye{border:0;border-right:1px solid #2b3a52;border-radius:0}.pqlg-seg .pqlg-ib.pqlg-eye:last-child,.pqlg-seg .pqlg-ib:last-child{border-right:0}",
     ".pqlg-kminfo{color:#6ee7b7;font-size:10px;padding:2px 4px 0;line-height:1.3}",
-    ".pqlg-kmpin{pointer-events:none}.pqlg-kmpin b{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - 7px));white-space:nowrap;font:800 10px ui-monospace,monospace;color:#ecfdf5;background:#052e22ee;border:1.5px solid var(--c,#34d399);border-radius:5px;padding:1px 5px;box-shadow:0 2px 6px #0008}.pqlg-kmpin b:after{content:\"\";position:absolute;left:50%;top:100%;width:7px;height:7px;margin:1px 0 0 -3.5px;border-radius:50%;background:var(--c,#34d399);border:1.5px solid #052e22}.pqlg-kmpin.est b{border-style:dashed;background:#1e293bee;color:#e2e8f0}",
+    ".pqlg-kmpin{pointer-events:none}.pqlg-kmpin b{pointer-events:auto;cursor:pointer;position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - 7px));white-space:nowrap;font:800 10px ui-monospace,monospace;color:#ecfdf5;background:#052e22ee;border:1.5px solid var(--c,#34d399);border-radius:5px;padding:1px 5px;box-shadow:0 2px 6px #0008}.pqlg-kmpin b:after{content:\"\";position:absolute;left:50%;top:100%;width:7px;height:7px;margin:1px 0 0 -3.5px;border-radius:50%;background:var(--c,#34d399);border:1.5px solid #052e22}.pqlg-kmpin b small{display:block;margin-top:1px;padding-top:1px;border-top:1px solid #ffffff2e;font:700 8.5px ui-monospace,monospace;color:#fde68a;text-align:center}.pqlg-kmpin.est b{border-style:dashed;background:#1e293bee;color:#e2e8f0}",
     ".pqlg-stainfo{color:#fcd34d;font-size:10px;padding:3px 4px 0;line-height:1.3}",
     ".pqlg-stalabel{pointer-events:none}",
     ".pqlg-empty{color:#9fb6c3;font-style:italic;padding:3px 0}",
@@ -309,10 +309,14 @@
     return (STA.cache[id] = { g: g, n: n, ms: ms, sp: ms.length > 1 ? Math.max(5, tot / (ms.length - 1)) : 50 });
   }
   function stripKm(c) { return typeof c === "string" ? c.replace(/\s*•\s*KM\s*[0-9+.,\-]+/g, "") : c; }
-  function labelOn(mk) {
+  function withKm(c, km) {
+    c = stripKm(c); if (km == null || typeof c !== "string") return c;
+    var t = " \u2022 KM " + fmtKm(km); return /<\/span>\s*$/.test(c) ? c.replace(/(\s*)<\/span>\s*$/, t + "</span>") : c + t;
+  }
+  function labelOn(mk, km) {
     if (mk.__pqlgT) return; var tp = mk.getTooltip && mk.getTooltip(); if (!tp) return;
     mk.__pqlgT = { c: tp.getContent(), o: Object.assign({}, tp.options) };
-    mk.unbindTooltip(); mk.bindTooltip(stripKm(mk.__pqlgT.c), { permanent: true, direction: "top", offset: mk.__pqlgT.o.offset, className: "sta-label pqlg-stalabel" });
+    mk.unbindTooltip(); mk.bindTooltip(withKm(mk.__pqlgT.c, km), { permanent: true, direction: "top", offset: mk.__pqlgT.o.offset, className: "sta-label pqlg-stalabel" });
   }
   function labelOff(mk) {
     var o = mk.__pqlgT; if (!o) return; delete mk.__pqlgT;
@@ -357,20 +361,21 @@
       pass(); for (var k = 0; k < 4 && shown > STA.MAX; k++) { f *= Math.ceil(shown / STA.MAX); pass(); }
       var lab = near && z >= 16 && shown <= STA.LAB, rad = z >= 16 ? 5 : z >= 14 ? 4 : 3;
       STA.own.clearLayers();
+      var KMM = {}; items.forEach(function (it) { if (lab || !it.app) KMM[it.r.id] = kmMap(it.r, m); });
       var nOwn = 0;
       items.forEach(function (it, ci) {
         if (it.app) {
           var keep = {}; want[ci].forEach(function (i) { keep[i] = 1; });
           it.app.ms.forEach(function (mk, i) {
             var has = m.hasLayer(mk), w = !!keep[i];
-            if (lab && w) labelOn(mk); else labelOff(mk);
+            if (lab && w) { var kk = null; try { kk = KMM[it.r.id][kmKey(mk.getLatLng())]; } catch (e) {} labelOn(mk, kk != null ? kk : null); } else labelOff(mk);
             if (w && !has) m.addLayer(mk); else if (!w && has) m.removeLayer(mk);
           });
         } else {
           var col = effColor(it.r), cv = circleCanvas();
           want[ci].forEach(function (i) {
             var p = it.own[i], mk = L.circleMarker([p.lat, p.lng], { renderer: cv, radius: rad, color: col, weight: 2, fillColor: "#0a0e17", fillOpacity: 0.9 });
-            mk.bindTooltip('<span class="pq-label-rotate">STA ' + esc(p.sta) + '</span>', lab ? { permanent: true, direction: "top", offset: [0, -6], className: "sta-label pqlg-stalabel" } : { direction: "top", offset: [0, -6], className: "sta-label" });
+            mk.bindTooltip('<span class="pq-label-rotate">STA ' + esc(p.sta) + (KMM[it.r.id] && KMM[it.r.id][(+p.lat).toFixed(6) + "," + (+p.lng).toFixed(6)] != null ? " \u2022 KM " + fmtKm(KMM[it.r.id][(+p.lat).toFixed(6) + "," + (+p.lng).toFixed(6)]) : "") + '</span>', lab ? { permanent: true, direction: "top", offset: [0, -6], className: "sta-label pqlg-stalabel" } : { direction: "top", offset: [0, -6], className: "sta-label" });
             (function (rid, idx) { mk.on("click", function () { try { if (typeof W.editMode !== "undefined" && W.editMode && typeof W.openPointEditor === "function") W.openPointEditor(rid, idx); else if (typeof W.openStreetView === "function") W.openStreetView(rid, idx); } catch (e) {} }); })(it.r.id, i);
             STA.own.addLayer(mk); nOwn++;
           });
@@ -385,17 +390,21 @@
 
   /* ----- KM: patok kilometer ----- */
   function staMeters(sta) { var mm = /^\s*(\d+)\s*\+\s*(\d{1,3})\s*$/.exec(String(sta == null ? "" : sta)); return mm ? (+mm[1]) * 1000 + (+mm[2]) : null; }
+  function fmtSta(m) { m = Math.round(m); var n = m < 0; m = Math.abs(m); return (n ? '-' : '') + Math.floor(m / 1000) + '+' + ('00' + (m % 1000)).slice(-3); }
+  /* peta KM titik: "lat,lng" → km (sumber sama dgn patok KM di legenda) */
+  function kmMap(r, m) { var o = {}; try { kmSeries(r, m).s.forEach(function (q) { o[q.lat.toFixed(6) + ',' + q.lng.toFixed(6)] = q.km; }); } catch (e) {} return o; }
+  function kmKey(ll) { return ll.lat.toFixed(6) + ',' + ll.lng.toFixed(6); }
   function fmtKm(k) { var a = Math.abs(k), n = Math.floor(a + 1e-9), o = Math.round((a - n) * 1000); if (o >= 1000) { o -= 1000; n++; } return (k < 0 ? "-" : "") + n + (o ? "+" + ("00" + o).slice(-3) : ""); }
   function kmSeries(r, m) {
     try { if (W.PQKm && W.PQKm.series) { var q0 = W.PQKm.series(r); if (q0 && q0.s.length) return q0; } } catch (e) {}   /* sumber tunggal: KM ruas (manual / patok) — selaras dengan daftar ruas & lapisan Patok KM */
     var ps = (r.points || []).filter(function (p) { return isNum(p.lat) && isNum(p.lng); }), real = ps.some(function (p) { return isNum(p.km); }), out = [];
-    if (real) { ps.forEach(function (p) { if (isNum(p.km)) out.push({ lat: +p.lat, lng: +p.lng, km: +p.km }); }); return { s: out, real: true }; }
+    if (real) { ps.forEach(function (p) { if (isNum(p.km)) out.push({ lat: +p.lat, lng: +p.lng, km: +p.km, sta: staMeters(p.sta) }); }); return { s: out, real: true }; }
     var allSta = ps.length > 0 && ps.every(function (p) { return staMeters(p.sta) != null; }), cum = 0;
     ps.forEach(function (p, i) {
       var km;
       if (allSta) km = staMeters(p.sta) / 1000;
       else { if (i) { try { cum += m.distance([ps[i - 1].lat, ps[i - 1].lng], [p.lat, p.lng]) / 1000; } catch (e) {} } km = cum; }
-      out.push({ lat: +p.lat, lng: +p.lng, km: km });
+      out.push({ lat: +p.lat, lng: +p.lng, km: km, sta: staMeters(p.sta) });
     });
     return { s: out, real: false };
   }
@@ -423,7 +432,7 @@
             for (var K = K0; K <= hi + 1e-9; K += st) {
               var t = (K - p0.km) / d; if (t < 0 || t > 1 || (t === 1 && i < a.length - 1)) continue;
               var la = p0.lat + (p1.lat - p0.lat) * t, lo2 = p0.lng + (p1.lng - p0.lng) * t;
-              if (b.contains([la, lo2])) pins.push({ r: it.r, real: it.k.real, la: la, lo: lo2, K: Math.round(K * 1000) / 1000 });
+              if (b.contains([la, lo2])) pins.push({ r: it.r, real: it.k.real, la: la, lo: lo2, K: Math.round(K * 1000) / 1000, sta: (p0.sta != null && p1.sta != null) ? p0.sta + (p1.sta - p0.sta) * t : null });
             }
           }
         });
@@ -431,7 +440,9 @@
       gen(); while (pins.length > KMX.MAX && si < STEPS.length - 1) { si++; gen(); }
       pins.forEach(function (q) {
         var whole = Math.abs(q.K - Math.round(q.K)) < 1e-6, txt = "KM " + (whole ? Math.round(q.K) : fmtKm(q.K));
-        L.marker([q.la, q.lo], { interactive: false, keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: "pqlg-kmpin" + (q.real ? "" : " est"), iconSize: [0, 0], iconAnchor: [0, 0], html: '<b style="--c:' + esc(effColor(q.r)) + '">' + txt + '</b>' }) }).addTo(KMX.grp);
+        L.marker([q.la, q.lo], { interactive: true, keyboard: false, title: "Klik untuk Street View", zIndexOffset: 400, icon: L.divIcon({ className: "pqlg-kmpin" + (q.real ? "" : " est"), iconSize: [0, 0], iconAnchor: [0, 0], html: '<b style="--c:' + esc(effColor(q.r)) + '">' + txt + (q.sta != null ? '<small>STA ' + fmtSta(q.sta) + '</small>' : '') + '</b>' }) }).on("click", (function (q2, txt2) { return function (ev) {
+          try { if (ev.originalEvent) { ev.originalEvent.stopPropagation(); } if (typeof W.openStreetViewForGeoResult === "function") W.openStreetViewForGeoResult(q2.la, q2.lo, txt2 + (q2.sta != null ? " \u2022 STA " + fmtSta(q2.sta) : "") + " \u2022 " + q2.r.name); } catch (e) {}
+        }; })(q, txt)).addTo(KMX.grp);
       });
       if (pins.length && !m.hasLayer(KMX.grp)) KMX.grp.addTo(m); else if (!pins.length && m.hasLayer(KMX.grp)) m.removeLayer(KMX.grp);
       var est = series.filter(function (it) { return !it.k.real && it.k.s.length; }).length, pat = series.filter(function (it) { return it.k.src === "patok"; }).length;
