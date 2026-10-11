@@ -5,7 +5,7 @@
   const $ = id => document.getElementById(id), DEG = Math.PI / 180, V = 10.3; /* km/menit ~620 km/jam laut dalam */
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const say = m => { try { toast(m, 3200); } catch (e) { } };
-  let EV = [], KAB = null, G, RF, HL, sel = null, cv, ctx, raf = 0, T0 = 0, P, CUR = [], F = { d: 7, m: 4, p: "", k: "" }, timer;
+  let RP = null, EV = [], KAB = null, G, RF, HL, sel = null, cv, ctx, raf = 0, T0 = 0, P, CUR = [], F = { d: 7, m: 4, p: "", k: "" }, timer;
   const hav = (a, b, c, d) => { const x = Math.sin((c - a) * DEG / 2) ** 2 + Math.cos(a * DEG) * Math.cos(c * DEG) * Math.sin((d - b) * DEG / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); };
   function dec(s) { let i = 0, la = 0, lo = 0, o = []; while (i < s.length) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); la += r & 1 ? ~(r >> 1) : r >> 1; sh = 0; r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); lo += r & 1 ? ~(r >> 1) : r >> 1; o.push([la / 1e5, lo / 1e5]); } return o; }
   function kabs() {
@@ -48,21 +48,24 @@
 
   /* ---------- peta ---------- */
   function refresh() {
-    if (!G) return; G.clearLayers(); CUR = filt();
+    if (!G) return; G.clearLayers(); CUR = filt(); { const tn = performance.now(); CUR.forEach((e, i) => e._b = tn + Math.min(i, 70) * 35); } go();
     CUR.forEach(e => { const col = e.d < 70 ? "#f43f5e" : e.d < 300 ? "#fb923c" : "#60a5fa"; L.circleMarker([e.lat, e.lng], { radius: 3 + e.m * 1.5, color: "#fff", weight: e === sel ? 3 : 1, fillColor: col, fillOpacity: .72, className: Date.now() - e.t < 864e5 ? "pqg-new" : "" }).on("click", () => pick(e, true)).addTo(G); });
     render();
   }
   function pick(e, fly) {
     sel = e; e._a = assess(e); if (e._a.lv) e._ck = e._ck || coastKm(e); T0 = performance.now();
-    if (!raf) raf = requestAnimationFrame(frame);
+    go();
     if (fly) { const R = Math.max(e._a.rt, e._a.rf * 1.2, 30); try { map.flyToBounds(L.circle([e.lat, e.lng], { radius: R * 1e3 }).getBounds(), { maxZoom: 10, padding: [30, 30], duration: 1 }); } catch (x) { } }
     render();
   }
+  function go() { if (!raf && cv) raf = requestAnimationFrame(frame); }
   function frame(ts) {
-    if (!sel) { ctx && ctx.clearRect(0, 0, cv.width, cv.height); raf = 0; return; }
+    if (!P || P.style.display === "none" || !cv) { ctx && ctx.clearRect(0, 0, cv.width, cv.height); raf = 0; return; }
     const c = map.getContainer(), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
     if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px"; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    try { ambient(ts, w, h); } catch (x) { }
+    if (!sel || RP) { raf = requestAnimationFrame(frame); return; }
     const p = map.latLngToContainerPoint([sel.lat, sel.lng]), mpp = 40075016.686 * Math.cos(sel.lat * DEG) / (256 * Math.pow(2, map.getZoom())), px = k => k * 1e3 / mpp, A = sel._a, t = (ts - T0) / 1e3;
     const circ = (r, st, lw, dash) => { ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(r, .1), 0, 6.2832); ctx.strokeStyle = st; ctx.lineWidth = lw; ctx.setLineDash(dash || []); ctx.stroke(); ctx.setLineDash([]); };
     const lab = (s, x, y) => { ctx.font = "600 11.5px system-ui"; ctx.shadowColor = "#000"; ctx.shadowBlur = 4; ctx.fillStyle = "#fff"; ctx.fillText(s, x, y); ctx.shadowBlur = 0; };
@@ -77,6 +80,67 @@
     ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 6.2832); ctx.fillStyle = "#fff"; ctx.fill(); circ(5, "#f43f5e", 2.5);
     raf = requestAnimationFrame(frame);
   }
+
+
+  /* ---------- animasi hidup: riak seismik semua gempa + replay waktu ---------- */
+  const RM = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const dcol = d => d < 70 ? [244, 63, 94] : d < 300 ? [251, 146, 60] : [96, 165, 250];
+  const eo = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+  const rgba = (c, a) => "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + Math.max(0, a).toFixed(3) + ")";
+  function ring(x, y, r, c, a, lw) { if (a <= .01 || r < .5) return; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.strokeStyle = rgba(c, a); ctx.lineWidth = lw; ctx.stroke(); }
+  function glow(x, y, r, c, a) { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(c, a)); g.addColorStop(1, rgba(c, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
+  function tag(s, x, y, a) { ctx.globalAlpha = a; ctx.font = "700 12px system-ui"; ctx.textAlign = "center"; ctx.shadowColor = "#000"; ctx.shadowBlur = 5; ctx.fillStyle = "#fff"; ctx.fillText(s, x, y); ctx.shadowBlur = 0; ctx.textAlign = "left"; ctx.globalAlpha = 1; }
+  function ambient(ts, w, h) {
+    if (RM && !RP) return;
+    const z = map.getZoom(), zs = 1 + Math.max(0, z - 6) * .05, B = map.getBounds().pad(.15), now = Date.now(), sec = ts / 1e3;
+    ctx.globalCompositeOperation = "lighter";
+    if (RP) return replayDraw(ts, w, h);
+    let n = 0;
+    for (const e of CUR) {
+      if (n >= 130) break; if (!B.contains([e.lat, e.lng])) continue;
+      const bt = (ts - (e._b || 0)) / 1e3; if (bt < 0) continue; n++;
+      const p = map.latLngToContainerPoint([e.lat, e.lng]), age = now - e.t, f = age < 36e5 ? 1 : age < 216e5 ? .8 : age < 864e5 ? .58 : .3,
+        c = dcol(e.d), m = e.m, R = (14 + m * 7.5) * zs, hs = ((e.t / 1e3 | 0) % 997) / 997, isSel = e === sel;
+      glow(p.x, p.y, R * .55 * (1 + .12 * Math.sin(sec * 3 + hs * 6)), c, (.22 + (m >= 5 ? .2 : 0)) * f);
+      if (bt < 1.8) { const ph = bt / 1.8; ring(p.x, p.y, R * 2.8 * eo(ph), c, (1 - ph) * .95, 2.5 * (1 - ph) + .5); glow(p.x, p.y, R * 1.2 * (1 - ph) + 6, [255, 255, 255], (1 - ph) * .45); }
+      if (isSel) continue;
+      for (let k = 0; k < 2; k++) { /* gelombang P (cepat) & S (lambat) */
+        const per = (k ? 4.6 : 2.7) * (1.5 - f * .5), ph = (sec / per + hs + k * .41) % 1;
+        ring(p.x, p.y, R * eo(ph * 1.05), c, f * (k ? .55 : .8) * Math.pow(1 - ph, 1.6), (k ? 2.2 : 1.2) + m * .12 * (1 - ph));
+      }
+      if (age < 36e5) { const ph = (sec / 6 + hs) % 1; ring(p.x, p.y, R * 2.3 * eo(ph), [255, 255, 255], .5 * (1 - ph), 1.5); }
+      if (m >= 5.5 && age < 864e5) tag("M" + m.toFixed(1), p.x, p.y - R * .6 - 6, .85 * f);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+  function replayDraw(ts, w, h) {
+    const el = ts - RP.t0, k = Math.min(1, el / RP.dur), vt = RP.from + k * (RP.to - RP.from), sp = RP.dur / (RP.to - RP.from), B = map.getBounds().pad(.15);
+    let cnt = 0, mx = 0, flash = 0;
+    for (let i = CUR.length - 1; i >= 0; i--) {
+      const e = CUR[i]; if (e.t > vt) continue; cnt++; if (e.m > mx) mx = e.m;
+      const ag = (vt - e.t) * sp; if (!B.contains([e.lat, e.lng])) continue;
+      const p = map.latLngToContainerPoint([e.lat, e.lng]), c = dcol(e.d), m = e.m, R = 16 + m * 9;
+      const base = Math.max(.45, 1 - ag / 5e3);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2 + m * 1.1, 0, 6.2832); ctx.fillStyle = rgba(c, .75 * base); ctx.fill();
+      if (ag < 2600) { const ph = ag / 2600; glow(p.x, p.y, R * 1.4 * (1 - ph * .5), c, .55 * (1 - ph)); ring(p.x, p.y, R * 2.6 * eo(ph), c, 1 - ph, 3 * (1 - ph) + .6); ring(p.x, p.y, R * 1.6 * eo(Math.min(1, ph * 1.4)), [255, 255, 255], .7 * (1 - ph), 1.5); if (m >= 5) tag("M" + m.toFixed(1), p.x, p.y - R * .7 - 8, 1 - ph * .6); }
+      if (m >= 6 && ag < 300) flash = Math.max(flash, 1 - ag / 300);
+    }
+    ctx.globalCompositeOperation = "source-over";
+    if (flash) { ctx.fillStyle = "rgba(255,255,255," + (.12 * flash).toFixed(3) + ")"; ctx.fillRect(0, 0, w, h); }
+    const bw = Math.min(360, w - 40), bx = (w - bw) / 2, by = h - 56;
+    ctx.fillStyle = "rgba(7,26,38,.88)"; ctx.fillRect(bx - 10, by - 44, bw + 20, 64);
+    ctx.strokeStyle = "rgba(34,211,238,.5)"; ctx.lineWidth = 1; ctx.strokeRect(bx - 10, by - 44, bw + 20, 64);
+    ctx.font = "700 14px system-ui"; ctx.fillStyle = "#fff"; ctx.fillText("\u23F1 " + new Date(vt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }), bx, by - 22);
+    ctx.font = "12px system-ui"; ctx.fillStyle = "#9fb6c3"; ctx.textAlign = "right"; ctx.fillText(cnt + " gempa \u00B7 terkuat M" + (mx ? mx.toFixed(1) : "-"), bx + bw, by - 22); ctx.textAlign = "left";
+    ctx.fillStyle = "#ffffff22"; ctx.fillRect(bx, by, bw, 5); const gr = ctx.createLinearGradient(bx, 0, bx + bw, 0); gr.addColorStop(0, "#22d3ee"); gr.addColorStop(1, "#f43f5e"); ctx.fillStyle = gr; ctx.fillRect(bx, by, bw * k, 5);
+    if (el > RP.dur + 2500) stopReplay();
+  }
+  function startReplay() {
+    if (!CUR.length) return say("Tidak ada gempa pada filter ini"); sel = null;
+    RP = { t0: performance.now(), from: Math.min.apply(null, CUR.map(e => e.t)), to: Date.now(), dur: 14000 };
+    if (G && map.hasLayer(G)) map.removeLayer(G); const b = $("pqgRp"); if (b) b.textContent = "\u23F9 Hentikan replay"; go();
+  }
+  function stopReplay() { RP = null; if (G && !map.hasLayer(G)) G.addTo(map); const b = $("pqgRp"); if (b) b.textContent = "\u25B6 Putar ulang waktu"; refresh(); }
 
   /* ---------- Ring of Fire ---------- */
   const FL = [["Palung Sunda (megathrust)", [[5.5, 92.5], [3, 94], [0, 97], [-3, 99.8], [-6, 102.5], [-8.5, 105.5], [-10.3, 108.5], [-11, 112], [-11.1, 115], [-10.9, 118], [-10.7, 121], [-10.5, 123.5], [-9.5, 126], [-8, 129], [-6.5, 131]]], ["Sesar Besar Sumatra", [[5.3, 95.5], [3.5, 97.5], [1.5, 99], [-.5, 100.5], [-2.5, 101.5], [-4.5, 102.6], [-5.9, 104.3]]], ["Busur belakang Flores", [[-7.8, 113], [-8.2, 116], [-8.3, 119], [-8.2, 122]]], ["Sesar Palu-Koro", [[-.5, 119.8], [-1.6, 120.1], [-3, 120.5]]], ["Tumbukan Laut Maluku", [[3, 126.5], [0, 126.2], [-1, 125.5]]], ["Palung Sulawesi Utara", [[2.5, 123.5], [1.5, 122], [.5, 121]]], ["Sesar Sorong", [[-.9, 130.8], [-1, 132.5], [-1.2, 134.5], [-1.3, 136]]], ["Palung Papua", [[-.5, 133], [-.2, 135.5], [-1, 138]]]];
@@ -118,13 +182,13 @@
       "#pqgPanel{position:fixed;z-index:2950;top:70px;right:12px;width:340px;max-height:calc(100% - 100px);display:none;flex-direction:column;background:#071a26f2;color:#e6f1f7;border:1px solid #22d3ee55;border-radius:12px;font:12.5px system-ui;box-shadow:0 6px 24px #000a}#pqgPanel header{display:flex;align-items:center;gap:6px;padding:8px 10px;font-weight:700;border-bottom:1px solid #ffffff18}#pqgPanel header span{flex:1}#pqgPanel header button{background:none;border:0;color:#9fb6c3;font-size:16px;cursor:pointer}.pqg-ct{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px}.pqg-ct select{background:#0b2736;color:#e6f1f7;border:1px solid #ffffff22;border-radius:6px;padding:5px;min-width:0}.pqg-ct label{grid-column:1/3;display:flex;gap:6px;align-items:center}#pqgBody{overflow:auto;padding:0 10px 10px}.pqg-st{padding:4px 0}.pqg-ch{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}.pqg-ch span{background:#0e7490;border-radius:10px;padding:2px 8px;cursor:pointer;font-size:11.5px}.pqg-warn{background:#7f1d1d;border:1px solid #f43f5e;border-radius:8px;padding:6px 8px;margin:4px 0;cursor:pointer;animation:pqgw 1.2s infinite}@keyframes pqgw{50%{background:#450a0a}}.pqg-dt{border-left:4px solid;background:#0b2736;border-radius:8px;padding:8px;margin:6px 0;line-height:1.5}.pqg-b{background:#0e7490;color:#fff;border:0;border-radius:6px;padding:4px 9px;margin-top:5px;cursor:pointer}.pqg-it{padding:6px 4px;border-bottom:1px solid #ffffff12;cursor:pointer;position:relative}.pqg-it:hover{background:#0b2736}.pqg-it small{display:block;color:#9fb6c3}.pqg-it i{position:absolute;right:4px;top:7px;font-style:normal;font-size:10px;color:#000;border-radius:8px;padding:1px 6px;font-weight:700}@media(max-width:860px){#pqgPanel{left:6px;right:6px;top:auto;bottom:6px;width:auto;max-height:52vh}}";
     document.head.appendChild(css);
     P = document.createElement("div"); P.id = "pqgPanel";
-    P.innerHTML = '<header><i class="fa-solid fa-water" style="color:#22d3ee"></i><span>Gempa & Tsunami Indonesia</span><button id="pqgR" title="Segarkan">\u21BB</button><button id="pqgX" title="Tutup">\u2715</button></header><div class="pqg-ct"><select id="pqgD"><option value="1">24 jam</option><option value="7">7 hari</option><option value="30">30 hari</option></select><select id="pqgM"><option value="3.5">M \u2265 3.5</option><option value="4">M \u2265 4</option><option value="5">M \u2265 5</option><option value="6">M \u2265 6</option></select><select id="pqgP"></select><select id="pqgK" disabled></select><label><input type="checkbox" id="pqgRof"> Cincin Api (sesar, palung, gunung api)</label></div><div id="pqgBody">Memuat data gempa\u2026</div>';
+    P.innerHTML = '<header><i class="fa-solid fa-water" style="color:#22d3ee"></i><span>Gempa & Tsunami Indonesia</span><button id="pqgR" title="Segarkan">\u21BB</button><button id="pqgX" title="Tutup">\u2715</button></header><div class="pqg-ct"><select id="pqgD"><option value="1">24 jam</option><option value="7">7 hari</option><option value="30">30 hari</option></select><select id="pqgM"><option value="3.5">M \u2265 3.5</option><option value="4">M \u2265 4</option><option value="5">M \u2265 5</option><option value="6">M \u2265 6</option></select><select id="pqgP"></select><select id="pqgK" disabled></select><button class="pqg-b" id="pqgRp" style="grid-column:1/3;margin:0">\u25B6 Putar ulang waktu</button><label><input type="checkbox" id="pqgRof"> Cincin Api (sesar, palung, gunung api)</label></div><div id="pqgBody">Memuat data gempa\u2026</div>';
     document.body.appendChild(P);
     $("pqgP").innerHTML = '<option value="">Semua provinsi</option>' + Object.keys(window.PQ_KABBATAS || {}).sort().map(p => "<option>" + esc(p) + "</option>").join("");
     $("pqgD").onchange = e => { F.d = +e.target.value; refresh(); }; $("pqgM").onchange = e => { F.m = +e.target.value; refresh(); };
     $("pqgP").onchange = e => { F.p = e.target.value; fillK(); if (F.p) provFocus(); else if (HL) map.removeLayer(HL); refresh(); };
     $("pqgK").onchange = e => { F.k = e.target.value; F.k ? kabFocus() : provFocus(); refresh(); };
-    $("pqgRof").onchange = e => rof(e.target.checked);
+    $("pqgRof").onchange = e => rof(e.target.checked); $("pqgRp").onclick = () => RP ? stopReplay() : startReplay();
     $("pqgR").onclick = () => { $("pqgBody").innerHTML = "Memuat\u2026"; load(); }; $("pqgX").onclick = close;
     $("pqgD").value = F.d; $("pqgM").value = F.m;
   }
@@ -132,7 +196,7 @@
     if (!P) build(); if (!G) { G = L.layerGroup().addTo(map); cv = document.createElement("canvas"); cv.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;z-index:450"; map.getContainer().appendChild(cv); ctx = cv.getContext("2d"); }
     P.style.display = "flex"; map.hasLayer(G) || G.addTo(map); EV.length ? refresh() : load(); clearInterval(timer); timer = setInterval(() => { if (P.style.display !== "none") load(); }, 3e5);
   }
-  function close() { P.style.display = "none"; sel = null; clearInterval(timer); if (G) map.removeLayer(G); if (HL) map.removeLayer(HL); }
+  function close() { if (RP) { RP = null; } P.style.display = "none"; sel = null; clearInterval(timer); if (G) map.removeLayer(G); if (HL) map.removeLayer(HL); }
 
   function init() {
     try { BASEMAPS.push({ id: "ring_of_fire", icon: "\u{1F30B}", label: "Ring of Fire (Cincin Api)", url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd", attribution: "&copy; OpenStreetMap &copy; CARTO" } }); renderBasemapList(); const o = window.switchBasemap; window.switchBasemap = function (e) { const r = o.apply(this, arguments); try { rof(e === "ring_of_fire"); } catch (x) { } return r; }; if (typeof currentBaseId !== "undefined" && currentBaseId === "ring_of_fire") rof(true); } catch (e) { console.warn("Basemap Ring of Fire gagal:", e); }
