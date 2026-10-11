@@ -222,6 +222,61 @@
     if (!silent) note('KM "' + road.name + '" disetel dari ' + a.n + ' patok: KM awal ' + fmt(a.kmStart) + (a.conf === 'rendah' ? ' (1 patok — periksa arah)' : ''));
     return true;
   }
+
+  /* ---- Otomatis dari patok untuk SEMUA ruas yang aktif di peta (sekali klik, bisa diurungkan) ---- */
+  var UNDO = null;
+  function activeRoadsAll() {
+    var out = [];
+    try {
+      roads.forEach(function (r) {
+        var o = typeof layers !== 'undefined' ? layers[r.id] : null;
+        if (r.visible === false || !o || !o.group || !(r.points && r.points.length > 1)) return;
+        if (typeof map !== 'undefined' && map && !map.hasLayer(o.group)) return;
+        out.push(r);
+      });
+    } catch (e) {}
+    return out;
+  }
+  function adoptAll() {
+    var list = activeRoadsAll(), snap = [], ok = 0, none = 0, low = 0;
+    if (!list.length) { note('Tidak ada ruas aktif di peta.', true); return false; }
+    list.forEach(function (r) {
+      var a = auto(r);
+      if (!a) { none++; return; }
+      snap.push({ id: r.id, ks: r.kmStart, ke: r.kmEnd, kd: r.kmDir });
+      r.kmStart = a.kmStart; r.kmDir = a.dir; delete r.kmEnd; apply(r); ok++; if (a.conf === 'rendah') low++;
+    });
+    if (!ok) { note('Tidak ada patok KM yang menempel pada ' + list.length + ' ruas aktif — isi manual.', true); return false; }
+    try { persist(); } catch (e) {}
+    list.forEach(function (r) { try { if (typeof renderRoadLayer === 'function') renderRoadLayer(r); } catch (e) {} });
+    try { if (typeof renderRoadList === 'function') renderRoadList(); } catch (e) {}
+    try { window.__pqLegenda && window.__pqLegenda.refresh(); } catch (e) {}
+    UNDO = snap;
+    note('KM dari patok: ' + ok + ' ruas aktif disetel' + (none ? ' · ' + none + ' tanpa patok (dilewati)' : '') + (low ? ' · ' + low + ' ruas hanya 1 patok (periksa arah)' : ''));
+    undoBar(ok);
+    return true;
+  }
+  function undoLast() {
+    if (!UNDO) return;
+    UNDO.forEach(function (u) {
+      var r = roads.find(function (x) { return x.id === u.id; }); if (!r) return;
+      if (u.ks === undefined) delete r.kmStart; else r.kmStart = u.ks;
+      if (u.ke === undefined) delete r.kmEnd; else r.kmEnd = u.ke;
+      if (u.kd === undefined) delete r.kmDir; else r.kmDir = u.kd;
+      apply(r);
+      try { if (typeof renderRoadLayer === 'function') renderRoadLayer(r); } catch (e) {}
+    });
+    UNDO = null; try { persist(); } catch (e) {} try { renderRoadList(); } catch (e) {} try { window.__pqLegenda && window.__pqLegenda.refresh(); } catch (e) {}
+    note('Perubahan KM dari patok dibatalkan');
+  }
+  function undoBar(n) {
+    var o = document.getElementById('pqKmUndo'); if (o) o.remove();
+    o = document.createElement('div'); o.id = 'pqKmUndo';
+    o.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:100002;background:#0d1424f7;color:#e5e9f5;border:1px solid #22d3ee66;border-radius:12px;padding:8px 12px;font:600 12px system-ui;display:flex;gap:10px;align-items:center;box-shadow:0 8px 24px #0009';
+    o.innerHTML = '<span>' + n + ' ruas disetel dari patok</span><button type="button" style="background:#22d3ee;color:#04121a;border:0;border-radius:8px;padding:5px 11px;font:700 12px system-ui;cursor:pointer">Urungkan</button>';
+    o.querySelector('button').onclick = function () { undoLast(); o.remove(); };
+    document.body.appendChild(o); setTimeout(function () { if (o.parentNode) o.remove(); }, 12000);
+  }
   /* indeks titik terdekat ke koordinat (untuk editor di peta) */
   function nearestIdx(road, lat, lng) {
     var b = -1, bd = 1e9; (road.points || []).forEach(function (p, i) { var d = Math.hypot(p.lat - lat, p.lng - lng); if (d < bd) { bd = d; b = i; } }); return b;
@@ -264,7 +319,7 @@
       '<label class="pq-km-ck"><input type="checkbox" id="pqStaMid"> Hitung ulang STA titik tengah (proporsional jarak)</label>' +
       '<div class="pq-km-2"><div><label for="pqKmIn">KM awal</label>' + inp('pqKmIn', isNum(road.kmStart) ? fmt(+road.kmStart) : '', 'Kosong = tanpa KM') + '</div>' +
       '<div><label for="pqKmEnd">KM akhir <span class="opt">(opsional)</span></label>' + inp('pqKmEnd', isNum(road.kmEnd) ? fmt(+road.kmEnd) : '', 'Mis. 36+400') + '</div></div>' +
-      '<div class="pq-km-sug"><button type="button" data-a="auto" title="Hitung KM awal dari patok yang menempel di ruas">⚡ Otomatis dari Patok KM</button></div><div id="pqKmSugA">' + sugHtml(F, 'pqKmIn') + '</div><div id="pqKmSugB">' + (P.length > 1 ? sugHtml(L, 'pqKmEnd') : '') + '</div>' +
+      '<div class="pq-km-sug"><button type="button" data-a="auto" title="Isi KM awal ruas ini dari patok (bisa ditinjau dulu)">⚡ Dari patok (ruas ini)</button><button type="button" data-a="autoall" title="Setel KM semua ruas yang aktif di peta sekaligus">⚡ Semua ruas aktif</button></div><div id="pqKmSugA">' + sugHtml(F, 'pqKmIn') + '</div><div id="pqKmSugB">' + (P.length > 1 ? sugHtml(L, 'pqKmEnd') : '') + '</div>' +
       '<label>Arah KM <span class="opt">(otomatis bila KM akhir diisi)</span></label>' +
       '<div class="pq-km-seg"><button type="button" data-d="up">KM naik (searah titik)</button><button type="button" data-d="down">KM turun</button></div>' +
       '<label for="pqKmStep">Interval patok di peta <span class="opt">(legenda)</span></label>' +
@@ -291,6 +346,7 @@
         document.getElementById('pqKmIn').value = fmt(a.kmStart); document.getElementById('pqKmEnd').value = ''; cur.dir = a.dir; segPaint(); preview();
         note('Terbaca dari ' + a.n + ' patok' + (a.conf === 'rendah' ? ' (hanya 1 patok — periksa arah)' : ''));
       }
+      else if (b.dataset.a === 'autoall') { close(); adoptAll(); }
       else if (b.dataset.a === 'cancel') close();
       else if (b.dataset.a === 'clear') { document.getElementById('pqKmIn').value = ''; document.getElementById('pqKmEnd').value = ''; save(true); }
       else if (b.dataset.a === 'save') save(false);
@@ -375,5 +431,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.PQKm = { series: series, auto: auto, adopt: adopt, nearestIdx: nearestIdx, patok: patok, nearPatok: nearPatok, open: open, apply: apply, parse: parseKm, interp: interp, interpText: interpText, routeKm: routeKm, routeText: routeText, routeSuffix: routeSuffix, reapplyAll: reapplyAll };
+  window.PQKm = { adoptAll: adoptAll, undoLast: undoLast, series: series, auto: auto, adopt: adopt, nearestIdx: nearestIdx, patok: patok, nearPatok: nearPatok, open: open, apply: apply, parse: parseKm, interp: interp, interpText: interpText, routeKm: routeKm, routeText: routeText, routeSuffix: routeSuffix, reapplyAll: reapplyAll };
 })();

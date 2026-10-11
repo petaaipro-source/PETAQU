@@ -438,6 +438,22 @@
         });
       }
       gen(); while (pins.length > KMX.MAX && si < STEPS.length - 1) { si++; gen(); }
+      /* anti-tumpuk: pin yang bertabrakan di layar dibuang, yang kelipatan KM lebih besar diutamakan */
+      (function () {
+        var lv = function (K) { for (var i = STEPS.length - 1; i >= 0; i--) { var q = K / STEPS[i]; if (Math.abs(q - Math.round(q)) < 1e-6) return i; } return 0; };
+        pins.forEach(function (q) { q.lv = lv(q.K); q.pt = m.latLngToContainerPoint([q.la, q.lo]); });
+        pins.sort(function (x, y) { return y.lv - x.lv; });
+        var grid = {}, keep = [], W0 = 74, H0 = 34;
+        pins.forEach(function (q) {
+          var gx = Math.floor(q.pt.x / W0), gy = Math.floor(q.pt.y / H0), hit = false;
+          for (var i = -1; i <= 1 && !hit; i++) for (var j = -1; j <= 1 && !hit; j++) {
+            (grid[(gx + i) + "," + (gy + j)] || []).forEach(function (o) { if (Math.abs(o.x - q.pt.x) < W0 && Math.abs(o.y - q.pt.y) < H0) hit = true; });
+          }
+          if (hit) return;
+          (grid[gx + "," + gy] = grid[gx + "," + gy] || []).push(q.pt); keep.push(q);
+        });
+        pins = keep;
+      })();
       pins.forEach(function (q) {
         var whole = Math.abs(q.K - Math.round(q.K)) < 1e-6, txt = "KM " + (whole ? Math.round(q.K) : fmtKm(q.K));
         L.marker([q.la, q.lo], { interactive: true, keyboard: false, title: "Klik untuk Street View", zIndexOffset: 400, icon: L.divIcon({ className: "pqlg-kmpin" + (q.real ? "" : " est"), iconSize: [0, 0], iconAnchor: [0, 0], html: '<b style="--c:' + esc(effColor(q.r)) + '">' + txt + (q.sta != null ? '<small>STA ' + fmtSta(q.sta) + '</small>' : '') + '</b>' }) }).on("click", (function (q2, txt2) { return function (ev) {

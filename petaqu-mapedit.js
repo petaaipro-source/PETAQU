@@ -88,7 +88,7 @@
       '<div class="g2"><div><label>KM awal ruas</label><input type="text" id="meKs" value="' + (isNum(r.kmStart) ? esc(fmtKm(+r.kmStart)) : (ser && ser.s.length ? esc(fmtKm(ser.s[0].km)) : '')) + '" placeholder="kosong = tanpa KM"></div>' +
       '<div><label>Interval patok (legenda)</label><select id="meInt"><option value="">Otomatis (zoom)</option>' + [0.1, 0.2, 0.5, 1, 2, 5, 10].map(function (v) { return '<option value="' + v + '"' + (+r.kmStep === v ? ' selected' : '') + '>Tiap ' + String(v).replace('.', ',') + ' km</option>'; }).join('') + '</select></div></div>' +
       '<label>Arah KM</label><div class="seg"><button type="button" data-d="up">KM naik</button><button type="button" data-d="down">KM turun</button></div>' +
-      '<div class="act"><button class="pri" type="button" data-a="save">Simpan</button><button type="button" data-a="auto" title="Hitung KM awal dari patok yang menempel di ruas">⚡ Dari patok</button><button type="button" data-a="full" title="Dialog lengkap (STA/KM akhir)">Lengkap…</button></div>';
+      '<div class="act"><button class="pri" type="button" data-a="save">Simpan</button><button type="button" data-a="auto" title="Setel KM SEMUA ruas yang aktif di peta dari patok yang menempel (bisa diurungkan)">⚡ Dari patok · semua ruas aktif</button><button type="button" data-a="full" title="Dialog lengkap (STA/KM akhir)">Lengkap…</button></div>';
     document.body.appendChild(pop);
     var vw = innerWidth, vh = innerHeight, x = ev.clientX + 14, y = ev.clientY - 20, w = pop.offsetWidth, h = pop.offsetHeight;
     if (x + w > vw - 8) x = Math.max(8, ev.clientX - w - 14); if (y + h > vh - 8) y = Math.max(8, vh - h - 8); if (y < 8) y = 8;
@@ -102,7 +102,7 @@
       else if (b.dataset.a === 'x') close();
       else if (b.dataset.a === 'save') save();
       else if (b.dataset.a === 'full') { var id = r.id; close(); K && K.open(id); }
-      else if (b.dataset.a === 'auto') { var rr = r; close(); K && K.adopt(rr); }
+      else if (b.dataset.a === 'auto') { close(); K && K.adoptAll(); }
     });
     pop.addEventListener('keydown', function (e) { if (e.key === 'Enter') save(); else if (e.key === 'Escape') close(); });
   }
