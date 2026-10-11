@@ -2,7 +2,7 @@
    1) PENCATAT (semua pengguna login, senyap): kirim jenis perangkat/OS/browser + perkiraan lokasi (dari IP, IP tidak disimpan).
    2) PANEL (HANYA admin): peta sebaran, statistik perangkat, daftar pengguna, peringatan akun mencurigakan.
    3) RIWAYAT (HANYA admin): linimasa semua kejadian (daftar, buka aplikasi, perangkat/lokasi baru, peran, bayar, hapus akun),
-      riwayat pengguna GRATIS (uji coba 10 menit) + analisis cerdas. Disimpan di tabel terpisah (supabase-riwayat-pengguna.sql)
+      riwayat pengguna GRATIS (uji coba; lama ditentukan admin) + analisis cerdas. Disimpan di tabel terpisah (supabase-riwayat-pengguna.sql)
       sehingga tetap ada walau akun gratis dikunci/dihapus.
    Bukan admin -> tombol & panel TIDAK PERNAH dibuat (tidak ada di DOM). Penegakan sebenarnya di server:
    admin_sebaran_pengguna() menolak non-admin (lihat supabase-sebaran-pengguna.sql). */
@@ -360,7 +360,7 @@
 
   /* ================= 3) RIWAYAT & PENGGUNA GRATIS (hanya admin) ================= */
   var ROLE_LBL = { pending: "menunggu", trial: "uji coba gratis", viewer: "viewer", surveyor: "surveyor", admin: "admin", blocked: "diblokir", dihapus: "dihapus", expired: "berakhir" };
-  var ALASAN = { used: "Gmail/perangkat ini sudah pernah memakai uji coba", expired: "Jatah 10 menit sudah habis", bad_email: "Bukan akun Gmail yang valid", bad_device: "Data perangkat tidak valid", no_auth: "Tidak terautentikasi" };
+  var ALASAN = { used: "Gmail/perangkat ini sudah pernah memakai uji coba", expired: "Jatah uji coba sudah habis / dihentikan admin", nonaktif: "Gratis sedang dimatikan admin", ditutup: "Gratis sedang tertutup (jam/tanggal)", kuota_habis: "Kuota gratis habis", penuh: "Batas pendaftar per jam tercapai", diblokir: "Diblokir admin", bad_email: "Bukan akun Gmail yang valid", bad_device: "Data perangkat tidak valid", no_auth: "Tidak terautentikasi" };
   var EVT = {   /* ikon, label, warna, kelompok */
     daftar: ["🆕", "Mendaftar", "#38bdf8", "akun"], peran: ["🔑", "Perubahan peran", "#fbbf24", "akun"], bayar: ["💳", "Pembayaran", "#4ade80", "akun"], hapus_akun: ["🗑️", "Akun dihapus", "#f87171", "akun"],
     sesi: ["🔓", "Membuka aplikasi", "#34d399", "akses"], perangkat_baru: ["📱", "Perangkat baru", "#a78bfa", "akses"], lokasi_baru: ["📍", "Pindah lokasi", "#fb923c", "akses"],
@@ -408,7 +408,7 @@
       case "bayar": return [d.bulan ? d.bulan + " bulan" : "", rupiah(d.jumlah), d.metode, d.sampai ? "aktif s/d " + d.sampai : ""].filter(Boolean).join(" · ");
       case "hapus_akun": return "Peran terakhir: " + (ROLE_LBL[d.peran_terakhir] || d.peran_terakhir || "?") + (d.login_terakhir ? " · login terakhir " + rel(d.login_terakhir) : " · tidak pernah login");
       case "lokasi_baru": return (d.dari || "?") + " → " + (d.ke || "?");
-      case "trial_klaim": return "Jatah 10 menit dimulai" + (d.isi_ulang ? " (riwayat lama)" : "");
+      case "trial_klaim": return "Jatah uji coba dimulai" + (d.sisa ? " (" + Math.round(d.sisa / 60) + " menit)" : "") + (d.isi_ulang ? " (riwayat lama)" : "");
       case "trial_lanjut": return "Melanjutkan sisa jatah" + (d.sisa ? " (" + Math.round(d.sisa / 60) + " menit)" : "");
       case "trial_ditolak": return ALASAN[d.alasan] || ("Ditolak: " + (d.alasan || "?"));
       default:

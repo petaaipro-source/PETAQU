@@ -46,6 +46,21 @@
   function el(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
   function btnCss(bg, fg, bd) { return "background:" + bg + ";color:" + fg + ";border:1px solid " + (bd || "transparent") + ";border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;font-size:12px"; }
 
+  /* ---------- Kontrol Gratis: modul petaqu-gratis.js dimuat HANYA untuk admin, saat dibutuhkan ---------- */
+  var gratisSt = 0;   // 0 belum, 1 memuat, 2 siap, -1 gagal
+  window.__pqAdminKit = { rpc: rpc, T: T, el: el, btnCss: btnCss, fail: function (e) { fail(e); }, redraw: function () { if (panel && panel.style.display === "flex") render(); } };
+  function muatGratis(cb) {
+    if (gratisSt === 2) { cb && cb(); return; }
+    if (gratisSt === -1) { cb && cb(); return; }
+    if (gratisSt === 1) return;
+    gratisSt = 1;
+    var sc = document.createElement("script");
+    sc.src = "petaqu-gratis.js?v=1";
+    sc.onload = function () { gratisSt = window.__pqGratis ? 2 : -1; cb && cb(); };
+    sc.onerror = function () { gratisSt = -1; cb && cb(); };
+    document.head.appendChild(sc);
+  }
+
   /* ---------- tombol di dock + lencana jumlah menunggu ---------- */
   function setBadge(n) {
     if (labelEl) labelEl.textContent = n > 0 ? "Persetujuan akses (" + n + ")" : "Persetujuan akses";
@@ -90,7 +105,7 @@
     var list = el("div", "flex:1 1 auto;min-height:0;padding:10px 14px 14px;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px");
     list.id = "pqAdminList";
     var note = el("div", "flex:none;padding:8px 14px 12px;font-size:11px;color:#94a3b8;border-top:1px solid #ffffff12",
-      "Akun baru otomatis berstatus “Menunggu izin” dan tidak bisa membuka aplikasi sampai kamu menyetujuinya. Skor kepercayaan hanya saran — keputusan tetap di tanganmu. Memblokir mengeluarkan akun dari semua perangkat.");
+      "Akun baru otomatis berstatus “Menunggu izin” dan tidak bisa membuka aplikasi sampai kamu menyetujuinya. Skor kepercayaan hanya saran — keputusan tetap di tanganmu. Memblokir mengeluarkan akun dari semua perangkat. Tab “Kontrol Gratis” hanya terlihat olehmu: hidup/mati dan lama gratis ditentukan di sana.");
     box.append(head, tabs, tools, bar, list, note);
     panel.appendChild(box);
     panel.addEventListener("click", function (e) { if (e.target === panel) panel.style.display = "none"; });
@@ -241,14 +256,15 @@
     prevTunggu = cnt.tunggu;
 
     var tabs = $("pqAdminTabs"); tabs.textContent = "";
-    [["tunggu", "Menunggu"], ["aktif", "Aktif"], ["berakhir", "Berakhir"], ["blok", "Diblokir"]].forEach(function (t) {
+    [["tunggu", "Menunggu"], ["aktif", "Aktif"], ["berakhir", "Berakhir"], ["blok", "Diblokir"], ["gratis", "⚡ Kontrol Gratis" + (window.__pqGratis ? window.__pqGratis.tag() : "")]].forEach(function (t) {
       var b = el("button", "border-radius:16px;padding:5px 12px;cursor:pointer;font:600 12px system-ui;border:1px solid " + (tab === t[0] ? "#22d3ee" : "#ffffff30") +
-        ";background:" + (tab === t[0] ? "#22d3ee" : "transparent") + ";color:" + (tab === t[0] ? "#04121a" : "#e6f1ff"), t[1] + " (" + cnt[t[0]] + ")");
+        ";background:" + (tab === t[0] ? "#22d3ee" : "transparent") + ";color:" + (tab === t[0] ? "#04121a" : "#e6f1ff"), t[1] + (t[0] === "gratis" ? "" : " (" + cnt[t[0]] + ")"));
       b.onclick = function () { tab = t[0]; render(); };
       tabs.appendChild(b);
     });
 
     var tools = $("pqAdminTools"); tools.textContent = "";
+    if (tab === "gratis") { renderList(); return; }
     var si = el("input", "flex:1 1 180px;min-width:0;background:#0b1120;color:#e6f1ff;border:1px solid #ffffff30;border-radius:8px;padding:7px 10px;font:12px system-ui");
     si.placeholder = "Cari nama, instansi, email, WhatsApp…"; si.value = q;
     si.oninput = function () { q = si.value.trim().toLowerCase(); var pos = si.selectionStart; renderList(); si.focus(); try { si.setSelectionRange(pos, pos); } catch (e) { /* abaikan */ } };
@@ -293,7 +309,17 @@
     renderList();
   }
   function renderList() {
-    var list = $("pqAdminList"); list.textContent = "";
+    var list = $("pqAdminList");
+    if (tab === "gratis") {   // kontrol gratis: modul sendiri; posisi gulir dipertahankan saat digambar ulang
+      var kt = list.scrollTop; list.textContent = ""; vis = [];
+      if (window.__pqGratis) { window.__pqGratis.render(list); list.scrollTop = kt; }
+      else {
+        list.appendChild(el("div", "color:#94a3b8;padding:18px 4px;text-align:center", gratisSt === -1 ? "Modul kontrol gratis gagal dimuat (petaqu-gratis.js). Pastikan file ada di situs, lalu tutup & buka panel lagi." : "Memuat kontrol gratis…"));
+        if (gratisSt !== -1) muatGratis(function () { if (tab === "gratis") renderList(); });
+      }
+      renderBar(); return;
+    }
+    list.textContent = "";
     if (diag) { list.appendChild(diag); vis = []; renderBar(); return; }
     if (lastErr && !rows.length) { list.appendChild(errCard(lastErr)); vis = []; renderBar(); return; }
     var rk = (tab === "aktif" || tab === "berakhir") ? ringkasan() : null; if (rk) list.appendChild(rk);
@@ -643,6 +669,8 @@
         rows = d; lastErr = null; render();   // perbarui jumlah tab & daftar di balik hasil diagnosa
         add(true, "Fungsi admin_daftar_pengguna", d.length + " pengguna terbaca" + (d.length && !("skor" in d[0]) ? " (versi lama — jalankan supabase-pendaftaran.sql)" : ""));
       } catch (e) { add(false, "Fungsi admin_daftar_pengguna", e.code === "nosql" ? "Belum ada — jalankan supabase-akses-admin.sql lalu supabase-pendaftaran.sql" : (e.msg || e.code || "gagal") + (e.status ? " (" + e.status + ")" : "")); }
+      try { var gk = await rpc("admin_gratis_ambil"); add(true, "Kontrol gratis (supabase-gratis-kontrol.sql)", "Terpasang · gratis sedang " + (gk && gk.config && gk.config.aktif ? "AKTIF" : "MATI")); }
+      catch (e) { add(false, "Kontrol gratis (supabase-gratis-kontrol.sql)", "Belum ada — jalankan supabase-gratis-kontrol.sql (paling akhir)"); }
       try { await rpc("admin_daftar_domain"); add(true, "Fungsi domain resmi & setujui banyak", "Terpasang"); }
       catch (e) { add(false, "Fungsi domain resmi & setujui banyak", "Belum ada — jalankan supabase-pendaftaran.sql"); }
     }
@@ -674,8 +702,8 @@
     try {
       var r = await api("/rest/v1/profiles?select=role&id=eq." + encodeURIComponent(s.uid));
       if (r && r[0] && r[0].role === "admin") {
-        adminOk = true; setFlag(true); addButton(); refresh();
-        if (!poll) poll = setInterval(function () { if (adminOk && document.visibilityState === "visible" && !Object.keys(edOpen).length && !Object.keys(cek).length) refresh(); }, 6e4);   // lencana + notifikasi pendaftar baru tiap menit
+        adminOk = true; setFlag(true); addButton(); refresh(); muatGratis(function () { try { window.__pqGratis && window.__pqGratis.muat(); } catch (e) { /* abaikan */ } });
+        if (!poll) poll = setInterval(function () { if (adminOk && document.visibilityState === "visible" && tab !== "gratis" && !Object.keys(edOpen).length && !Object.keys(cek).length) refresh(); }, 6e4);   // lencana + notifikasi pendaftar baru tiap menit
       }
     } catch (e) { /* bukan admin / offline: tidak ada tombol */ }
   }
