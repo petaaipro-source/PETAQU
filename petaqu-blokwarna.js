@@ -49,7 +49,11 @@
     const k = ks.filter(x => x.p === it.p && x.n === it.n)[0]; return it._mp = k ? mpK(k) : null;
   }
   /* ---------- render di peta ---------- */
-  function zBase() { return 398; } /* di atas peta dasar & lapisan raster jalan (z 385/395), tepat di bawah garis jalan (overlay 400), pin STA/KM (600) dan label */
+  /* Blok di z=440 (terbukti tampil di atas peta dasar). Agar jalan tetap DI ATAS blok, pane jalan PETAQU dinaikkan ke 441-444 (pin STA/KM = marker 600 & label tetap paling atas). */
+  function zBase() { return 440; }
+  const ROADP = [["pqJalanWms", 441], ["pqJalanOsm", 442], ["pqJalanPane", 443], ["kabRoadLabPane", 444]];
+  function fixRoads() { if (!ready() || !items.some(i => i.on)) return; ROADP.forEach(r => { const p = map.getPane(r[0]); if (p && +p.style.zIndex !== r[1]) p.style.zIndex = r[1]; }); }
+  setInterval(fixRoads, 1200);
   function paneOf(it, idx) { const n = "pqb_" + it.id; let p = map.getPane(n); if (!p) { p = map.createPane(n); p.style.pointerEvents = "none"; } p.style.zIndex = zBase() ; p.style.opacity = it.on ? it.op : 0; p.style.display = it.on ? "" : "none"; return n; }
   function labelPane() { let p = map.getPane("pqbL"); if (!p) { p = map.createPane("pqbL"); p.style.zIndex = 465; p.style.pointerEvents = "none"; } return "pqbL"; }
   function center(mp) { let best = null, ba = -1; mp.forEach(p => { const a = ringArea(p[0]); if (a > ba) { ba = a; best = p[0]; } }); let a = 1e9, b = -1e9, c = 1e9, d = -1e9; best.forEach(q => { a = Math.min(a, q[0]); b = Math.max(b, q[0]); c = Math.min(c, q[1]); d = Math.max(d, q[1]); }); return [(a + b) / 2, (c + d) / 2]; }
@@ -59,7 +63,7 @@
     if (it._g) map.removeLayer(it._g); if (it._l) map.removeLayer(it._l);
     const pane = paneOf(it, idx);
     it._g = L.polygon(mp, { pane, interactive: false, color: it.color, weight: it.line, opacity: 1, fillColor: it.color, fillOpacity: 1, smoothFactor: 1.2, lineJoin: "round" }).addTo(map);
-    it._l = null;
+    it._l = null; fixRoads();
     if (it.label && it.on) { const c = center(mp); it._l = L.marker(c, { pane: labelPane(), interactive: false, keyboard: false, icon: L.divIcon({ className: "pqb-lb", html: "<span>" + esc(short(it.n)) + "</span>", iconSize: [0, 0] }) }).addTo(map); }
   }
   function redraw() { items.forEach((it, i) => { if (it._g || ready()) draw(it, i); }); }
