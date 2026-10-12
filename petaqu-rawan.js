@@ -203,7 +203,7 @@
   let G = null, OV = null, polys = [], card = null, rend = null;
   function ensureLayers() {
     const m = getMap(); if (!m || G) return !!G;
-    if (!m.getPane("pqrwPane")) { m.createPane("pqrwPane"); m.getPane("pqrwPane").style.zIndex = 330; /* di bawah garis ruas, titik & label STA (overlayPane = 400) */ }
+    if (!m.getPane("pqrwPane")) { m.createPane("pqrwPane"); m.getPane("pqrwPane").style.zIndex = 404; }
     try { m.getPane("popupPane").style.zIndex = 1100; } catch (e) { }
     rend = L.canvas({ pane: "pqrwPane", padding: .3 }); G = L.layerGroup(); OV = L.layerGroup();
     KAB.forEach((K, i) => { const pl = L.polygon(K.rings, { renderer: rend, pane: "pqrwPane", weight: .6, color: "#0b1220", opacity: .8, fillOpacity: .6, fillColor: "#64748b" }); pl.on("click", e => { L.DomEvent.stopPropagation(e); popup(K, e.latlng); }); pl._k = K; polys.push(pl); G.addLayer(pl); });
