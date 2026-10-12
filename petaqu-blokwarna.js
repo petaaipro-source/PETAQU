@@ -7,9 +7,17 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const PAL = ["#ef4444", "#f59e0b", "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#ec4899", "#f97316", "#84cc16"];
   const NOM = "https://nominatim.openstreetmap.org/";
-  let items = [], DLG = null, K = null, loading = false, top = true, pi = 0, found = [], picking = null, mini = false, uid = 0;
-  try { const o = JSON.parse(localStorage.getItem(KEY) || "null"); if (o) { items = o.items || []; top = o.top !== false; items.forEach(i => { uid = Math.max(uid, +i.id || 0); }); pi = items.length; } } catch (e) { }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ top, items: items.map(i => { const c = Object.assign({}, i); delete c._g; delete c._l; delete c._mp; return c; }) })); } catch (e) { toast("Memori browser penuh — hapus beberapa wilayah online"); } };
+  let focus = true, offIds = [], items = [], DLG = null, K = null, loading = false, top = true, pi = 0, found = [], picking = null, mini = false, uid = 0;
+  try { const o = JSON.parse(localStorage.getItem(KEY) || "null"); if (o) { items = o.items || []; top = o.top !== false; focus = o.focus !== false; items.forEach(i => { uid = Math.max(uid, +i.id || 0); }); pi = items.length; } } catch (e) { }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ top, focus, items: items.map(i => { const c = Object.assign({}, i); delete c._g; delete c._l; delete c._mp; return c; }) })); } catch (e) { toast("Memori browser penuh — hapus beberapa wilayah online"); } };
+  /* Mode fokus: saat ada blok warna aktif, lapisan lain (Kabupaten, Jalan Nasional+label ruas, Tol, Patok KM) dimatikan; dipulihkan saat blok dimatikan */
+  const FL = [["kbBtn", "kbPanel"], ["jnBtn", "jnPanel"], ["tlBtn", "tlPanel"], ["pkBtn", "pkPanel"]];
+  function applyFocus() {
+    const act = items.some(i => i.on);
+    FL.forEach(f => { const b = $(f[0]); if (!b) return; const isOff = b.classList.contains("off"), mine = offIds.indexOf(f[0]) >= 0;
+      if (focus && act && !isOff) { b.click(); offIds.push(f[0]); setTimeout(() => { const pn = $(f[1]); pn && pn.classList.remove("open"); }, 60); }
+      else if ((!focus || !act) && mine) { if (isOff) { b.click(); setTimeout(() => { const pn = $(f[1]); pn && pn.classList.remove("open"); }, 60); } offIds = offIds.filter(x => x !== f[0]); } });
+  }
   const ready = () => window.map && window.L;
   function toast(m, ms) { let t = $("pqbT"); if (!t) { t = document.createElement("div"); t.id = "pqbT"; document.body.appendChild(t); } t.textContent = m; t.className = "on"; clearTimeout(t._t); if (ms !== 0) t._t = setTimeout(() => t.className = "", ms || 3200); }
   function dec(s) { let i = 0, la = 0, lo = 0, o = []; while (i < s.length) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); la += r & 1 ? ~(r >> 1) : r >> 1; sh = 0; r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); lo += r & 1 ? ~(r >> 1) : r >> 1; o.push([la / 1e5, lo / 1e5]); } return o; }
@@ -59,7 +67,7 @@
   function restore() {
     if (!ready()) return setTimeout(restore, 500);
     const needLocal = items.some(i => i.kind !== "O");
-    const go = () => { redraw(); list(); badge(); };
+    const go = () => { redraw(); list(); badge(); setTimeout(applyFocus, 900); };
     needLocal ? data(go) : go();
   }
   /* ---------- tambah/hapus ---------- */
@@ -72,7 +80,7 @@
   function finish(arr, fit) {
     arr = arr.filter(Boolean); if (!arr.length) return;
     arr.forEach(it => { const mp = mpOf(it); it.area = mp ? Math.round(areaMP(mp)) : 0; });
-    save(); redraw(); list(); badge();
+    save(); redraw(); list(); badge(); applyFocus();
     if (fit) { if (arr.length === 1) zoomTo(arr[0]); else if (ready()) { let b = L.latLngBounds([]); arr.forEach(it => { const mp = mpOf(it); mp && mp.forEach(p => p[0].forEach(q => b.extend(q))); }); try { map.fitBounds(b, { padding: [40, 40], maxZoom: 12 }); } catch (e) { } } }
   }
   function addLocal(e, mode) {
@@ -88,7 +96,7 @@
     const sub = [a.village || a.suburb || a.neighbourhood, a.city_district || a.municipality, a.county || a.city, a.state].filter(Boolean).filter(x => x !== nm).slice(0, 3).join(", ") || String(r.display_name || "").split(",").slice(1, 3).join(",").trim();
     finish([mk({ kind: "O", n: nm, sub, osm: r.osm_type + r.osm_id, geom: r.geojson, type: r.addresstype || r.type })], true);
   }
-  function rm(id) { const i = items.findIndex(x => x.id === id); if (i < 0) return; const it = items[i]; if (it._g) map.removeLayer(it._g); if (it._l) map.removeLayer(it._l); const p = map.getPane("pqb_" + it.id); if (p) p.style.display = "none"; items.splice(i, 1); save(); list(); badge(); }
+  function rm(id) { const i = items.findIndex(x => x.id === id); if (i < 0) return; const it = items[i]; if (it._g) map.removeLayer(it._g); if (it._l) map.removeLayer(it._l); const p = map.getPane("pqb_" + it.id); if (p) p.style.display = "none"; items.splice(i, 1); save(); list(); badge(); applyFocus(); }
   /* ---------- pencarian ---------- */
   function localFind(q) {
     const n = norm(q); if (!n) return []; const out = [], D = window.PQ_KABBATAS || {};
@@ -149,12 +157,12 @@
         '<div class="pqb-h">Atau pilih langsung</div><div class="pqb-row"><select id="pqbLv"><option value="prov">Ketuk peta → Provinsi</option><option value="kab" selected>Ketuk peta → Kab/Kota</option><option value="kec">Ketuk peta → Kecamatan</option><option value="desa">Ketuk peta → Desa/Kelurahan</option></select><button class="pqb-btn" data-a="pick">📍 Ketuk peta</button></div>' +
         '<div class="pqb-row"><button class="pqb-btn" data-a="file">📂 Impor GeoJSON</button></div><input type="file" id="pqbF" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
         '<div class="pqb-h">Wilayah berwarna <span id="pqbC"></span></div><div id="pqbL"></div>' +
-        '<div class="pqb-ft"><label><input type="checkbox" id="pqbTop"> Warna di atas jalan</label><button class="pqb-btn" data-a="hideall">Sembunyikan semua</button><button class="pqb-btn" data-a="clr">Hapus semua</button></div></div>';
+        '<div class="pqb-ft"><label><input type="checkbox" id="pqbTop"> Warna di atas jalan</label><label title="Matikan Kabupaten, Jalan Nasional, Tol & Patok KM selagi blok warna aktif"><input type="checkbox" id="pqbFoc"> Fokus (matikan lapisan lain)</label><button class="pqb-btn" data-a="hideall">Sembunyikan semua</button><button class="pqb-btn" data-a="clr">Hapus semua</button></div></div>';
       document.body.appendChild(DLG);
-      DLG.addEventListener("click", onClick); DLG.addEventListener("input", onInput); DLG.addEventListener("change", e => { if (e.target.id === "pqbF") { onFile(e.target.files[0]); e.target.value = ""; } if (e.target.id === "pqbTop") { top = e.target.checked; save(); redraw(); } });
+      DLG.addEventListener("click", onClick); DLG.addEventListener("input", onInput); DLG.addEventListener("change", e => { if (e.target.id === "pqbF") { onFile(e.target.files[0]); e.target.value = ""; } if (e.target.id === "pqbFoc") { focus = e.target.checked; save(); applyFocus(); } if (e.target.id === "pqbTop") { top = e.target.checked; save(); redraw(); } });
       DLG.addEventListener("keydown", e => { if (e.target.id === "pqbQ" && e.key === "Enter") online(e.target.value); });
     }
-    DLG.style.display = ""; DLG.classList.remove("min"); $("pqbTop").checked = top; list(); badge();
+    DLG.style.display = ""; DLG.classList.remove("min"); $("pqbTop").checked = top; $("pqbFoc").checked = focus; list(); badge();
     data(() => { const q = $("pqbQ"); q && q.value && onInput({ target: q }); });
   }
   function closeDlg() { if (DLG) DLG.style.display = "none"; }
@@ -175,9 +183,9 @@
     else if (a === "addP1" || a === "addPK" || a === "addK") { const loc = $("pqbRes")._loc || [], en = loc[+b.dataset.i]; if (en) addLocal(en, a === "addPK" ? "each" : "one"); }
     else if (a === "addO") { const r = found[+b.dataset.i]; if (r) addOnline(r); }
     else if (a === "clr") { if (items.length && confirm("Hapus semua blok warna wilayah?")) items.slice().forEach(i => rm(i.id)); }
-    else if (a === "hideall") { const v = items.some(i => i.on); items.forEach(i => i.on = !v); save(); redraw(); list(); badge(); }
+    else if (a === "hideall") { const v = items.some(i => i.on); items.forEach(i => i.on = !v); save(); redraw(); list(); badge(); applyFocus(); }
     else if (it) {
-      if (a === "eye") { it.on = !it.on; draw(it, items.indexOf(it)); save(); list(); badge(); }
+      if (a === "eye") { it.on = !it.on; draw(it, items.indexOf(it)); save(); list(); badge(); applyFocus(); }
       else if (a === "lbl") { it.label = !it.label; draw(it, items.indexOf(it)); save(); list(); }
       else if (a === "zoom") zoomTo(it);
       else if (a === "del") rm(id);
