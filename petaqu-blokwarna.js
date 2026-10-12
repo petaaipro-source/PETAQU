@@ -49,7 +49,7 @@
     const k = ks.filter(x => x.p === it.p && x.n === it.n)[0]; return it._mp = k ? mpK(k) : null;
   }
   /* ---------- render di peta ---------- */
-  function zBase() { return 270; } /* di atas dasar peta & warna kabupaten (260), SELALU di bawah jalan, pin STA/KM (marker 600) dan label */
+  function zBase() { return 398; } /* di atas peta dasar & lapisan raster jalan (z 385/395), tepat di bawah garis jalan (overlay 400), pin STA/KM (600) dan label */
   function paneOf(it, idx) { const n = "pqb_" + it.id; let p = map.getPane(n); if (!p) { p = map.createPane(n); p.style.pointerEvents = "none"; } p.style.zIndex = zBase() ; p.style.opacity = it.on ? it.op : 0; p.style.display = it.on ? "" : "none"; return n; }
   function labelPane() { let p = map.getPane("pqbL"); if (!p) { p = map.createPane("pqbL"); p.style.zIndex = 465; p.style.pointerEvents = "none"; } return "pqbL"; }
   function center(mp) { let best = null, ba = -1; mp.forEach(p => { const a = ringArea(p[0]); if (a > ba) { ba = a; best = p[0]; } }); let a = 1e9, b = -1e9, c = 1e9, d = -1e9; best.forEach(q => { a = Math.min(a, q[0]); b = Math.max(b, q[0]); c = Math.min(c, q[1]); d = Math.max(d, q[1]); }); return [(a + b) / 2, (c + d) / 2]; }
