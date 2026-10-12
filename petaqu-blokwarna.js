@@ -5,11 +5,11 @@
   "use strict";
   const KEY = "petaqu_blok_v1", $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const PAL = ["#ef4444", "#f59e0b", "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#ec4899", "#f97316", "#84cc16"];
+  const PAL = ["#ef4444", "#f97316", "#eab308", "#84cc16", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#6366f1", "#a855f7", "#d946ef", "#ec4899"];
   const NOM = "https://nominatim.openstreetmap.org/";
   let focus = true, offIds = [], items = [], DLG = null, K = null, loading = false, top = true, pi = 0, found = [], picking = null, mini = false, uid = 0;
   try { const o = JSON.parse(localStorage.getItem(KEY) || "null"); if (o) { items = o.items || []; top = o.top !== false; focus = o.focus !== false; items.forEach(i => { uid = Math.max(uid, +i.id || 0); }); pi = items.length; } } catch (e) { }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ top, focus, items: items.map(i => { const c = Object.assign({}, i); delete c._g; delete c._l; delete c._mp; return c; }) })); } catch (e) { toast("Memori browser penuh — hapus beberapa wilayah online"); } };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ top, focus, items: items.map(i => { const c = Object.assign({}, i); delete c._g; delete c._l; delete c._mp; delete c._cd; delete c._bb; return c; }) })); } catch (e) { toast("Memori browser penuh — hapus beberapa wilayah online"); } };
   /* Mode fokus: saat ada blok warna aktif, lapisan lain (Kabupaten, Jalan Nasional+label ruas, Tol, Patok KM) dimatikan; dipulihkan saat blok dimatikan */
   const FL = [["kbBtn", "kbPanel"], ["jnBtn", "jnPanel"], ["tlBtn", "tlPanel"], ["pkBtn", "pkPanel"]];
   function applyFocus() {
@@ -55,7 +55,7 @@
   function zBase() { return 380; }
   function fixRoads() { }
   function paneOf(it, idx) { const n = "pqb_" + it.id; let p = map.getPane(n); if (!p) { p = map.createPane(n, map.getPane("overlayPane").parentNode); p.style.pointerEvents = "none"; } p.style.zIndex = zBase() ; p.style.opacity = it.on ? it.op : 0; p.style.display = it.on ? "" : "none"; return n; }
-  function labelPane() { let p = map.getPane("pqbL"); if (!p) { p = map.createPane("pqbL"); p.style.zIndex = 465; p.style.pointerEvents = "none"; } return "pqbL"; }
+  function labelPane() { let p = map.getPane("pqbL"); if (!p) { p = map.createPane("pqbL"); p.style.zIndex = 660; p.style.pointerEvents = "none"; } return "pqbL"; }
   function center(mp) { let best = null, ba = -1; mp.forEach(p => { const a = ringArea(p[0]); if (a > ba) { ba = a; best = p[0]; } }); let a = 1e9, b = -1e9, c = 1e9, d = -1e9; best.forEach(q => { a = Math.min(a, q[0]); b = Math.max(b, q[0]); c = Math.min(c, q[1]); d = Math.max(d, q[1]); }); return [(a + b) / 2, (c + d) / 2]; }
   function short(n) { return String(n).replace(/^Kabupaten /, "Kab. ").replace(/^Kota Administrasi /, "Kota ").replace(/^Provinsi /, ""); }
   function draw(it, idx) {
@@ -64,7 +64,8 @@
     const pane = paneOf(it, idx);
     it._g = L.polygon(mp, { pane, interactive: false, color: it.color, weight: it.line, opacity: 1, fillColor: it.color, fillOpacity: 1, smoothFactor: 1.2, lineJoin: "round" }).addTo(map);
     it._l = null; fixRoads();
-    if (it.label && it.on) { const c = center(mp); it._l = L.marker(c, { pane: labelPane(), interactive: false, keyboard: false, icon: L.divIcon({ className: "pqb-lb", html: "<span>" + esc(short(it.n)) + "</span>", iconSize: [0, 0] }) }).addTo(map); }
+    if (it.label && it.on) { const c = cands(it)[0] || center(mp); it._l = L.marker(c, { pane: labelPane(), interactive: false, keyboard: false, icon: L.divIcon({ className: "pqb-lb pqb-hid", html: "<span>" + esc(short(it.n)) + "</span>", iconSize: [0, 0] }) }).addTo(map); }
+    bindEv(); sched(120);
   }
   function redraw() { items.forEach((it, i) => { if (it._g || ready()) draw(it, i); }); }
   function zoomTo(it) { const mp = mpOf(it); if (!mp || !ready()) return; let b = L.latLngBounds([]); mp.forEach(p => p[0].forEach(q => b.extend(q))); try { map.fitBounds(b, { padding: [40, 40], maxZoom: 15 }); } catch (e) { } }
@@ -74,12 +75,91 @@
     const go = () => { redraw(); list(); badge(); setTimeout(applyFocus, 900); };
     needLocal ? data(go) : go();
   }
+/* ---------- otomatis & cerdas ---------- */
+  const gm = () => gmap();
+  function isSat() { try { const im = document.querySelector(".leaflet-tile-pane img.leaflet-tile"); return !!(im && /arcgis|google|satellite|imagery|mt[0-3]\.google/i.test(im.src)); } catch (e) { return true; } }
+  const defOp = () => isSat() ? .45 : .38;
+  function hue(hex) { const n = parseInt(String(hex).replace("#", ""), 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (!d) return 0; const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; }
+  const hd = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+  function getBB(it) { if (it._bb) return it._bb; const mp = mpOf(it); if (!mp) return null; let a = 1e9, b = -1e9, c = 1e9, d = -1e9; mp.forEach(p => p[0].forEach(q => { a = Math.min(a, q[0]); b = Math.max(b, q[0]); c = Math.min(c, q[1]); d = Math.max(d, q[1]); })); return it._bb = [a, c, b, d]; }
+  const touch = (a, b, m) => { m = m == null ? .06 : m; return a[0] - m < b[2] && a[2] + m > b[0] && a[1] - m < b[3] && a[3] + m > b[1]; };
+  /* warna otomatis: beda mencolok dari tetangga yang bersinggungan, dan tetap beda dari semua wilayah lain */
+  function pickColor(it, others) {
+    others = (others || items.filter(x => x !== it)).filter(x => x.color); const bb = getBB(it), nb = bb ? others.filter(o => { const ob = getBB(o); return ob && touch(bb, ob); }) : [];
+    let best = PAL[0], bs = -1e9;
+    PAL.forEach(c => { const h = hue(c), dn = nb.length ? Math.min.apply(null, nb.map(o => hd(h, hue(o.color)))) : 180, da = others.length ? Math.min.apply(null, others.map(o => hd(h, hue(o.color)))) : 180, sc = dn * 3 + da - (others.some(o => o.color === c) ? 200 : 0); if (sc > bs) { bs = sc; best = c; } });
+    return best;
+  }
+  function autoColors() {
+    data(() => {
+      if (!items.length) return toast("Belum ada wilayah");
+      const its = items.slice(); its.forEach(getBB);
+      const deg = i => { const b = getBB(i); return b ? its.filter(o => { const ob = getBB(o); return o !== i && ob && touch(b, ob); }).length : 0; };
+      const ord = its.slice().sort((a, b) => deg(b) - deg(a) || (b.area || 0) - (a.area || 0)), done = [];
+      ord.forEach(it => { it.color = pickColor(it, done); it.op = defOp(); it.label = true; if (it.line < 1) it.line = 2; done.push(it); });
+      save(); redraw(); list(); fitAll(); toast("✨ Warna disusun otomatis — wilayah bersebelahan dibuat kontras", 4200);
+    });
+  }
+  function fitAll() { if (!ready()) return; let b = L.latLngBounds([]); items.filter(i => i.on).forEach(it => { const mp = mpOf(it); mp && mp.forEach(p => p[0].forEach(q => b.extend(q))); }); try { b.isValid() && gm().fitBounds(b, { padding: [60, 60], maxZoom: 13 }); } catch (e) { } }
+  /* kandidat posisi label: titik-titik di dalam poligon yang paling jauh dari tepi (pusat "sejati", bukan sekadar tengah kotak) */
+  function cands(it) {
+    if (it._cd) return it._cd; const mp = mpOf(it); if (!mp) return []; const bb = getBB(it), parts = mp.map(p => ({ p, a: ringArea(p[0]) })), mx = Math.max.apply(null, parts.map(x => x.a)), out = [];
+    const sep = Math.max(bb[2] - bb[0], bb[3] - bb[1]) * .05;
+    parts.filter(x => x.a >= mx * .08).slice(0, 6).forEach(x => {
+      const r = x.p[0], big = x.a >= mx * .5; let a1 = 1e9, b1 = -1e9, c1 = 1e9, d1 = -1e9; r.forEach(q => { a1 = Math.min(a1, q[0]); b1 = Math.max(b1, q[0]); c1 = Math.min(c1, q[1]); d1 = Math.max(d1, q[1]); });
+      const cl = Math.cos((a1 + b1) / 2 * Math.PI / 180), N = big ? 14 : 6, pts = []; let tot = 0; x.p.forEach(rg => tot += rg.length); const st = Math.max(1, Math.floor(tot / 1500)); x.p.forEach(rg => { for (let i = 0; i < rg.length; i += st) pts.push(rg[i]); });
+      for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) { const la = a1 + (b1 - a1) * (i + .5) / N, lo = c1 + (d1 - c1) * (j + .5) / N; if (!(inRing(la, lo, r) && !x.p.slice(1).some(h => inRing(la, lo, h)))) continue; let md = 1e9; for (let k = 0; k < pts.length; k++) { const dy = pts[k][0] - la, dx = (pts[k][1] - lo) * cl, d = dy * dy + dx * dx; if (d < md) md = d; } out.push({ ll: [la, lo], d: Math.sqrt(md) * (big ? 1 : .6) }); }
+    });
+    out.sort((a, b) => b.d - a.d); const sel = []; out.forEach(c => { if (sel.length < 16 && sel.every(s2 => Math.hypot(s2.ll[0] - c.ll[0], s2.ll[1] - c.ll[1]) > sep)) sel.push(c); });
+    return it._cd = sel.length ? sel.map(c => c.ll) : [center(mp)];
+  }
+  /* tata letak label: ukuran mengikuti zoom, tidak menabrak label jalan / label lain / panel, pindah ke bagian wilayah yang terlihat */
+  let lt = 0, bound = false;
+  const sched = ms => { clearTimeout(lt); lt = setTimeout(layout, ms || 260); };
+  function bindEv() { if (bound || !ready()) return; bound = true; const m = gm(); m.on("zoomend moveend rotate resize", () => sched()); window.addEventListener("resize", () => sched()); setInterval(() => { if (!document.hidden && items.some(i => i.on && i.label)) layout(); }, 4000); }
+  function layout() {
+    if (!ready()) return; const m = gm(), cr = m.getContainer().getBoundingClientRect(), act = items.filter(i => i.on && i.label && i._l && i._l._icon && i._l._icon.firstChild); if (!act.length) return;
+    const obs = [], vis = r => r.width > 0 && r.height > 0 && r.right > cr.left && r.left < cr.right && r.bottom > cr.top && r.top < cr.bottom;
+    document.querySelectorAll(".kb-rl:not(.kbh),.kb-l:not(.kbh),#pqbD,#kbPanel.open").forEach(el => { const r = el.getBoundingClientRect(); vis(r) && obs.push(r); });
+    const placed = [], vb = m.getBounds();
+    act.sort((a, b) => (b.area || 0) - (a.area || 0)).forEach(it => {
+      const ic = it._l._icon, sp = ic.firstChild, bb = getBB(it), mp = mpOf(it); if (!bb || !mp) return;
+      const cs = [[bb[0], bb[1]], [bb[0], bb[3]], [bb[2], bb[1]], [bb[2], bb[3]]].map(q => m.latLngToContainerPoint(q)), xs = cs.map(q => q.x), ys = cs.map(q => q.y), pw = Math.max.apply(null, xs) - Math.min.apply(null, xs), ph = Math.max.apply(null, ys) - Math.min.apply(null, ys);
+      const nm = sp.textContent || "x"; if (pw < 36 || ph < 14) { ic.classList.add("pqb-hid"); return; }
+      sp.style.fontSize = Math.max(10, Math.min(18, pw / (nm.length * .6) * .7)).toFixed(1) + "px";
+      const sr = sp.getBoundingClientRect(), w = sr.width || 60, h = sr.height || 14;
+      /* kandidat: titik tersimpan + titik di dalam area yang sedang terlihat (urut dari pusat layar) */
+      let cl = cands(it).slice(); const ex = [], ca = Math.min(bb[2], vb.getNorth()), cb = Math.max(bb[0], vb.getSouth()), cc = Math.max(bb[1], vb.getWest()), cd = Math.min(bb[3], vb.getEast());
+      if (ca > cb && cd > cc) { for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { const la = cb + (ca - cb) * (i + .5) / 5, lo = cc + (cd - cc) * (j + .5) / 5; if (inMP(la, lo, mp)) ex.push([la, lo]); } const cn = vb.getCenter(); ex.sort((a, b) => Math.hypot(a[0] - cn.lat, a[1] - cn.lng) - Math.hypot(b[0] - cn.lat, b[1] - cn.lng)); cl = cl.concat(ex); }
+      let best = null, bs = 1e18;
+      for (let k = 0; k < cl.length; k++) {
+        const cp = m.latLngToContainerPoint(cl[k]), x = cr.left + cp.x, y = cr.top + cp.y, R = { left: x - w / 2, right: x + w / 2, top: y - h / 2, bottom: y + h / 2 };
+        if (R.left < cr.left + 4 || R.right > cr.right - 4 || R.top < cr.top + 4 || R.bottom > cr.bottom - 4) continue;
+        let sc = 0; obs.concat(placed).forEach(o => { const ox = Math.min(R.right, o.right) - Math.max(R.left, o.left), oy = Math.min(R.bottom, o.bottom) - Math.max(R.top, o.top); if (ox > 0 && oy > 0) sc += ox * oy; });
+        if (sc < bs) { bs = sc; best = { ll: cl[k], R }; } if (sc === 0) break;
+      }
+      if (best && bs < .3 * w * h) { it._l.setLatLng(best.ll); ic.classList.remove("pqb-hid"); placed.push(best.R); } else ic.classList.add("pqb-hid");
+    });
+  }
+  /* pencarian toleran salah ketik */
+  function lev(a, b) { const m = a.length, n = b.length; if (!m) return n; if (!n) return m; let pr = []; for (let j = 0; j <= n; j++) pr[j] = j; for (let i = 1; i <= m; i++) { const cu = [i]; for (let j = 1; j <= n; j++) cu[j] = Math.min(pr[j] + 1, cu[j - 1] + 1, pr[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); pr = cu; } return pr[n]; }
+  const entOf = e => e.kind === "P" ? mk({ kind: "P", p: e.p, n: e.p, sub: "Provinsi" }) : mk({ kind: "K", p: e.p, n: e.n, sub: e.p });
+  /* Enter: "banyumas, cilacap, kebumen" -> semua sekaligus; nama persis & unik -> langsung diwarnai; selain itu cari online */
+  function smartEnter(v) {
+    v = String(v || "").trim(); if (!v) return; const parts = v.split(/\s*(?:,|;|\n|&|\bdan\b)\s*/i).filter(Boolean);
+    data(() => {
+      if (parts.length > 1) { const arr = [], miss = []; parts.forEach(p => { const r = localFind(p)[0]; r ? arr.push(entOf(r)) : miss.push(p); }); if (arr.length) { finish(arr, true); toast(arr.length + " wilayah ditambahkan" + (miss.length ? " · tidak ada di data lokal: " + miss.join(", ") + " (coba 🌐 online)" : ""), 5200); const q = $("pqbQ"); if (q && !miss.length) { q.value = ""; $("pqbRes").innerHTML = ""; } } else online(v); return; }
+      const ex = localFind(v).filter(x => x.s === 0);
+      if (ex.length === 1) { finish([entOf(ex[0])], true); toast("Ditambahkan: " + ex[0].n); $("pqbQ").value = ""; $("pqbRes").innerHTML = ""; return; }
+      online(v);
+    });
+  }
   /* ---------- tambah/hapus ---------- */
   function mk(o) {
     const key = o.kind + "|" + (o.p || "") + "|" + o.n + "|" + (o.osm || "");
     const ex = items.filter(i => i.key === key)[0]; if (ex) { ex.on = true; ex.color = ex.color; return ex; }
-    const it = Object.assign({ id: ++uid, key, color: PAL[pi++ % PAL.length], op: .45, line: 2, label: true, on: true }, o);
-    items.push(it); return it;
+    const it = Object.assign({ id: ++uid, key, color: null, op: defOp(), line: 2, label: true, on: true }, o);
+    items.push(it); it.color = pickColor(it); return it;
   }
   function finish(arr, fit) {
     arr = arr.filter(Boolean); if (!arr.length) return;
@@ -106,6 +186,9 @@
     const n = norm(q); if (!n) return []; const out = [], D = window.PQ_KABBATAS || {};
     for (const p in D) { if (norm(p).indexOf(n) >= 0) out.push({ kind: "P", p, n: p, sub: D[p].length + " kab/kota", s: norm(p) === n ? 0 : 1 }); }
     kabs().forEach(k => { const m = norm(k.n); if (m.indexOf(n) >= 0) out.push({ kind: "K", p: k.p, n: k.n, sub: k.p, s: m === n ? 0 : m.indexOf(n) === 0 ? 1 : 2 }); });
+    if (!out.some(o => o.s === 0) && out.length < 3 && n.length >= 4) { const t = n.length <= 5 ? 1 : 2, near = x => { const w = x.split(" ").concat([x]); return Math.min.apply(null, w.map(y => lev(n, y))); };
+      for (const p in D) { const d = near(norm(p)); if (d <= t && !out.some(o => o.kind === "P" && o.p === p)) out.push({ kind: "P", p, n: p, sub: D[p].length + " kab/kota · mirip", s: 3 + d }); }
+      kabs().forEach(k => { const d = near(norm(k.n)); if (d <= t && !out.some(o => o.kind === "K" && o.p === k.p && o.n === k.n)) out.push({ kind: "K", p: k.p, n: k.n, sub: k.p + " · mirip", s: 3 + d }); }); }
     return out.sort((a, b) => a.s - b.s).slice(0, 8);
   }
   function variants(q) {
@@ -184,7 +267,7 @@
       ".pqb-bd{overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:9px;overscroll-behavior:contain}#pqbD input[type=text],#pqbD select{width:100%;box-sizing:border-box;background:#111a28;color:#e6f1fb;border:1px solid #22d3ee55;border-radius:10px;padding:9px 10px;font:inherit}" +
       ".pqb-row{display:flex;gap:6px}.pqb-row>*{flex:1}#pqbD .pqb-btn,.pqb-b button{background:#0e2a3a;color:#7fe9ff;border:1px solid #22d3ee66;border-radius:9px;padding:7px 9px}.pqb-r{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;background:#111a28}.pqb-r>div:first-child{flex:1;min-width:0}.pqb-r small{display:block;color:#8aa0b6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pqb-b{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}.pqb-m{color:#8aa0b6;padding:4px 2px;font-size:12px}" +
       ".pqb-h{font-size:11px;letter-spacing:.08em;color:#22d3ee;text-transform:uppercase;margin-top:2px}.pqb-it{border-radius:12px;background:#111a28;padding:8px;display:flex;flex-direction:column;gap:6px;border-left:4px solid var(--c)}.pqb-it.off{opacity:.55}.pqb-t{display:flex;align-items:center;gap:6px}.pqb-t>div{flex:1;min-width:0}.pqb-t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pqb-t small{color:#8aa0b6}.pqb-t input[type=color]{width:30px;height:30px;border:0;padding:0;background:none;border-radius:8px}.pqb-ic{background:#0e2a3a;border:1px solid #22d3ee44;color:#cfefff;border-radius:8px;min-width:30px;height:30px}.pqb-ic.on{background:#0e7490}.pqb-sl{display:flex;align-items:center;gap:6px;color:#8aa0b6;font-size:11px}.pqb-sl input{flex:1;accent-color:#22d3ee}.pqb-ft{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#9fb3c8}" +
-      ".pqb-lb span{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font:700 11px system-ui,sans-serif;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000;pointer-events:none}#pqbT{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2200;background:#0a0e17f2;color:#e6f1fb;border:1px solid #22d3ee66;padding:9px 14px;border-radius:12px;font:13px system-ui;max-width:86vw;display:none;text-align:center}#pqbT.on{display:block}#pqbT:empty{display:none!important}";
+      ".pqb-hid{visibility:hidden!important}.pqb-lb span{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font:700 11px system-ui,sans-serif;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000,0 1px 2px #000;pointer-events:none}#pqbT{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2200;background:#0a0e17f2;color:#e6f1fb;border:1px solid #22d3ee66;padding:9px 14px;border-radius:12px;font:13px system-ui;max-width:86vw;display:none;text-align:center}#pqbT.on{display:block}#pqbT:empty{display:none!important}";
     document.head.appendChild(s);
   }
   function openDlg() {
@@ -195,10 +278,10 @@
         '<div class="pqb-h">Atau pilih langsung</div><div class="pqb-row"><select id="pqbLv"><option value="prov">Ketuk peta → Provinsi</option><option value="kab" selected>Ketuk peta → Kab/Kota</option><option value="kec">Ketuk peta → Kecamatan</option><option value="desa">Ketuk peta → Desa/Kelurahan</option></select><button class="pqb-btn" data-a="pick">📍 Ketuk peta</button></div>' +
         '<div class="pqb-row"><button class="pqb-btn" data-a="file">📂 Impor GeoJSON</button></div><input type="file" id="pqbF" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
         '<div class="pqb-h">Wilayah berwarna <span id="pqbC"></span></div><div id="pqbL"></div>' +
-        '<div class="pqb-ft"><label title="Matikan Kabupaten, Jalan Nasional, Tol & Patok KM selagi blok warna aktif"><input type="checkbox" id="pqbFoc"> Fokus (matikan lapisan lain)</label><button class="pqb-btn" data-a="hideall">Sembunyikan semua</button><button class="pqb-btn" data-a="clr">Hapus semua</button></div></div>';
+        '<div class="pqb-ft"><label title="Matikan Kabupaten, Jalan Nasional, Tol & Patok KM selagi blok warna aktif"><input type="checkbox" id="pqbFoc"> Fokus (matikan lapisan lain)</label><button class="pqb-btn" data-a="auto" title="Susun ulang warna otomatis: wilayah bersebelahan dibuat kontras, transparansi disesuaikan peta dasar">✨ Auto warna</button><button class="pqb-btn" data-a="fit">⤢ Pas semua</button><button class="pqb-btn" data-a="hideall">Sembunyikan semua</button><button class="pqb-btn" data-a="clr">Hapus semua</button></div></div>';
       document.body.appendChild(DLG);
       DLG.addEventListener("click", onClick); DLG.addEventListener("input", onInput); DLG.addEventListener("change", e => { if (e.target.id === "pqbF") { onFile(e.target.files[0]); e.target.value = ""; } if (e.target.id === "pqbFoc") { focus = e.target.checked; save(); applyFocus(); }  });
-      DLG.addEventListener("keydown", e => { if (e.target.id === "pqbQ" && e.key === "Enter") online(e.target.value); });
+      DLG.addEventListener("keydown", e => { if (e.target.id === "pqbQ" && e.key === "Enter") smartEnter(e.target.value); });
     }
     DLG.style.display = ""; DLG.classList.remove("min"); $("pqbFoc").checked = focus; list(); badge();
     data(() => { const q = $("pqbQ"); q && q.value && onInput({ target: q }); });
@@ -218,6 +301,8 @@
     else if (a === "online") online($("pqbQ").value);
     else if (a === "pick") pick($("pqbLv").value);
     else if (a === "file") $("pqbF").click();
+    else if (a === "auto") autoColors();
+    else if (a === "fit") fitAll();
     else if (a === "addP1" || a === "addPK" || a === "addK") { const loc = $("pqbRes")._loc || [], en = loc[+b.dataset.i]; if (en) addLocal(en, a === "addPK" ? "each" : "one"); }
     else if (a === "addC") { const r = found[+b.dataset.i]; if (r) addCircle(r); }
     else if (a === "addO") { const r = found[+b.dataset.i]; if (r) addOnline(r); }
@@ -239,7 +324,8 @@
       '<div class="pqb-sl">Transparansi <input type="range" min="10" max="90" value="' + Math.round(it.op * 100) + '" data-a="op" data-id="' + it.id + '"></div></div>').join("") : '<div class="pqb-m">Belum ada. Cari wilayah di atas atau ketuk peta.</div>';
   }
   const badge = () => { const n = items.filter(i => i.on).length; const el = $("pqbN"); if (el) el.textContent = n ? " · " + n + " aktif" : ""; };
-  window.PETAQU_BLOK = { open: openDlg, close: closeDlg, count: () => items.filter(i => i.on).length, rows: () => [{ id: "blok", name: "Blok warna wilayah", ic: "\u25A8", c: "#f59e0b", on: items.some(i => i.on) }], cancel: cancelPick };
+  window.PETAQU_BLOK = { auto: autoColors, fit: fitAll, relayout: layout, open: openDlg, close: closeDlg, count: () => items.filter(i => i.on).length, rows: () => [{ id: "blok", name: "Blok warna wilayah", ic: "\u25A8", c: "#f59e0b", on: items.some(i => i.on) }], cancel: cancelPick };
   document.addEventListener("keydown", e => { if (e.key === "Escape") cancelPick(); });
+  if (window.__PQB_TEST) window.__PQB_T = { lev, hue, hd, pickColor, cands, localFind, mk, items: () => items, data, autoColors, getBB };
   items.length ? restore() : 0;
 })();
