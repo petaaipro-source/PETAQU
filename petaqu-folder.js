@@ -113,7 +113,7 @@
 
     var W = [];
     try { if (window.PETAQU_CUACA && PETAQU_CUACA.rows) W = PETAQU_CUACA.rows(); } catch (e) { W = []; }
-    var s = JSON.stringify([L, T, W, D.map(function (d) { return d.t; })]);
+    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
     sig = s;
 
@@ -132,6 +132,14 @@
         '<button type="button" class="pqf-row" data-k="T" style="--c:#22d3ee">' +
         '<span class="pqf-ic">\u25D0</span><span class="pqf-t">Transparansi wilayah (pilih)</span>' +
         '<span class="pqf-st' + (T.on ? "" : " off") + '">' + (T.on ? "ON" : "OFF") + "</span></button>";
+
+    }
+    if (window.PETAQU_BLOK) {
+      var BK = PETAQU_BLOK.count();
+      if (!T) h += '<div class="pqf-h">Tampilan</div>';
+      h += '<button type="button" class="pqf-row" data-k="B" style="--c:#f59e0b">' +
+        '<span class="pqf-ic">\u25A8</span><span class="pqf-t">Blok warna wilayah</span>' +
+        '<span class="pqf-st' + (BK ? "" : " off") + '">' + (BK ? BK + " ON" : "OFF") + "</span></button>";
     }
     if (W.length) {
       h += '<div class="pqf-h">Cuaca Indonesia</div>';
@@ -167,6 +175,9 @@
       closePanels();
       closeJt();
       try { PETAQU_CUACA.act(k.slice(2)); } catch (e) { }
+    } else if (k === "B") {
+      closePanels();
+      try { PETAQU_BLOK.open(); } catch (e) { }
     } else if (k === "T") {
       closePanels();
       var j = jtParts();
