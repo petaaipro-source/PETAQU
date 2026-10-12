@@ -104,17 +104,39 @@
     kabs().forEach(k => { const m = norm(k.n); if (m.indexOf(n) >= 0) out.push({ kind: "K", p: k.p, n: k.n, sub: k.p, s: m === n ? 0 : m.indexOf(n) === 0 ? 1 : 2 }); });
     return out.sort((a, b) => a.s - b.s).slice(0, 8);
   }
+  function variants(q) {
+    const w = norm(q).split(" ").filter(Boolean), v = [q.trim()];
+    if (w.length > 1) { v.push(w[0]); v.push(w[0] + " " + w[w.length - 1]); v.push("desa " + w[0] + " " + w.slice(1).join(" ")); }
+    else if (w.length) { v.push("desa " + w[0]); v.push("kecamatan " + w[0]); }
+    return v.filter((x, i, a) => x && a.indexOf(x) === i).slice(0, 4);
+  }
+  function nomq(q) { return fetch(NOM + "search?format=jsonv2&limit=8&countrycodes=id&accept-language=id&addressdetails=1&polygon_geojson=1&polygon_threshold=0.0004&q=" + encodeURIComponent(q)).then(r => r.json()).catch(() => []); }
   function online(q) {
-    if (!q.trim()) return; const box = $("pqbRes"); box.innerHTML = '<div class="pqb-m">Mencari di OpenStreetMap…</div>';
-    const u = NOM + "search?format=jsonv2&limit=8&countrycodes=id&accept-language=id&addressdetails=1&polygon_geojson=1&polygon_threshold=0.0004&q=" + encodeURIComponent(q);
-    fetch(u).then(r => r.json()).then(a => { found = (a || []).filter(r => r.geojson && /Polygon/.test(r.geojson.type)); const nx = (a || []).length - found.length; resFill(localFind(q), found, nx); }).catch(() => { box.innerHTML = '<div class="pqb-m">Gagal mencari online (cek internet).</div>'; });
+    if (!q.trim()) return; const box = $("pqbRes"); box.innerHTML = '<div class="pqb-m">Mencari di OpenStreetMap (beberapa variasi nama)…</div>';
+    const vs = variants(q), toks = norm(q).split(" ").filter(Boolean); let all = [], seen = {}, i = 0;
+    const next = () => {
+      if (i >= vs.length) {
+        all.forEach(r => { const d = norm(r.display_name); r._s = toks.filter(t => d.indexOf(t) >= 0).length * 10 + (r.geojson && /Polygon/.test(r.geojson.type) ? 5 : 0); });
+        all.sort((a, b) => b._s - a._s); found = all.slice(0, 10); return resFill(localFind(q), found, 0);
+      }
+      nomq(vs[i++]).then(a => { (a || []).forEach(r => { const k = r.osm_type + r.osm_id; if (!seen[k]) { seen[k] = 1; all.push(r); } });
+        const good = all.some(r => r.geojson && /Polygon/.test(r.geojson.type) && toks.filter(t => norm(r.display_name).indexOf(t) >= 0).length >= Math.min(2, toks.length));
+        good || i >= vs.length ? (i = vs.length, next()) : setTimeout(next, 1100); });
+    };
+    next();
+  }
+  function circ(lat, lon, km) { const o = []; for (let k = 0; k < 72; k++) { const a = k * 5 * Math.PI / 180, dl = km / 111.32; o.push([lon + dl * Math.sin(a) / Math.cos(lat * Math.PI / 180), lat + dl * Math.cos(a)]); } o.push(o[0]); return { type: "Polygon", coordinates: [o] }; }
+  function addCircle(r) {
+    const km = parseFloat(String(prompt("Batas wilayah ini hanya berupa titik di OpenStreetMap.\nBuat blok lingkaran perkiraan, radius (km):", "1.5") || "").replace(",", "."));
+    if (!(km > 0)) return; const nm = r.name || (r.display_name || "").split(",")[0];
+    finish([mk({ kind: "O", n: nm + " (± " + km + " km)", sub: "Perkiraan lingkaran · " + (r.display_name || "").split(",").slice(1, 3).join(",").trim(), osm: "c" + r.osm_type + r.osm_id + "_" + km, geom: circ(+r.lat, +r.lon, km), type: "circle" })], true);
   }
   const typeLbl = t => ({ village: "Desa", suburb: "Kelurahan/Desa", neighbourhood: "Dusun/RW", city_district: "Kecamatan", municipality: "Kecamatan", county: "Kab/Kota", city: "Kota", state: "Provinsi", administrative: "Wilayah", town: "Kota kecil", hamlet: "Dusun" }[t] || "Wilayah");
   function resFill(loc, onl, miss) {
     const box = $("pqbRes"); let h = "";
     loc.forEach((e, i) => { h += '<div class="pqb-r"><div><b>' + esc(e.n) + "</b><small>" + (e.kind === "P" ? "Provinsi · " : "Kab/Kota · ") + esc(e.sub) + '</small></div><div class="pqb-b">' + (e.kind === "P" ? '<button data-a="addP1" data-i="' + i + '" title="Satu warna">Satu warna</button><button data-a="addPK" data-i="' + i + '" title="Tiap kab/kota beda warna">Beda tiap kab</button>' : '<button data-a="addK" data-i="' + i + '">+ Warnai</button>') + "</div></div>"; });
-    onl.forEach((r, i) => { h += '<div class="pqb-r"><div><b>' + esc(r.name || (r.display_name || "").split(",")[0]) + "</b><small>" + typeLbl(r.addresstype || r.type) + " · " + esc((r.display_name || "").split(",").slice(1, 4).join(",").trim()) + '</small></div><div class="pqb-b"><button data-a="addO" data-i="' + i + '">+ Warnai</button></div></div>'; });
-    if (!h) h = '<div class="pqb-m">Tidak ada hasil bergaris batas. Coba tambah nama kabupaten, mis. "Karangpucung Cilacap".</div>';
+    onl.forEach((r, i) => { const poly = r.geojson && /Polygon/.test(r.geojson.type); h += '<div class="pqb-r"><div><b>' + esc(r.name || (r.display_name || "").split(",")[0]) + "</b><small>" + typeLbl(r.addresstype || r.type) + (poly ? "" : " · titik saja") + " · " + esc((r.display_name || "").split(",").slice(1, 4).join(",").trim()) + '</small></div><div class="pqb-b">' + (poly ? '<button data-a="addO" data-i="' + i + '">+ Warnai</button>' : '<button data-a="addC" data-i="' + i + '" title="Batas tidak ada, buat lingkaran perkiraan">◯ Lingkaran</button>') + "</div></div>"; });
+    if (!h) h = '<div class="pqb-m">Tidak ditemukan di OpenStreetMap. Coba tulis nama saja (mis. "Bantarwuni"), atau pakai "Ketuk peta" / Impor GeoJSON.</div>';
     else if (miss) h += '<div class="pqb-m">' + miss + " hasil tanpa garis batas disembunyikan.</div>";
     box.innerHTML = h; box._loc = loc;
   }
@@ -181,6 +203,7 @@
     else if (a === "pick") pick($("pqbLv").value);
     else if (a === "file") $("pqbF").click();
     else if (a === "addP1" || a === "addPK" || a === "addK") { const loc = $("pqbRes")._loc || [], en = loc[+b.dataset.i]; if (en) addLocal(en, a === "addPK" ? "each" : "one"); }
+    else if (a === "addC") { const r = found[+b.dataset.i]; if (r) addCircle(r); }
     else if (a === "addO") { const r = found[+b.dataset.i]; if (r) addOnline(r); }
     else if (a === "clr") { if (items.length && confirm("Hapus semua blok warna wilayah?")) items.slice().forEach(i => rm(i.id)); }
     else if (a === "hideall") { const v = items.some(i => i.on); items.forEach(i => i.on = !v); save(); redraw(); list(); badge(); applyFocus(); }
