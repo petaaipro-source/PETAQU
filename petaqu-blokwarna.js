@@ -110,18 +110,30 @@
     else if (w.length) { v.push("desa " + w[0]); v.push("kecamatan " + w[0]); }
     return v.filter((x, i, a) => x && a.indexOf(x) === i).slice(0, 4);
   }
-  function nomq(q) { return fetch(NOM + "search?format=jsonv2&limit=8&countrycodes=id&accept-language=id&addressdetails=1&polygon_geojson=1&polygon_threshold=0.0004&q=" + encodeURIComponent(q)).then(r => r.json()).catch(() => []); }
+  const enc = encodeURIComponent;
+  function jget(u, ms) { const c = new AbortController(), t = setTimeout(() => c.abort(), ms || 12000); return fetch(u, { signal: c.signal }).then(r => { clearTimeout(t); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).catch(e => { clearTimeout(t); throw e; }); }
+  function photon(q) { return jget("https://photon.komoot.io/api/?limit=8&lang=id&bbox=95,-11.5,141.5,6.5&q=" + enc(q)).then(d => (d.features || []).map(f => { const p = f.properties || {}, g = f.geometry.coordinates; return { osm_type: { R: "relation", W: "way", N: "node" }[p.osm_type] || "node", osm_id: p.osm_id, name: p.name, display_name: [p.name, p.district || p.locality, p.county || p.city, p.state].filter(Boolean).join(", "), lat: g[1], lon: g[0], addresstype: p.osm_value || p.type, address: {} }; })); }
+  /* 1) cari kandidat (tanpa poligon, ringan & andal) -> 2) ambil poligon lewat lookup */
+  function cand(q) { return jget(NOM + "search?format=jsonv2&limit=8&countrycodes=id&accept-language=id&addressdetails=1&q=" + enc(q)).catch(() => photon(q)); }
+  function lookup(list) {
+    const ids = list.filter(r => r.osm_type === "relation" || r.osm_type === "way").slice(0, 12).map(r => r.osm_type[0].toUpperCase() + r.osm_id);
+    if (!ids.length) return Promise.resolve();
+    return jget(NOM + "lookup?format=jsonv2&accept-language=id&polygon_geojson=1&polygon_threshold=0.0004&osm_ids=" + ids.join(","), 20000).then(a => { (a || []).forEach(x => { list.forEach(r => { if (r.osm_type === x.osm_type && +r.osm_id === +x.osm_id && x.geojson) r.geojson = x.geojson; }); }); }).catch(() => { });
+  }
   function online(q) {
     if (!q.trim()) return; const box = $("pqbRes"); box.innerHTML = '<div class="pqb-m">Mencari di OpenStreetMap (beberapa variasi nama)…</div>';
-    const vs = variants(q), toks = norm(q).split(" ").filter(Boolean); let all = [], seen = {}, i = 0;
+    const vs = variants(q), toks = norm(q).split(" ").filter(Boolean), need = Math.min(2, toks.length); let all = [], seen = {}, i = 0, err = null;
+    const match = r => toks.filter(t => norm(r.display_name).indexOf(t) >= 0).length;
+    const done = () => {
+      if (!all.length) { box.innerHTML = '<div class="pqb-m">' + (err ? "Gagal terhubung ke OpenStreetMap (" + esc(err) + "). Periksa internet lalu coba lagi." : 'Tidak ditemukan. Coba tulis nama saja (mis. "Kembaran"), atau pakai "Ketuk peta" / Impor GeoJSON.') + "</div>"; return; }
+      box.innerHTML = '<div class="pqb-m">Mengambil garis batas…</div>';
+      all.forEach(r => { r._s = match(r) * 10 + (/boundary|administrative|village|suburb|city_district|municipality|county/.test((r.category || "") + (r.type || "") + (r.addresstype || "")) ? 3 : 0); });
+      all.sort((a, b) => b._s - a._s); all = all.slice(0, 10);
+      lookup(all).then(() => { all.forEach(r => { r._s += (r.geojson && /Polygon/.test(r.geojson.type)) ? 5 : 0; }); all.sort((a, b) => b._s - a._s); found = all; resFill(localFind(q), found, 0); });
+    };
     const next = () => {
-      if (i >= vs.length) {
-        all.forEach(r => { const d = norm(r.display_name); r._s = toks.filter(t => d.indexOf(t) >= 0).length * 10 + (r.geojson && /Polygon/.test(r.geojson.type) ? 5 : 0); });
-        all.sort((a, b) => b._s - a._s); found = all.slice(0, 10); return resFill(localFind(q), found, 0);
-      }
-      nomq(vs[i++]).then(a => { (a || []).forEach(r => { const k = r.osm_type + r.osm_id; if (!seen[k]) { seen[k] = 1; all.push(r); } });
-        const good = all.some(r => r.geojson && /Polygon/.test(r.geojson.type) && toks.filter(t => norm(r.display_name).indexOf(t) >= 0).length >= Math.min(2, toks.length));
-        good || i >= vs.length ? (i = vs.length, next()) : setTimeout(next, 1100); });
+      if (i >= vs.length) return done();
+      cand(vs[i++]).then(a => { (a || []).forEach(r => { const k = r.osm_type + r.osm_id; if (!seen[k]) { seen[k] = 1; all.push(r); } }); }, e => { err = e.message || "error"; }).then(() => { if (all.some(r => match(r) >= need && need > 0)) i = vs.length; i >= vs.length ? done() : setTimeout(next, 1100); });
     };
     next();
   }
