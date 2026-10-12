@@ -7,7 +7,7 @@
   window.__pqAksi = 1;
 
   var KEY = "petaqu_aksi_v1";
-  var cfg = { iso: false, sys: true, mic: false, q: "0", fps: 30, rect: null, ratio: "free" };
+  var cfg = { iso: false, sys: true, mic: false, q: "0", fps: 30, fmt: "auto", rect: null, ratio: "free" };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || "null") || {}); } catch (e) {}
   function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
 
@@ -72,6 +72,7 @@
     "#pqaRes{position:fixed;z-index:99993;right:14px;bottom:14px;width:min(340px,calc(100vw - 28px));padding:10px;border-radius:14px;background:#0a0e17f7;border:1px solid #22d3ee66;box-shadow:0 14px 40px #000b;color:#e6edf5;font:600 12px system-ui;display:none}#pqaRes.show{display:block}",
     "#pqaRes .pv{width:100%;max-height:200px;object-fit:contain;border-radius:9px;background:#000;display:block}",
     "#pqaRes .tt{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}#pqaRes .tt small{color:#8fa6bd;font-weight:500}",
+    "#pqaRes .pqa-cs{margin-top:7px;color:#9db3c9;font-weight:500;font-size:11px}#pqaRes .pqa-bar{height:5px;border-radius:3px;background:#ffffff1a;overflow:hidden;margin-bottom:5px}#pqaRes .pqa-bar i{display:block;height:100%;background:#22d3ee;transition:width .25s}#pqaRes .pqa-btn:disabled{opacity:.45;cursor:default}",
     "#pqaRes .bs{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}#pqaRes .x{border:0;background:transparent;color:#8fa6bd;font-size:20px;line-height:1;cursor:pointer}",
     "body.wx-on #pqaMenu{display:none!important}"
   ].join("\n");
@@ -198,6 +199,7 @@
     else if (e.target.id === "pqaMic") { cfg.mic = e.target.checked; save(); }
     else if (e.target.id === "pqaQual") { cfg.q = e.target.value; save(); }
     else if (e.target.id === "pqaFps") { cfg.fps = +e.target.value; save(); }
+    else if (e.target.id === "pqaFmt") { cfg.fmt = e.target.value; save(); }
   });
   menu.addEventListener("click", function (e) {
     var chip = e.target.closest(".m-chip");
@@ -272,11 +274,14 @@
     h += '<div class="m-s">Pengaturan rekam</div>' +
       '<label class="m-chk"><input type="checkbox" id="pqaSys"' + (cfg.sys ? " checked" : "") + '> Ikut rekam suara tab / sistem</label>' +
       '<label class="m-chk"><input type="checkbox" id="pqaMic"' + (cfg.mic ? " checked" : "") + '> Ikut rekam mikrofon (narasi)</label>' +
+      '<div class="m-row2"><span>Format video</span><select id="pqaFmt"><option value="auto">Otomatis</option><option value="mp4">MP4</option><option value="webm">WebM</option></select></div>' +
+      '<div class="m-chk" style="cursor:default;color:#8fa6bd;font-size:10.5px">' + (nativeMp4() ? "MP4 langsung didukung perangkat ini" : "MP4 langsung belum didukung — hasil WebM bisa dikonversi ke MP4 setelah rekam") + "</div>" +
       '<div class="m-row2"><span>Kualitas</span><select id="pqaQual"><option value="0">Asli</option><option value="1080">1080p</option><option value="720">720p</option></select></div>' +
       '<div class="m-row2"><span>Frame rate</span><select id="pqaFps"><option>15</option><option>24</option><option>30</option><option>60</option></select></div>' +
       '<div class="m-chk" style="cursor:default;color:#8fa6bd;font-size:10.5px">Pintasan: Alt+Shift+R = mulai/stop rekam</div>';
     menu.innerHTML = h;
-    var q = $("pqaQual"), f = $("pqaFps");
+    var q = $("pqaQual"), f = $("pqaFps"), fm = $("pqaFmt");
+    if (fm) fm.value = cfg.fmt || "auto";
     if (q) q.value = cfg.q; if (f) f.value = String(cfg.fps);
   }
   document.addEventListener("click", function (e) {
@@ -453,10 +458,14 @@
 
   /* ---------- rekam ---------- */
   var REC = null;
+  var MP4C = ["video/mp4;codecs=avc1.64002A,mp4a.40.2", "video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4;codecs=avc1", "video/mp4"],
+    WEBC = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  function firstOk(c) { for (var i = 0; i < c.length; i++) { try { if (MediaRecorder.isTypeSupported(c[i])) return c[i]; } catch (e) {} } return ""; }
+  function nativeMp4() { try { return !!(window.MediaRecorder && firstOk(MP4C)); } catch (e) { return false; } }
+  /* Otomatis/MP4 → MP4 langsung bila perangkat mendukung (Chrome/Edge 126+, Safari, Android), selain itu WebM */
   function pickMime() {
-    var c = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
-    for (var i = 0; i < c.length; i++) { try { if (MediaRecorder.isTypeSupported(c[i])) return c[i]; } catch (e) {} }
-    return "";
+    var f = cfg.fmt || "auto", m = f === "webm" ? "" : firstOk(MP4C);
+    return m || firstOk(WEBC) || firstOk(MP4C);
   }
   async function countdown(n) {
     var el = $("pqaCount"); if (!el) { el = document.createElement("div"); el.id = "pqaCount"; document.body.appendChild(el); }
@@ -543,7 +552,7 @@
       restore(); REC = null; busy = false;
       var type = (rec.mimeType || mime || "video/webm").split(";")[0], ext = /mp4/.test(type) ? "mp4" : "webm";
       var blob = new Blob(chunks, { type: type });
-      if (blob.size) showResult({ type: "video", blob: blob, name: "petaqu-rekam-" + stamp() + "." + ext, auto: true });
+      if (blob.size) showResult({ type: "video", blob: blob, name: "petaqu-rekam-" + stamp() + "." + ext, auto: true, dur: Math.max(1, ((pAt || Date.now()) - t0 - paused) / 1000) });
       else note("Rekaman kosong", true);
     }
     rec.onstop = finish;
@@ -561,25 +570,59 @@
   });
 
   /* ---------- kartu hasil ---------- */
-  var resUrl = null;
+  var resUrl = null, HERE = (document.currentScript && document.currentScript.src) || "";
+  function loadConv() {
+    if (window.PQVidConv) return Promise.resolve();
+    return new Promise(function (res, rej) {
+      var u = HERE ? HERE.replace(/[^\/?#]*([?#].*)?$/, "petaqu-videoconv.js") : "petaqu-videoconv.js", sc = document.createElement("script");
+      sc.src = u + "?v=1"; sc.onload = res; sc.onerror = function () { rej(new Error("modul konversi (petaqu-videoconv.js) tidak ditemukan")); }; document.head.appendChild(sc);
+    });
+  }
+  var CONV = { mp4: ["MP4 (H.264)", "Paling kompatibel: WhatsApp, iPhone, Premiere, CapCut"], mp4s: ["MP4 ringan 480p", "File kecil untuk kirim lewat chat"], gif: ["GIF (maks 20 dtk)", "Animasi tanpa suara, mudah ditempel"], webm: ["WebM bisa digeser", "Perbaiki durasi/seek tanpa mengubah kualitas"] };
   function showResult(o) {
     var el = $("pqaRes");
     if (!el) { el = document.createElement("div"); el.id = "pqaRes"; document.body.appendChild(el); }
     if (resUrl) URL.revokeObjectURL(resUrl);
     resUrl = URL.createObjectURL(o.blob);
-    var mb = o.blob.size > 1048576 ? fmt(o.blob.size / 1048576, 1) + " MB" : fmt(o.blob.size / 1024, 0) + " KB";
-    var canShare = !!(navigator.canShare && navigator.canShare({ files: [new File([o.blob], o.name, { type: o.blob.type })] }));
-    el.innerHTML = '<div class="tt"><b>' + (o.type === "image" ? "Screenshot siap" : "Rekaman tersimpan") + ' <small>' + esc(mb) + '</small></b><button type="button" class="x" id="pqaX">×</button></div>' +
-      (o.type === "image" ? '<img class="pv" src="' + resUrl + '" alt="">' : '<video class="pv" src="' + resUrl + '" controls playsinline></video>') +
-      '<div class="bs"><a class="pqa-btn go" id="pqaDl" href="' + resUrl + '" download="' + esc(o.name) + '" style="text-decoration:none">Unduh</a>' +
+    var mb = o.blob.size > 1048576 ? fmt(o.blob.size / 1048576, 1) + " MB" : fmt(o.blob.size / 1024, 0) + " KB", isVid = o.type === "video", isMp4 = /mp4/.test(o.blob.type), ext = (o.name.match(/\.(\w+)$/) || [, ""])[1].toUpperCase();
+    var file = function () { try { return new File([o.blob], o.name, { type: o.blob.type }); } catch (e) { return null; } };
+    var f0 = file(), canShare = !!(f0 && navigator.canShare && navigator.canShare({ files: [f0] })), canPick = !!window.showSaveFilePicker;
+    var opts = isVid && !o.gif ? (isMp4 ? ["mp4s", "gif"] : ["mp4", "mp4s", "gif", "webm"]) : [];
+    el.innerHTML = '<div class="tt"><b>' + (o.type === "image" ? "Screenshot siap" : o.conv ? "Hasil konversi" : "Rekaman tersimpan") + ' <small>' + esc(ext + " · " + mb) + '</small></b><button type="button" class="x" id="pqaX">×</button></div>' +
+      (o.type === "image" ? '<img class="pv" src="' + resUrl + '" alt="">' : o.gif ? '<img class="pv" src="' + resUrl + '" alt="">' : '<video class="pv" src="' + resUrl + '" controls playsinline></video>') +
+      '<div class="bs"><a class="pqa-btn go" id="pqaDl" href="' + resUrl + '" download="' + esc(o.name) + '" style="text-decoration:none">Unduh ' + esc(ext) + '</a>' +
       (o.type === "image" ? '<button type="button" class="pqa-btn" id="pqaCp">Salin</button>' : "") +
-      (canShare ? '<button type="button" class="pqa-btn" id="pqaSh">Bagikan</button>' : "") + "</div>";
+      (canPick ? '<button type="button" class="pqa-btn" id="pqaPk" title="Pilih folder & nama file">Simpan ke…</button>' : "") +
+      (canShare ? '<button type="button" class="pqa-btn" id="pqaSh">Bagikan</button>' : "") + "</div>" +
+      (opts.length ? '<div class="pqa-cv"><div class="m-s" style="margin:9px 0 4px">Simpan sebagai</div><div class="bs" style="margin-top:0">' + opts.map(function (k) { return '<button type="button" class="pqa-btn" data-cv="' + k + '" title="' + esc(CONV[k][1]) + '">' + esc(CONV[k][0]) + "</button>"; }).join("") + '</div><div id="pqaCvS" class="pqa-cs"></div></div>' : "");
     el.classList.add("show");
-    $("pqaX").onclick = function () { el.classList.remove("show"); };
+    $("pqaX").onclick = function () { el.classList.remove("show"); try { window.PQVidConv && PQVidConv.cancel(); } catch (e) {} };
     var cp = $("pqaCp"); if (cp) cp.onclick = async function () {
       try { await navigator.clipboard.write([new ClipboardItem({ "image/png": o.blob })]); note("Gambar disalin ke clipboard"); } catch (e) { note("Salin tidak didukung browser ini — gunakan Unduh", true); }
     };
-    var sh = $("pqaSh"); if (sh) sh.onclick = function () { navigator.share({ files: [new File([o.blob], o.name, { type: o.blob.type })], title: "PETAQU" }).catch(function () {}); };
+    var sh = $("pqaSh"); if (sh) sh.onclick = function () { navigator.share({ files: [file()], title: "PETAQU" }).catch(function () {}); };
+    var pk = $("pqaPk"); if (pk) pk.onclick = async function () {
+      try {
+        var x = (o.name.match(/\.(\w+)$/) || [, "bin"])[1], h = await window.showSaveFilePicker({ suggestedName: o.name, types: [{ description: x.toUpperCase(), accept: (function () { var a = {}; a[o.blob.type || "application/octet-stream"] = ["." + x]; return a; })() }] });
+        var w = await h.createWritable(); await w.write(o.blob); await w.close(); note("Tersimpan: " + h.name);
+      } catch (e) { if (e && e.name !== "AbortError") note("Gagal menyimpan ke folder — gunakan Unduh", true); }
+    };
+    [].forEach.call(el.querySelectorAll("[data-cv]"), function (b) {
+      b.onclick = async function () {
+        var to = b.getAttribute("data-cv"), S = $("pqaCvS"), all = el.querySelectorAll("[data-cv]"), set = function (t, pct) { if (S) S.innerHTML = '<div class="pqa-bar"><i style="width:' + Math.round((pct || 0) * 100) + '%"></i></div><span>' + esc(t) + '</span> <button type="button" class="pqa-btn" id="pqaCvX">Batal</button>'; var x = $("pqaCvX"); if (x) x.onclick = function () { try { PQVidConv.cancel(); } catch (e) {} if (S) S.textContent = "Dibatalkan"; [].forEach.call(all, function (z) { z.disabled = false; }); }; };
+        [].forEach.call(all, function (z) { z.disabled = true; }); set("Menyiapkan…", 0);
+        try {
+          await loadConv();
+          var r = await PQVidConv.run(o.blob, { to: to, dur: o.dur, onStatus: set });
+          var nm = o.name.replace(/\.\w+$/, "") + (to === "mp4s" ? "-ringan" : "") + "." + r.ext;
+          showResult({ type: "video", blob: r.blob, name: nm, auto: true, dur: o.dur, conv: true, gif: to === "gif" });
+        } catch (e) {
+          if (/dibatalkan/.test(e && e.message || "")) return;
+          if (S) S.innerHTML = '<span style="color:#fca5a5">Gagal: ' + esc((e && e.message) || e) + "</span>";
+          [].forEach.call(all, function (z) { z.disabled = false; });
+        }
+      };
+    });
     if (o.auto) { var a = $("pqaDl"); try { a.click(); } catch (e) {} }
   }
 
