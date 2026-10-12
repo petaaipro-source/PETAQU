@@ -212,7 +212,7 @@
   function paint() {
     if (!G) return; calcTH(); const lv = effLevel(), pc = {}; if (lv === "prov") PROVS.forEach(p => { pc[p] = provVal(p); });
     polys.forEach(pl => { const K = pl._k, v = lv === "prov" ? pc[K.p] : val(K), show = !pref.prov || pref.prov === K.p; pl.setStyle({ fillColor: CL[cls(v)][1], fillOpacity: show ? .62 : 0, opacity: show ? .8 : 0, weight: lv === "prov" ? .35 : .7, interactive: show }); pl.unbindTooltip(); if (show) pl.bindTooltip(esc(lv === "prov" ? K.p : K.n) + " · " + Math.round(v) + " (" + CL[cls(v)][0] + ")", { sticky: true }); });
-    overlays();
+    overlays(); if (curPop) renderPop();
   }
   function overlays() {
     const m = getMap(); if (!m) return; OV.clearLayers();
@@ -234,14 +234,34 @@
     else h = bar("Angka laka provinsi", K.lk.P, "#ef4444") + bar("Paparan lalu lintas", K.m[pref.kond], "#f59e0b") + bar("Tikungan/tanjakan/lintasan", K.lk.RH, "#fb7185") + '<div style="font-size:11.5px;margin-top:6px">' + esc(TIP.laka) + "</div>";
     return h;
   }
-  function popup(K, ll) {
-    calcTH(); const lv = effLevel(), v = lv === "prov" ? provVal(K.p) : val(K), c = cls(v), m = getMap(); if (!m) return;
-    L.popup({ maxWidth: 340, minWidth: 280, className: "pqrw-pop", autoPanPadding: [24, 24], keepInView: true }).setLatLng(ll || K.c).setContent('<div style="min-width:270px;font:12px system-ui,sans-serif;color:#e6f1fb"><div style="font-size:14px;font-weight:700">' + esc(K.n) + '</div><div style="color:#9fb0c8;margin-bottom:4px">' + esc(K.p) + " · " + esc(titleNow()) + '</div><div style="display:inline-block;padding:2px 10px;border-radius:999px;background:' + CL[c][1] + ';color:#0a0e17;font-weight:700;margin:2px 0 6px">' + CL[c][0] + " · skor " + Math.round(v) + (lv === "prov" ? " (provinsi)" : "") + "</div>" + detail(K) + '<div style="margin-top:6px;font-size:10px;color:#64748b">Indeks indikatif — bukan data/peringatan resmi.</div></div>').openOn(m);
-    try { const ct = m.getContainer(); ct.classList.add("pqrw-popopen"); m.off("popupclose", m._pqrwPc); m._pqrwPc = () => ct.classList.remove("pqrw-popopen"); m.on("popupclose", m._pqrwPc); } catch (e) { }
+  /* popup di level <body> (bukan lapisan Leaflet) agar selalu di atas poligon, animasi & lapisan lain */
+  let curPop = null, popEl = null;
+  function closePop() { curPop = null; if (popEl) popEl.style.display = "none"; }
+  function placePop() {
+    const m = getMap(); if (!curPop || !popEl || !m) return;
+    const r = m.getContainer().getBoundingClientRect(), pt = m.latLngToContainerPoint(curPop.ll), W = popEl.offsetWidth, H = popEl.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+    let x = r.left + pt.x - W / 2, y = r.top + pt.y - H - 14;
+    if (y < r.top + 8) y = r.top + pt.y + 14;
+    x = Math.max(8, Math.min(vw - W - 8, x)); y = Math.max(8, Math.min(vh - H - 8, y));
+    popEl.style.left = x + "px"; popEl.style.top = y + "px";
   }
+  function renderPop() {
+    const m = getMap(); if (!curPop || !m) return; const K = curPop.K;
+    calcTH(); const lv = effLevel(), v = lv === "prov" ? provVal(K.p) : val(K), c = cls(v);
+    if (!popEl) {
+      popEl = document.createElement("div"); popEl.id = "pqrwPop";
+      popEl.addEventListener("click", e => { if (e.target.closest(".pqrw-x")) closePop(); e.stopPropagation(); });
+      ["mousedown", "dblclick", "wheel", "touchstart"].forEach(t => popEl.addEventListener(t, e => e.stopPropagation(), { passive: true }));
+      document.body.appendChild(popEl);
+      m.on("move zoom resize", placePop); m.on("click", closePop);
+    }
+    popEl.innerHTML = '<button class="pqrw-x" aria-label="Tutup">\u00D7</button>' + ('<div style="min-width:270px;font:12px system-ui,sans-serif;color:#e6f1fb"><div style="font-size:14px;font-weight:700">' + esc(K.n) + '</div><div style="color:#9fb0c8;margin-bottom:4px">' + esc(K.p) + " · " + esc(titleNow()) + '</div><div style="display:inline-block;padding:2px 10px;border-radius:999px;background:' + CL[c][1] + ';color:#0a0e17;font-weight:700;margin:2px 0 6px">' + CL[c][0] + " · skor " + Math.round(v) + (lv === "prov" ? " (provinsi)" : "") + "</div>" + detail(K) + '<div style="margin-top:6px;font-size:10px;color:#64748b">Indeks indikatif — bukan data/peringatan resmi.</div></div>');
+    popEl.style.display = "block"; placePop();
+  }
+  function popup(K, ll) { curPop = { K, ll: ll || K.c }; renderPop(); }
 
   /* ============================ PANEL ============================ */
-  const CSS = ".pqrw-popopen>.leaflet-map-pane{z-index:700!important}.pqrw-pop{z-index:1200!important}.pqrw-pop .leaflet-popup-content-wrapper{background:#0a0e17!important;opacity:1!important;color:#e6f1fb!important;border:1px solid rgba(148,178,204,.35);border-radius:12px;box-shadow:0 12px 34px #000c;overflow:visible}.pqrw-pop .leaflet-popup-tip{background:#0a0e17!important;opacity:1!important}.pqrw-pop .leaflet-popup-content{margin:11px 14px!important;width:auto!important;max-height:none!important;overflow:visible!important;color:#e6f1fb!important}.pqrw-pop .leaflet-popup-content b{color:#fff}.pqrw-pop .leaflet-popup-close-button{color:#fff!important}" + "#pqrwCard{position:fixed;right:12px;top:76px;z-index:1262;width:min(350px,calc(100vw - 20px));max-height:calc(100vh - 96px);display:none;flex-direction:column;border-radius:14px;border:1px solid rgba(148,178,204,.28);background:#0a0e17f7;color:#dbe7f3;font:12.5px/1.4 system-ui,sans-serif;box-shadow:0 14px 40px #000a;backdrop-filter:blur(10px);overflow:hidden}#pqrwCard.open{display:flex}" +
+  const CSS = "#pqrwPop{position:fixed;z-index:1400;display:none;width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;box-sizing:border-box;padding:12px 14px;border-radius:12px;background:#0a0e17;color:#e6f1fb;border:1px solid rgba(148,178,204,.4);box-shadow:0 14px 40px #000d;font:12px/1.4 system-ui,sans-serif}#pqrwPop .pqrw-x{position:absolute;right:6px;top:4px;border:0;background:none;color:#fff;font-size:20px;line-height:1;cursor:pointer}.pqrw-pop{z-index:1200!important}.pqrw-pop .leaflet-popup-content-wrapper{background:#0a0e17!important;opacity:1!important;color:#e6f1fb!important;border:1px solid rgba(148,178,204,.35);border-radius:12px;box-shadow:0 12px 34px #000c;overflow:visible}.pqrw-pop .leaflet-popup-tip{background:#0a0e17!important;opacity:1!important}.pqrw-pop .leaflet-popup-content{margin:11px 14px!important;width:auto!important;max-height:none!important;overflow:visible!important;color:#e6f1fb!important}.pqrw-pop .leaflet-popup-content b{color:#fff}.pqrw-pop .leaflet-popup-close-button{color:#fff!important}" + "#pqrwCard{position:fixed;right:12px;top:76px;z-index:1262;width:min(350px,calc(100vw - 20px));max-height:calc(100vh - 96px);display:none;flex-direction:column;border-radius:14px;border:1px solid rgba(148,178,204,.28);background:#0a0e17f7;color:#dbe7f3;font:12.5px/1.4 system-ui,sans-serif;box-shadow:0 14px 40px #000a;backdrop-filter:blur(10px);overflow:hidden}#pqrwCard.open{display:flex}" +
     "#pqrwCard header{display:flex;align-items:center;gap:8px;padding:10px 12px 6px}#pqrwCard header b{flex:1;font-size:13.5px}#pqrwCard .x{background:0 0;border:0;color:#8fa6bd;font-size:20px;cursor:pointer;line-height:1}" +
     "#pqrwCard .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:0 10px 6px}#pqrwCard .tabs button{padding:6px 2px;border-radius:8px;border:1px solid rgba(148,178,204,.25);background:#0f1726;color:#cfe0f0;font:600 11px/1.2 system-ui;cursor:pointer}#pqrwCard .tabs button.on{background:var(--c);color:#0a0e17;border-color:var(--c)}" +
     "#pqrwCard .bd{padding:0 10px 8px;overflow:auto;display:flex;flex-direction:column;gap:7px}#pqrwCard select,#pqrwCard input[type=search]{width:100%;box-sizing:border-box;padding:7px 8px;border-radius:8px;border:1px solid rgba(148,178,204,.25);background:#0f1726;color:#e6f1fb;font:inherit;outline:0}" +
@@ -305,7 +325,7 @@
     if (!zh) { zh = () => { if (S.on && pref.level === "auto") { paint(); render(); } }; m.on("zoomend", zh); }
     card.querySelector("#pqrwLvS").value = pref.level; card.querySelector("#pqrwP").value = pref.prov; refresh();
   }
-  function close() { S.on = false; const m = getMap(); if (card) card.classList.remove("open"); if (m) { if (G && m.hasLayer(G)) m.removeLayer(G); if (OV && m.hasLayer(OV)) m.removeLayer(OV); try { m.closePopup(); } catch (e) { } } }
+  function close() { S.on = false; const m = getMap(); if (card) card.classList.remove("open"); if (m) { if (G && m.hasLayer(G)) m.removeLayer(G); if (OV && m.hasLayer(OV)) m.removeLayer(OV); try { m.closePopup(); } catch (e) { } } closePop(); }
 
   /* ============================ MENU FOLDER ============================ */
   const ROWS = [["bencana", "Rawan bencana (semua prov & kab/kota)"], ["macet", "Rawan macet (semua prov & kab/kota)"], ["laka", "Rawan kecelakaan / lakalantas"], ["gempa", "Rawan gempa (sesar & subduksi)"]];
