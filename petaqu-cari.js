@@ -58,6 +58,13 @@
 #pqCari .go{background:linear-gradient(135deg,#0e7490,#3b82f6);color:#fff}\
 #pqCari .go:hover{color:#fff;filter:brightness(1.2)}\
 #pqCari .clr{display:none}#pqCari.has .clr{display:flex}\
+/* fokus: folder, rekam & mic menyingkir agar kotak cari lega; hanya panah tetap di sampingnya */\
+#pqCari .bar{transition:padding .22s ease,box-shadow .25s}\
+#pqCari .cam,#pqCari .mic{transition:width .2s ease,opacity .15s ease,margin .2s ease,background .15s,color .15s}\
+#pqCari.focus .bar{padding-left:18px}\
+#pqCari.focus .cam,#pqCari.focus .mic{width:0;opacity:0;margin:0 -2px;overflow:hidden;pointer-events:none}\
+body:has(#pqCari.focus) #pqFolder{opacity:0!important;transform:scale(.6)!important;pointer-events:none!important;transition:opacity .18s ease,transform .18s ease}\
+body:has(#pqCari.focus) #pqFolderCard{display:none!important}\
 #pqCari .dd{display:none;margin-top:8px;background:rgba(10,14,23,.97);backdrop-filter:blur(14px);border:1px solid #1e2938;border-radius:18px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.6)}\
 #pqCari.open .dd{display:block;animation:pqin .18s ease}\
 @keyframes pqin{from{opacity:0;transform:translateY(-6px)}}\
@@ -135,6 +142,9 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
       else if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); if (active >= 0 && items[active]) pick(items[active]); else run(inp.value.trim(), true); }
     });
     root.querySelector(".clr").onclick = function () { inp.value = ""; root.classList.remove("has"); clearPin(); showHome(); inp.focus(); };
+    ["pointerdown", "mousedown"].forEach(function (ev) {
+      root.querySelectorAll(".go,.clr").forEach(function (b) { b.addEventListener(ev, function (e) { if (document.activeElement === inp) e.preventDefault(); }); });
+    });
     root.querySelector(".go").onclick = function () { clearTimeout(timer); run(inp.value.trim(), true); };
     var mic = root.querySelector(".mic"); if (mic) mic.onclick = function () { voice(SR, mic); };
     var cam = root.querySelector(".cam");
