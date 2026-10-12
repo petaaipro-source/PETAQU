@@ -49,8 +49,8 @@
     const k = ks.filter(x => x.p === it.p && x.n === it.n)[0]; return it._mp = k ? mpK(k) : null;
   }
   /* ---------- render di peta ---------- */
-  function zBase() { return top ? 440 : 395; }
-  function paneOf(it, idx) { const n = "pqb_" + it.id; let p = map.getPane(n); if (!p) { p = map.createPane(n); p.style.pointerEvents = "none"; } p.style.zIndex = zBase() + (idx % 9) * .01 * 100 / 100; p.style.opacity = it.on ? it.op : 0; p.style.display = it.on ? "" : "none"; return n; }
+  function zBase() { return 270; } /* di atas dasar peta & warna kabupaten (260), SELALU di bawah jalan, pin STA/KM (marker 600) dan label */
+  function paneOf(it, idx) { const n = "pqb_" + it.id; let p = map.getPane(n); if (!p) { p = map.createPane(n); p.style.pointerEvents = "none"; } p.style.zIndex = zBase() ; p.style.opacity = it.on ? it.op : 0; p.style.display = it.on ? "" : "none"; return n; }
   function labelPane() { let p = map.getPane("pqbL"); if (!p) { p = map.createPane("pqbL"); p.style.zIndex = 465; p.style.pointerEvents = "none"; } return "pqbL"; }
   function center(mp) { let best = null, ba = -1; mp.forEach(p => { const a = ringArea(p[0]); if (a > ba) { ba = a; best = p[0]; } }); let a = 1e9, b = -1e9, c = 1e9, d = -1e9; best.forEach(q => { a = Math.min(a, q[0]); b = Math.max(b, q[0]); c = Math.min(c, q[1]); d = Math.max(d, q[1]); }); return [(a + b) / 2, (c + d) / 2]; }
   function short(n) { return String(n).replace(/^Kabupaten /, "Kab. ").replace(/^Kota Administrasi /, "Kota ").replace(/^Provinsi /, ""); }
@@ -191,12 +191,12 @@
         '<div class="pqb-h">Atau pilih langsung</div><div class="pqb-row"><select id="pqbLv"><option value="prov">Ketuk peta → Provinsi</option><option value="kab" selected>Ketuk peta → Kab/Kota</option><option value="kec">Ketuk peta → Kecamatan</option><option value="desa">Ketuk peta → Desa/Kelurahan</option></select><button class="pqb-btn" data-a="pick">📍 Ketuk peta</button></div>' +
         '<div class="pqb-row"><button class="pqb-btn" data-a="file">📂 Impor GeoJSON</button></div><input type="file" id="pqbF" accept=".geojson,.json,application/geo+json,application/json" style="display:none">' +
         '<div class="pqb-h">Wilayah berwarna <span id="pqbC"></span></div><div id="pqbL"></div>' +
-        '<div class="pqb-ft"><label><input type="checkbox" id="pqbTop"> Warna di atas jalan</label><label title="Matikan Kabupaten, Jalan Nasional, Tol & Patok KM selagi blok warna aktif"><input type="checkbox" id="pqbFoc"> Fokus (matikan lapisan lain)</label><button class="pqb-btn" data-a="hideall">Sembunyikan semua</button><button class="pqb-btn" data-a="clr">Hapus semua</button></div></div>';
+        '<div class="pqb-ft"><label title="Matikan Kabupaten, Jalan Nasional, Tol & Patok KM selagi blok warna aktif"><input type="checkbox" id="pqbFoc"> Fokus (matikan lapisan lain)</label><button class="pqb-btn" data-a="hideall">Sembunyikan semua</button><button class="pqb-btn" data-a="clr">Hapus semua</button></div></div>';
       document.body.appendChild(DLG);
-      DLG.addEventListener("click", onClick); DLG.addEventListener("input", onInput); DLG.addEventListener("change", e => { if (e.target.id === "pqbF") { onFile(e.target.files[0]); e.target.value = ""; } if (e.target.id === "pqbFoc") { focus = e.target.checked; save(); applyFocus(); } if (e.target.id === "pqbTop") { top = e.target.checked; save(); redraw(); } });
+      DLG.addEventListener("click", onClick); DLG.addEventListener("input", onInput); DLG.addEventListener("change", e => { if (e.target.id === "pqbF") { onFile(e.target.files[0]); e.target.value = ""; } if (e.target.id === "pqbFoc") { focus = e.target.checked; save(); applyFocus(); }  });
       DLG.addEventListener("keydown", e => { if (e.target.id === "pqbQ" && e.key === "Enter") online(e.target.value); });
     }
-    DLG.style.display = ""; DLG.classList.remove("min"); $("pqbTop").checked = top; $("pqbFoc").checked = focus; list(); badge();
+    DLG.style.display = ""; DLG.classList.remove("min"); $("pqbFoc").checked = focus; list(); badge();
     data(() => { const q = $("pqbQ"); q && q.value && onInput({ target: q }); });
   }
   function closeDlg() { if (DLG) DLG.style.display = "none"; }
