@@ -17,6 +17,35 @@
   try { Object.assign(st, JSON.parse(localStorage.getItem(KEY) || "null") || {}); } catch (e) {}
   st.cams = st.cams || []; st.groups = st.groups || {};
   var save = function () { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} };
+
+  /* ---------- CCTV bawaan: portal live resmi (tautan terverifikasi dari situs pemda/Bina Marga) ----------
+     Titik peta = lokasi kamera yang disebut di portal / pusat wilayah (perkiraan). Klik → tombol "Buka CCTV Live". */
+  var SEED_V = 1, P = "Jawa Tengah";
+  var SEED = [
+    ["Simpang Lima 1 (ATCS Dishub Semarang)", "https://lalin.dishub.semarangkota.go.id/pusat-kota/", -6.9904, 110.4229, P, "Kota Semarang", "Portal ATCS Kota Semarang (53 CCTV). Titik perkiraan."],
+    ["Simpang Lima 2 (ATCS Dishub Semarang)", "https://lalin.dishub.semarangkota.go.id/pusat-kota/", -6.9908, 110.4222, P, "Kota Semarang", "Portal ATCS Kota Semarang."],
+    ["Tugu Muda (ATCS Dishub Semarang)", "https://lalin.dishub.semarangkota.go.id/pusat-kota/", -6.9843, 110.4101, P, "Kota Semarang", "Portal ATCS Kota Semarang."],
+    ["PantauSemar · Pantau Lalin Kota Semarang", "https://pantausemar.semarangkota.go.id/?cctv_category_id=fc3ed271-787c-4191-a7dd-fc84314a9f71", -6.9932, 110.4203, P, "Kota Semarang", "Peta CCTV resmi Pemkot Semarang (kategori Pantau Lalin)."],
+    ["CCTV Tol Semarang–Batang (Bina Marga)", "https://binamarga.pu.go.id/contents/cctv_tol/?id_ruas=semarang-batang", -6.96, 110.1, P, "Kabupaten Kendal", "Titik perkiraan di tengah ruas tol."],
+    ["CCTV Tol Semarang A/B/C (Bina Marga)", "https://binamarga.pu.go.id/contents/cctv_tol/?id_ruas=semarang-abc", -7.03, 110.4, P, "Kota Semarang", "Titik perkiraan."],
+    ["CCTV Tol Semarang–Solo (Bina Marga)", "https://binamarga.pu.go.id/contents/cctv_tol/?id_ruas=semarang-solo", -7.2, 110.45, P, "Kabupaten Semarang", "Titik perkiraan (area Bawen)."],
+    ["CCTV Tol Semarang–Demak Seksi 2 (Bina Marga)", "https://binamarga.pu.go.id/contents/cctv_tol/?id_ruas=semarang-demak-seksi-2-sayung-demak", -6.91, 110.52, P, "Kabupaten Demak", "Titik perkiraan (Sayung–Demak)."],
+    ["ATCS Provinsi Jawa Tengah (Dishub Jateng)", "https://gis.perhubungan.jatengprov.go.id/atcs", -6.9932, 110.4203, P, "Kota Semarang", "Portal ATCS Provinsi Jawa Tengah (banyak kab/kota)."],
+    ["CCTV Kota Surakarta (CC Room Dishub)", "https://ccroom-dishub.surakarta.go.id/", -7.5666, 110.8283, P, "Kota Surakarta", "Titik = pusat kota."],
+    ["CCTV Kota Salatiga", "https://cctv.salatiga.go.id/", -7.3305, 110.5084, P, "Kota Salatiga", "Titik = pusat kota."],
+    ["CCTV Kota Pekalongan", "https://cctv.pekalongankota.go.id/", -6.8886, 109.6753, P, "Kota Pekalongan", "Titik = pusat kota."],
+    ["CCTV Kabupaten Rembang", "https://cctv.rembangkab.go.id/", -6.709, 111.342, P, "Kabupaten Rembang", "Titik = pusat kabupaten."],
+    ["CCTV Kota Yogyakarta (Jogja Smart Service)", "https://cctv.jogjakota.go.id/", -7.7956, 110.3695, "DI Yogyakarta", "Kota Yogyakarta", "Titik = pusat kota."]
+  ];
+  function mergeSeed() {
+    if (st.seedV === SEED_V) return;
+    SEED.forEach(function (r, i) {
+      var id = "seed" + SEED_V + "-" + i;
+      if (st.cams.some(function (c) { return c.id === id || c.url === r[1] && Math.abs(c.lat - r[2]) < 1e-4; })) return;
+      st.cams.push({ id: id, name: r[0], url: r[1], lat: r[2], lng: r[3], prov: r[4], kab: r[5], note: r[6], ruas: "", sta: "", status: "", type: "iframe", portal: 1 });
+    });
+    st.seedV = SEED_V; save();
+  }
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var note = function (m, err) { try { if (typeof toast === "function") toast(m, !!err); } catch (e) {} };
@@ -169,6 +198,7 @@
   function stopAll() { live.forEach(function (x) { try { x(); } catch (e) {} }); live = []; }
   function mountPlayer(host, c) {
     var t = detect(c.url), u = c.url;
+    if (c.portal) { host.innerHTML = '<a class="pqcc-go" target="_blank" rel="noopener" href="' + esc(u) + '"><i class="fa-solid fa-play"></i> Buka CCTV Live ↗</a>'; return; }
     if (!u) { host.innerHTML = '<div class="pqcc-none">Belum ada link stream. Klik <b>Edit</b> untuk mengisi.</div>'; return; }
     if (t.type === "yt") host.innerHTML = '<iframe allow="autoplay;fullscreen" allowfullscreen src="https://www.youtube.com/embed/' + t.id + '?autoplay=1&mute=1"></iframe>';
     else if (t.type === "hls") {
@@ -196,7 +226,7 @@
     V.innerHTML = '<div class="pqcc-vh"><b>' + esc(c.name) + '</b><button data-v="x" title="Tutup">&times;</button></div>' +
       '<div class="pqcc-pl" id="pqccPl"></div>' +
       '<div class="pqcc-vm">' + esc(c.kab || "") + (c.prov ? " · " + esc(c.prov) : "") + (c.ruas ? "<br>Ruas: " + esc(c.ruas) + " · ±STA " + esc(c.sta) : "") + (c.note ? "<br><i>" + esc(c.note) + "</i>" : "") +
-      '<br><span class="pqcc-tag">' + TYPE_LBL[detect(c.url).type] + "</span>" + (nav.length > 1 ? " " + (pos + 1) + "/" + nav.length + " sepanjang " + (c.ruas ? "ruas" : "wilayah") : "") + "</div>" +
+      '<br><span class="pqcc-tag">' + (c.portal ? "Portal live" : TYPE_LBL[detect(c.url).type]) + "</span>" + (nav.length > 1 ? " " + (pos + 1) + "/" + nav.length + " sepanjang " + (c.ruas ? "ruas" : "wilayah") : "") + "</div>" +
       '<div class="pqcc-vb"><button data-v="p"><i class="fa-solid fa-backward-step"></i></button><button data-v="n"><i class="fa-solid fa-forward-step"></i></button>' +
       '<button data-v="pt" class="' + (patrol ? "pri" : "") + '"><i class="fa-solid fa-' + (patrol ? "stop" : "route") + '"></i> Patroli</button>' +
       '<button data-v="o"><i class="fa-solid fa-up-right-from-square"></i> Buka</button><button data-v="e"><i class="fa-solid fa-pen"></i></button><button data-v="d"><i class="fa-solid fa-trash"></i></button></div>';
@@ -307,6 +337,7 @@
     "#pqccV{position:fixed;right:14px;bottom:14px;width:min(380px,calc(100vw - 28px));background:#0b1220;border:1px solid #1e2938;border-radius:14px;z-index:99990;display:none;box-shadow:0 12px 40px rgba(0,0,0,.6);overflow:hidden;color:#e6edf5}#pqccV.show{display:block}",
     ".pqcc-vh{display:flex;align-items:center;padding:8px 12px;gap:8px;font-size:13px}.pqcc-vh b{flex:1}.pqcc-vh button{font-size:18px!important}",
     ".pqcc-pl{aspect-ratio:16/9;background:#000;position:relative}.pqcc-pl iframe,.pqcc-pl video,.pqcc-pl img{width:100%;height:100%;border:0;object-fit:contain;display:block}",
+    ".pqcc-go{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#7f1d1d,#0e7490);color:#fff;font:700 14px system-ui;text-decoration:none}",
     ".pqcc-none,.pqcc-hint{padding:10px;font-size:11px;color:#94a3b8}.pqcc-ok{padding:7px 10px;margin-bottom:8px;border-radius:8px;background:rgba(52,211,153,.12);color:#6ee7b7;font-size:11.5px}",
     ".pqcc-vm{padding:8px 12px;font-size:11.5px;color:#94a3b8;line-height:1.5}.pqcc-tag{background:#1e2938;border-radius:6px;padding:1px 7px;font-size:10px}",
     ".pqcc-vb{display:flex;gap:6px;padding:6px 12px 12px;flex-wrap:wrap}",
@@ -347,7 +378,7 @@
       if (open) {
         h += '<div class="cc-bar"><button data-c="gwall" data-g="' + esc(g.name) + '">Dinding</button><a target="_blank" rel="noopener" href="https://www.google.com/search?q=' + encodeURIComponent("CCTV ATCS live " + g.name + " " + g.prov) + '">Cari sumber resmi ↗</a></div>';
         g.cams.sort(function (a, b) { return String(a.ruas).localeCompare(String(b.ruas)) || parseFloat(String(a.sta).replace("+", ".")) - parseFloat(String(b.sta).replace("+", ".")); })
-          .forEach(function (c) { h += '<div class="cc-r" data-c="go" data-id="' + c.id + '"><span class="cc-dot" style="background:' + (c.status === "off" ? "#ef4444" : c.status === "on" ? "#22c55e" : "#22d3ee") + '"></span><div>' + esc(c.name) + "<small>" + (c.ruas ? esc(c.ruas) + " · STA " + esc(c.sta) : "di luar ruas nasional") + " · " + TYPE_LBL[detect(c.url).type] + "</small></div></div>"; });
+          .forEach(function (c) { h += '<div class="cc-r" data-c="go" data-id="' + c.id + '"><span class="cc-dot" style="background:' + (c.status === "off" ? "#ef4444" : c.status === "on" ? "#22c55e" : "#22d3ee") + '"></span><div>' + esc(c.name) + "<small>" + (c.ruas ? esc(c.ruas) + " · STA " + esc(c.sta) : "di luar ruas nasional") + " · " + (c.portal ? "Portal live" : TYPE_LBL[detect(c.url).type]) + "</small></div></div>"; });
         if (!n) h += '<div class="pqcc-hint">Belum ada CCTV di wilayah ini.</div>';
       }
       h += "</div></div>";
@@ -374,7 +405,7 @@
     tries++;
     if (ready()) {
       clearInterval(tm);
-      try { drawMarkers(); render(); var s = $("searchInput"); if (s) s.addEventListener("input", sched); if (typeof renderRoadList === "function") { var o = renderRoadList; window.renderRoadList = function () { var r = o.apply(this, arguments); sched(); return r; }; } } catch (e) { console.error("CCTV", e); }
+      try { mergeSeed(); drawMarkers(); render(); var s = $("searchInput"); if (s) s.addEventListener("input", sched); if (typeof renderRoadList === "function") { var o = renderRoadList; window.renderRoadList = function () { var r = o.apply(this, arguments); sched(); return r; }; } } catch (e) { console.error("CCTV", e); }
     } else if (tries > 200) clearInterval(tm);
   }, 300);
 
