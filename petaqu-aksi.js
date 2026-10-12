@@ -85,11 +85,15 @@
   function closeMenu() { menu.classList.remove("open"); menuFor = null; }
   function placeMenu(btn) {
     var r = btn.getBoundingClientRect(), w = Math.min(262, innerWidth - 20);
-    var right = clamp(innerWidth - r.left + 10, 10, innerWidth - w - 10);
-    menu.style.right = right + "px"; menu.style.left = "auto";
     menu.style.top = "0px"; menu.classList.add("open");
     var h = menu.offsetHeight;
-    menu.style.top = clamp(r.top - 6, 10, Math.max(10, innerHeight - h - 10)) + "px";
+    if (r.left > innerWidth * 0.6) {            /* tombol di toolbar kanan → menu keluar ke kiri */
+      menu.style.left = "auto"; menu.style.right = clamp(innerWidth - r.left + 10, 10, innerWidth - w - 10) + "px";
+      menu.style.top = clamp(r.top - 6, 10, Math.max(10, innerHeight - h - 10)) + "px";
+    } else {                                    /* tombol di kotak cari → menu turun di bawahnya */
+      menu.style.right = "auto"; menu.style.left = clamp(r.right - w, 10, Math.max(10, innerWidth - w - 10)) + "px";
+      menu.style.top = clamp(r.bottom + 10, 10, Math.max(10, innerHeight - h - 10)) + "px";
+    }
   }
   function openMenu(btn, kind) {
     if (menuFor === kind && menu.classList.contains("open")) { closeMenu(); return; }
@@ -545,8 +549,8 @@
     rec.onstop = finish;
     REC = { stop: function () { try { if (rec.state !== "inactive") rec.stop(); else finish(); } catch (e) { finish(); } } };
     rec.start(1000);
-    var b = $("pqaCapBtn"); if (b) b.style.color = "#ef4444";
-    rec.addEventListener("stop", function () { var b2 = $("pqaCapBtn"); if (b2) b2.style.color = ""; });
+    var camOn = function (v) { [].forEach.call(document.querySelectorAll(".cam"), function (b) { b.classList.toggle("on", v); }); };
+    camOn(true); rec.addEventListener("stop", function () { camOn(false); });
   }
   function stopRecord() { if (REC) REC.stop(); }
   document.addEventListener("keydown", function (e) {
@@ -587,12 +591,6 @@
     if (fit.dataset.pqa) return true;
     fit.dataset.pqa = "1";
     setupFit(fit);
-    var cap = document.createElement("button");
-    cap.className = "tool-btn pqa-tb"; cap.id = "pqaCapBtn"; cap.type = "button";
-    cap.title = "Rekam & Screenshot (crop bebas)";
-    cap.innerHTML = '<i class="fa-solid fa-camera"></i>';
-    cap.onclick = function () { if (REC) { stopRecord(); return; } openMenu(cap, "cap"); };
-    fit.insertAdjacentElement("afterend", cap);
     return true;
   }
   var tries = 0;
@@ -601,5 +599,5 @@
     if (++tries < 80) setTimeout(wait, 250);
   })();
 
-  window.PETAQU_AKSI = { screenshot: function () { openCrop("shot"); }, record: function () { openCrop("rec"); }, stop: stopRecord, fit: function () { var b = document.querySelector('[data-pqa="1"]'); if (b) openMenu(b, "fit"); } };
+  window.PETAQU_AKSI = { menu: function (btn) { if (REC) { stopRecord(); return; } openMenu(btn, "cap"); }, screenshot: function () { openCrop("shot"); }, record: function () { openCrop("rec"); }, stop: stopRecord, fit: function () { var b = document.querySelector('[data-pqa="1"]'); if (b) openMenu(b, "fit"); } };
 })();

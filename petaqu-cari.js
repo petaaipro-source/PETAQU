@@ -53,6 +53,7 @@
 #pqCari.focus .kbd,#pqCari.has .kbd{display:none}\
 #pqCari .ib{width:36px;height:36px;flex:none;border:0;border-radius:50%;background:none;color:#8a99ae;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:.15s}\
 #pqCari .ib:hover{color:#22d3ee;background:rgba(34,211,238,.1)}\
+#pqCari .cam{color:#ef4444}#pqCari .cam:hover{color:#fff;background:#ef4444}#pqCari .cam.on{color:#fff;background:#ef4444;animation:pqpulse 1s infinite}\
 #pqCari .mic.rec{color:#fff;background:#ef4444;animation:pqpulse 1s infinite}\
 #pqCari .go{background:linear-gradient(135deg,#0e7490,#3b82f6);color:#fff}\
 #pqCari .go:hover{color:#fff;filter:brightness(1.2)}\
@@ -111,8 +112,9 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     root.innerHTML =
       '<div class="bar"><input type="search" placeholder="Cari jalan, desa, kantor, jembatan, koordinat…" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Cari">' +
-      '<span class="kbd">/</span><span class="tag">NASIONAL</span>' +
+      '<span class="kbd">/</span>' +
       '<button class="ib clr" type="button" title="Hapus"><i class="fa-solid fa-xmark"></i></button>' +
+      '<button class="ib cam pqa-tb" type="button" title="Rekam &amp; Screenshot layar (Alt+Shift+R)" aria-label="Rekam dan screenshot"><i class="fa-solid fa-circle-dot"></i></button>' +
       (SR ? '<button class="ib mic" type="button" title="Cari dengan suara"><i class="fa-solid fa-microphone"></i></button>' : "") +
       '<button class="ib go" type="button" title="Cari"><i class="fa-solid fa-arrow-right"></i></button></div><div class="dd"></div>';
     document.body.appendChild(root);
@@ -135,6 +137,8 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     root.querySelector(".clr").onclick = function () { inp.value = ""; root.classList.remove("has"); clearPin(); showHome(); inp.focus(); };
     root.querySelector(".go").onclick = function () { clearTimeout(timer); run(inp.value.trim(), true); };
     var mic = root.querySelector(".mic"); if (mic) mic.onclick = function () { voice(SR, mic); };
+    var cam = root.querySelector(".cam");
+    if (cam) cam.onclick = function (e) { e.stopPropagation(); if (window.PETAQU_AKSI) PETAQU_AKSI.menu(cam); else if (typeof toast === "function") toast("Fitur rekam belum siap — muat ulang halaman", true); };
     document.addEventListener("click", function (e) { if (!root.contains(e.target)) close(); });
     document.addEventListener("keydown", function (e) {
       var t = e.target && e.target.tagName;
