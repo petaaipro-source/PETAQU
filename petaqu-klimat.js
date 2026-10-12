@@ -198,7 +198,7 @@
   const TABS = [["awan", "☁️ Awan"], ["angin", "🌬️ Angin"], ["enso", "🌊 ENSO"], ["musim", "📅 Musim"], ["fen", "🌀 Fenomena"], ["pintar", "🧠 Alat Pintar"]];
   function css() {
     const s = document.createElement("style");
-    s.textContent = "#pqkBtn{}#pqkPanel{position:fixed;right:10px;top:70px;z-index:1300;width:min(440px,calc(100vw - 20px));max-height:calc(100vh - 90px);display:none;flex-direction:column;background:#0a0e17f7;color:#dbe7f3;border:1px solid #94b2cc40;border-radius:14px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 14px 40px #0009;backdrop-filter:blur(10px);overflow:hidden}" +
+    s.textContent = "#pqkPanel.min .pqk-tabs,#pqkPanel.min #pqkBody{display:none}#pqkPanel .x{font-size:18px}#pqkBtn{}#pqkPanel{position:fixed;right:10px;top:70px;z-index:1300;width:min(440px,calc(100vw - 20px));max-height:calc(100vh - 90px);display:none;flex-direction:column;background:#0a0e17f7;color:#dbe7f3;border:1px solid #94b2cc40;border-radius:14px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 14px 40px #0009;backdrop-filter:blur(10px);overflow:hidden}" +
       "#pqkPanel header{display:flex;align-items:center;gap:8px;padding:11px 14px 6px}#pqkPanel header b{flex:1;font-size:14px}#pqkPanel header small{display:block;color:#8fa6bd;font-weight:400;font-size:11px}#pqkPanel .x{background:0;border:0;color:#8fa6bd;font-size:22px;cursor:pointer;line-height:1}" +
       ".pqk-tabs{display:flex;gap:4px;padding:0 10px 8px;overflow-x:auto;flex:none}.pqk-tabs button{flex:none;padding:6px 10px;border-radius:999px;border:1px solid #94b2cc33;background:#0f1726;color:#cbd5e1;font:600 12px system-ui;cursor:pointer}.pqk-tabs button.on{background:#0891b2;border-color:#22d3ee;color:#fff}" +
       "#pqkBody{overflow:auto;padding:0 12px 14px;display:flex;flex-direction:column;gap:8px}.pqk-q{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid #94b2cc40;background:#0f1726;color:#e6f1fb;font:inherit;outline:0}" +
@@ -210,8 +210,10 @@
   }
   function build() {
     css(); P = document.createElement("div"); P.id = "pqkPanel";
-    P.innerHTML = '<header><span style="font-size:20px">🌤️</span><b>Atlas Langit & Iklim<small>Awan • Angin • ENSO • Musim • Animasi peta</small></b><button class="x" id="pqkX" aria-label="Tutup">×</button></header><div class="pqk-tabs" id="pqkTabs"></div><div id="pqkBody"></div>';
+    P.innerHTML = '<header><span style="font-size:20px">🌤️</span><b>Atlas Langit & Iklim<small>Awan • Angin • ENSO • Musim • Animasi peta</small></b><button class="x" id="pqkMin" title="Ciutkan/lebarkan" aria-label="Ciutkan">▾</button><button class="x" id="pqkX" aria-label="Tutup">×</button></header><div class="pqk-tabs" id="pqkTabs"></div><div id="pqkBody"></div>';
     document.body.appendChild(P); $("pqkX").onclick = () => P.style.display = "none";
+    const mn = $("pqkMin"), setMin = v => { P.classList.toggle("min", v); mn.textContent = v ? "▴" : "▾"; mn.title = v ? "Lebarkan" : "Ciutkan"; S.min = v; save(); };
+    mn.onclick = () => setMin(!P.classList.contains("min")); if (S.min) setMin(true);
     $("pqkTabs").innerHTML = TABS.map(t => '<button data-t="' + t[0] + '">' + t[1] + "</button>").join("");
     $("pqkTabs").onclick = e => { const t = e.target.closest("button"); if (t) { S.tab = t.dataset.t; save(); render(); } };
   }
