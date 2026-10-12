@@ -18,7 +18,9 @@
       if (focus && act && !isOff) { b.click(); offIds.push(f[0]); setTimeout(() => { const pn = $(f[1]); pn && pn.classList.remove("open"); }, 60); }
       else if ((!focus || !act) && mine) { if (isOff) { b.click(); setTimeout(() => { const pn = $(f[1]); pn && pn.classList.remove("open"); }, 60); } offIds = offIds.filter(x => x !== f[0]); } });
   }
-  const ready = () => window.map && window.L;
+  /* `map` di index.html dideklarasikan dengan `let` (bukan var) sehingga TIDAK ada di window.map — akses lewat nama global langsung */
+  const gmap = () => { try { return typeof map !== "undefined" && map ? map : window.map; } catch (e) { return window.map; } };
+  const ready = () => { const m = gmap(); return !!(m && m.getPane && window.L); };
   function toast(m, ms) { let t = $("pqbT"); if (!t) { t = document.createElement("div"); t.id = "pqbT"; document.body.appendChild(t); } t.textContent = m; t.className = "on"; clearTimeout(t._t); if (ms !== 0) t._t = setTimeout(() => t.className = "", ms || 3200); }
   function dec(s) { let i = 0, la = 0, lo = 0, o = []; while (i < s.length) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); la += r & 1 ? ~(r >> 1) : r >> 1; sh = 0; r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); lo += r & 1 ? ~(r >> 1) : r >> 1; o.push([la / 1e5, lo / 1e5]); } return o; }
   function data(cb) {
@@ -52,7 +54,7 @@
   /* Blok di z=380: di atas peta dasar (200), warna kabupaten (260) & masker (250); di bawah semua lapisan jalan/pin/label PETAQU (385+). */
   function zBase() { return 380; }
   function fixRoads() { }
-  function paneOf(it, idx) { const n = "pqb_" + it.id; let p = map.getPane(n); if (!p) { p = map.createPane(n); p.style.pointerEvents = "none"; } p.style.zIndex = zBase() ; p.style.opacity = it.on ? it.op : 0; p.style.display = it.on ? "" : "none"; return n; }
+  function paneOf(it, idx) { const n = "pqb_" + it.id; let p = map.getPane(n); if (!p) { p = map.createPane(n, map.getPane("overlayPane").parentNode); p.style.pointerEvents = "none"; } p.style.zIndex = zBase() ; p.style.opacity = it.on ? it.op : 0; p.style.display = it.on ? "" : "none"; return n; }
   function labelPane() { let p = map.getPane("pqbL"); if (!p) { p = map.createPane("pqbL"); p.style.zIndex = 465; p.style.pointerEvents = "none"; } return "pqbL"; }
   function center(mp) { let best = null, ba = -1; mp.forEach(p => { const a = ringArea(p[0]); if (a > ba) { ba = a; best = p[0]; } }); let a = 1e9, b = -1e9, c = 1e9, d = -1e9; best.forEach(q => { a = Math.min(a, q[0]); b = Math.max(b, q[0]); c = Math.min(c, q[1]); d = Math.max(d, q[1]); }); return [(a + b) / 2, (c + d) / 2]; }
   function short(n) { return String(n).replace(/^Kabupaten /, "Kab. ").replace(/^Kota Administrasi /, "Kota ").replace(/^Provinsi /, ""); }
