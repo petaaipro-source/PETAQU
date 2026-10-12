@@ -189,9 +189,18 @@
     document.head.appendChild(s);
   }
   function ib(id, ic, t, on) { return '<button class="ib' + (on ? " on" : "") + '" id="' + id + '" title="' + t + '" aria-label="' + t + '"><i class="fa-solid ' + ic + '"></i></button>'; }
+  /* panel mini + joystik TIDAK boleh menimpa bar pemutar rute (#routePlayerBar): diangkat tepat di atasnya, ikut bergeser bila bar berpindah */
+  var dockT = 0;
+  function dock() {
+    if (!panel) return;
+    var bar = $("routePlayerBar"), r = bar ? bar.getBoundingClientRect() : null, vis = r && r.width > 0 && r.height > 0 && r.top < innerHeight && getComputedStyle(bar).visibility !== "hidden", gap = vis ? Math.round(innerHeight - r.top + 8) : 0;
+    if (S.min) panel.style.bottom = vis ? gap + "px" : ""; else if (panel.style.bottom) panel.style.bottom = "";
+    if (padEl) { var pr = S.min ? panel.getBoundingClientRect() : null, pb = pr && pr.height > 0 ? Math.round(innerHeight - pr.top + 8) : gap; padEl.style.bottom = pb > 0 ? pb + "px" : ""; }
+  }
   function draw() {
-    if (!panel) return; var road = ROADS().filter(function (r) { return r.points && r.points.length >= 2; }), P = PQDrone.purposes;
-    panel.classList.toggle("min", !!S.min);
+    if (!panel) return; if (!dockT) { dockT = setInterval(dock, 500); window.addEventListener("resize", dock); }
+    var road = ROADS().filter(function (r) { return r.points && r.points.length >= 2; }), P = PQDrone.purposes;
+    panel.classList.toggle("min", !!S.min); dock();
     var h = '<div class="tb">' + ib("pqdsPlay", "fa-play", "Terbang / jeda") + ib("pqdsReset", "fa-rotate-left", "Ulang dari awal") + ib("pqdsRc", "fa-flag-checkered", "Balapan semua merek", S.race) + ib("pqdsFl", "fa-location-crosshairs", "Kamera ikut drone", S.follow) + ib("pqdsSvb", "fa-street-view", "Street View di titik drone", S.sv) + ib("pqdsSvF", "fa-up-right-from-square", "Street View penuh di titik ini") +
       '<span class="body">' + ib("pqdsFld", "fa-mobile-screen-button", "Mode Lapangan (HP): GPS, cuaca, sortie, aplikasi kontrol", S.tab === "field") + ib("pqdsPl", "fa-calculator", "Perencana misi & biaya") + ib("pqdsKml", "fa-globe", "Ekspor misi KML (Google Earth)") + ib("pqdsLit", "fa-file-csv", "Ekspor misi CSV Litchi") + "</span>" +
       '<span class="sp"></span>' + ib("pqdsMin", S.min ? "fa-expand" : "fa-window-minimize", S.min ? "Perbesar panel" : "Kecilkan panel (lihat peta)") + ib("pqdsX", "fa-xmark", "Tutup") + "</div>" +

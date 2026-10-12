@@ -558,99 +558,109 @@
     if (cur) cur.kmBusy = false; paint();
   }
 
-  /* penampang melintang: drainase | rumput | bahu (tanah coklat / agregat butiran / semen-aspal) | jalan | ... | rumput | drainase
-     + rel pengaman (loreng hitam-putih horizontal) & patok pengarah (loreng hitam-putih tegak) di tepi luar bahu */
+  /* penampang melintang (potongan tegak) — HANYA jalan, bahu & saluran, digambar dari hasil scan:
+       saluran drainase (U-ditch beton, hanya bila terdeteksi) | bahu (beraspal di dekat jalan + tanah/agregat/semen di luar)
+       | badan jalan (aspal + lapis pondasi, punggung jalan/crown) | bahu | saluran.
+     Cerdas & jujur pada data: lebar digambar sebanding skala meter; bahu "≥" (melebihi jangkauan baca) diberi tepi pudar;
+     bahu 0 m = tepi jalan langsung turun ke tanah; saluran tak terbaca (—) TIDAK digambar (tidak mengarang); marka sesuai
+     data efektif (terbaca / perkiraan / manual). Ringan: satu SVG kecil, tanpa foto/jaringan tambahan. */
   function section(A) {
     if (A.W == null) return "";
     var dl = A.dl > 0 ? A.dl : 0, dr = A.dr > 0 ? A.dr : 0, bl = A.bl > 0.15 ? A.bl : 0, br = A.br > 0.15 ? A.br : 0;
-    var VW = 9, Wd = 280, pad = 4, Y = 56, H = 18;
-    var tot = dl + bl + A.W + br + dr, sc = (Wd - pad * 2 - VW * 2) / Math.max(tot, 4), x = pad, o = "";
+    var Wd = 280, pad = 3, M = 14, Y0 = 46, CAM = 2.8, YB = 76, f2 = function (v) { return v.toFixed(1); };
+    var tot = dl + bl + A.W + br + dr, sc = (Wd - pad * 2 - M * 2) / Math.max(tot, 4);
+    var xl0 = pad + M, xdl1 = xl0 + dl * sc, xbl1 = xdl1 + bl * sc, rx = xbl1, rw = A.W * sc, rx1 = rx + rw, xbr1 = rx1 + br * sc, xdr1 = xbr1 + dr * sc, xe = xdr1 + M;
+    var yE = Y0 + CAM, K = [];                                              /* titik-titik permukaan tanah kiri → kanan */
+    function roadY(t) { return yE + 4 * t * (1 - t) * (Y0 - yE); }          /* punggung jalan (parabola): tepi yE, tengah Y0 */
+    function sd(b) { return b ? Math.min(3.4, 0.7 + b * sc * 0.06) : 0; }   /* kemiringan bahu ke luar */
+    var yL = yE + sd(bl), yR = yE + sd(br), i;
+    function ditch(xa, xb, yG, rev) {                                       /* profil U-ditch; kembalikan titik (kiri→kanan) */
+      var w = xb - xa, wx = Math.min(w * 0.26, 3.4), dd = Math.max(5, Math.min(10.5, w * 0.62));
+      return [{ x: xa, y: yG }, { x: xa + wx, y: yG + dd }, { x: xb - wx, y: yG + dd }, { x: xb, y: yG }];
+    }
+    var dLp = dl ? ditch(xl0, xdl1, yL) : null, dRp = dr ? ditch(xbr1, xdr1, yR) : null;
+    K.push({ x: pad, y: (dl ? yL - 2.2 : yL + (A.blo && bl ? 0 : 2.4)) }, { x: xl0, y: dl ? yL - 0.8 : yL + (A.blo && bl ? 0 : 0.6) });
+    if (dLp) dLp.forEach(function (q) { K.push(q); }); else K.push({ x: xbl1 - bl * sc, y: yL });
+    K.push({ x: rx, y: yE });
+    for (i = 1; i < 14; i++) K.push({ x: rx + rw * i / 14, y: roadY(i / 14) });
+    K.push({ x: rx1, y: yE }); K.push({ x: xbr1, y: yR });
+    if (dRp) dRp.forEach(function (q) { K.push(q); });
+    K.push({ x: xe - M, y: dr ? yR - 0.8 : yR + (A.bro && br ? 0 : 0.6) }, { x: xe, y: dr ? yR - 2.2 : yR + (A.bro && br ? 0 : 2.4) });
+    K.sort(function (a, b) { return a.x - b.x; });
+    function Yat(x) { for (var j = 0; j + 1 < K.length; j++) if (x >= K[j].x && x <= K[j + 1].x) { var d = K[j + 1].x - K[j].x, t = d > 1e-6 ? (x - K[j].x) / d : 0; return K[j].y + t * (K[j + 1].y - K[j].y); } return K[K.length - 1].y; }
+    function between(a, b) { var r = [{ x: a, y: Yat(a) }]; K.forEach(function (k) { if (k.x > a + 0.05 && k.x < b - 0.05) r.push(k); }); r.push({ x: b, y: Yat(b) }); return r; }
+    function path(p, dy) { return p.map(function (q, j) { return (j ? "L" : "M") + f2(q.x) + " " + f2(q.y + dy); }).join(""); }
+    function layer(a, b, off, thk, fill, extra) {
+      if (b - a < 0.2) return ""; var p = between(a, b), d = path(p, off), q = p.slice().reverse().map(function (z) { return "L" + f2(z.x) + " " + f2(z.y + off + thk); }).join("");
+      return '<path d="' + d + q + 'Z" fill="' + fill + '"' + (extra || "") + "/>";
+    }
     var defs = '<defs>' +
       '<pattern id="pqGr" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#2f9e44"/><path d="M1 6V3M3 6V1.5M5 6V3.5" stroke="#86e07a" stroke-width="1" stroke-linecap="round"/></pattern>' +
       '<pattern id="pqSo" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#8a5a36"/><circle cx="1.5" cy="2" r=".7" fill="#6b4226"/><circle cx="5" cy="5" r=".8" fill="#a8764c"/><circle cx="5.5" cy="1.2" r=".5" fill="#6b4226"/></pattern>' +
       '<pattern id="pqAg" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#b39a74"/><circle cx="1.8" cy="1.8" r="1.1" fill="#e7dcc6"/><circle cx="5.2" cy="3.2" r="1" fill="#7d6a4d"/><circle cx="2.8" cy="5.6" r=".9" fill="#d3c3a2"/><circle cx="6" cy="6" r=".6" fill="#8e7a5a"/></pattern>' +
       '<pattern id="pqCe" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#c4c8cd"/><circle cx="1.5" cy="1.5" r=".5" fill="#a9aeb5"/><circle cx="4.5" cy="4" r=".5" fill="#dfe2e5"/></pattern>' +
-      '<pattern id="pqSG" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#8a5a36"/><circle cx="1.8" cy="1.8" r="1" fill="#d9c8a6"/><circle cx="5.2" cy="4.6" r=".9" fill="#b9a27c"/><circle cx="5.6" cy="1.2" r=".5" fill="#6b4226"/></pattern></defs>';
-    function rect(w, fill, extra) { var ww = w * sc; o += '<rect x="' + x.toFixed(1) + '" y="' + Y + '" width="' + ww.toFixed(1) + '" height="' + H + '" fill="' + fill + '"' + (extra || "") + '/>'; x += ww; return ww; }
-    function lab(x0, ww, label, bold) { if (ww > 16) o += '<text x="' + (x0 + ww / 2).toFixed(1) + '" y="' + (Y + H + 12) + '" text-anchor="middle" font-size="' + (bold ? 10 : 8.5) + '" ' + (bold ? 'font-weight="700" fill="#fff"' : 'fill="#cfe0f0"') + ">" + label + "</text>"; }
-    function seg(w, col, label, bold) { if (w <= 0) return; var x0 = x, ww = rect(w, col); lab(x0, ww, label, bold); }
-    function verge() { var x0 = x; o += '<rect x="' + x.toFixed(1) + '" y="' + Y + '" width="' + VW + '" height="' + H + '" fill="url(#pqGr)"/>'; x += VW; return x0 + VW / 2; }
+      '<pattern id="pqSG" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#8a5a36"/><circle cx="1.8" cy="1.8" r="1" fill="#d9c8a6"/><circle cx="5.2" cy="4.6" r=".9" fill="#b9a27c"/><circle cx="5.6" cy="1.2" r=".5" fill="#6b4226"/></pattern>' +
+      '<linearGradient id="pqFdL" x1="1" x2="0"><stop offset="0" stop-color="#0d1622" stop-opacity="0"/><stop offset="1" stop-color="#0d1622" stop-opacity=".92"/></linearGradient>' +
+      '<linearGradient id="pqFdR" x1="0" x2="1"><stop offset="0" stop-color="#0d1622" stop-opacity="0"/><stop offset="1" stop-color="#0d1622" stop-opacity=".92"/></linearGradient></defs>';
+    var o = "";
+    /* tanah dasar mengikuti permukaan */
+    o += '<path d="' + path(K, 0) + "L" + f2(xe) + " " + YB + "L" + f2(pad) + " " + YB + 'Z" fill="url(#pqSo)"/>';
     /* jenis bahu longgar: tanah (coklat) | agregat (butiran) | tanah+kerikil | semen/beton */
     function kind(t) { t = t || ""; return /beton|semen/.test(t) ? "pqCe" : /tanah/.test(t) && /kerikil/.test(t) ? "pqSG" : /kerikil|agregat/.test(t) ? "pqAg" : "pqSo"; }
-    /* satu sisi bahu: beraspal (dekat jalan) + longgar (di luar). outerFirst = sisi kiri (digambar dari luar ke dalam) */
-    function shoulder(b, p, t, outerFirst) {
-      if (!b) return; var pv = Math.max(0, Math.min(b, p > 0.05 ? p : 0)), lo = b - pv, x0 = x;
-      var parts = [lo > 0 ? { w: lo, f: "url(#" + kind(t) + ")" } : null, pv > 0 ? { w: pv, f: "#64748b" } : null].filter(Boolean);
-      if (!outerFirst) parts.reverse();
-      parts.forEach(function (q) { rect(q.w, q.f); });
-      lab(x0, x - x0, b.toFixed(1));
-      /* helai rumput tumbuh di tepi bahu tanah/agregat → tanda ditumbuhi rumput */
-      if (lo > 0 && !/beton|semen/.test(t || "")) { var gx = outerFirst ? x0 : x - 14; for (var i = 0; i < 3; i++) { var tx = gx + 2 + i * 4.5; o += '<path d="M' + tx.toFixed(1) + ' ' + Y + 'l-1 -3.5M' + tx.toFixed(1) + ' ' + Y + 'l.4 -4M' + tx.toFixed(1) + ' ' + Y + 'l1.6 -3" stroke="#4ade80" stroke-width="1" stroke-linecap="round" fill="none"/>'; } }
+    var dim = [];                                                           /* rantai dimensi: [x0, x1, teks, tebal] */
+    /* bahu: bagian beraspal di dekat jalan + bagian longgar di luar */
+    function shoulder(b, p, t, left, open) {
+      if (!b) return;
+      var w = b * sc, pv = Math.max(0, Math.min(b, p > 0.05 ? p : 0)) * sc, lo = w - pv, a = left ? rx - w : rx1, c = left ? rx - pv : rx1 + pv;
+      if (left) { if (lo > 0.2) o += layer(a, c, 0, 5.2, "url(#" + kind(t) + ")"); if (pv > 0.2) o += layer(c, rx, 0, 2.4, "#64748b") + layer(c, rx, 2.4, 3, "url(#pqAg)"); }
+      else { if (pv > 0.2) o += layer(rx1, c, 0, 2.4, "#64748b") + layer(rx1, c, 2.4, 3, "url(#pqAg)"); if (lo > 0.2) o += layer(c, a + w, 0, 5.2, "url(#" + kind(t) + ")"); }
+      if (lo > 0.2 && kind(t) !== "pqCe") o += layer(left ? a : c, left ? c : a + w, 0, 1.4, kind(t) === "pqSo" ? "#c99a6b" : "#e7dcc6");
+      if (lo > 0 && !/beton|semen/.test(t || "")) { var gx = left ? a : a + w - 14; for (var j = 0; j < 3; j++) { var tx = gx + 2 + j * 4.5, ty = Yat(tx); o += '<path d="M' + f2(tx) + " " + f2(ty) + "l-1 -3.5M" + f2(tx) + " " + f2(ty) + "l.4 -4M" + f2(tx) + " " + f2(ty) + 'l1.6 -3" stroke="#4ade80" stroke-width="1" stroke-linecap="round" fill="none"/>'; } }
+      dim.push([a, a + w, (open ? "≥" : "") + b.toFixed(1), 0]);
     }
-    function patok(px) { var w = 5, h = 24, top = Y - h, n = 6, bh = h / n, s = '<rect x="' + (px - w / 2).toFixed(1) + '" y="' + top + '" width="' + w + '" height="' + h + '" fill="#fff"/>'; for (var i = 1; i < n; i += 2) s += '<rect x="' + (px - w / 2).toFixed(1) + '" y="' + (top + i * bh).toFixed(1) + '" width="' + w + '" height="' + bh.toFixed(1) + '" fill="#111"/>'; return s + '<rect x="' + (px - w / 2).toFixed(1) + '" y="' + top + '" width="' + w + '" height="' + h + '" fill="none" stroke="#cbd5e1" stroke-width=".8"/>'; }
-    function rel(px, dir) {
-      var L = 30, x0 = dir > 0 ? px + 4 : px - 4 - L, hh = 6, ty = Y - 13, n = 5, bw = L / n, s = '<rect x="' + x0.toFixed(1) + '" y="' + ty + '" width="' + L + '" height="' + hh + '" fill="#fff"/>';
-      for (var i = 0; i < n; i += 2) s += '<rect x="' + (x0 + i * bw).toFixed(1) + '" y="' + ty + '" width="' + bw.toFixed(1) + '" height="' + hh + '" fill="#111"/>';
-      s += '<rect x="' + x0.toFixed(1) + '" y="' + ty + '" width="' + L + '" height="' + hh + '" fill="none" stroke="#cbd5e1" stroke-width=".8"/>';
-      return s + '<rect x="' + (x0 + L / 2 - 1).toFixed(1) + '" y="' + (ty + hh) + '" width="2" height="' + (Y - ty - hh) + '" fill="#64748b"/>';
+    shoulder(bl, A.pl, A.tl, true, A.blo); shoulder(br, A.pr, A.tr, false, A.bro);
+    /* badan jalan: lapis aspal + lapis pondasi agregat di bawahnya */
+    o += layer(rx, rx1, 3.2, 5.6, "url(#pqAg)") + layer(rx, rx1, 0, 3.2, "#475569") + layer(rx, rx1, 0, 0.9, "#5b6b80");
+    /* rumput di tepi luar (bukan di bahu terbuka) */
+    function grass(a, b) { var p = between(a, b); o += '<path d="' + path(p, 0.2) + '" fill="none" stroke="url(#pqGr)" stroke-width="2.6" stroke-linejoin="round"/>'; for (var j = 0; j < 3; j++) { var tx = a + (b - a) * (0.2 + j * 0.3), ty = Yat(tx); o += '<path d="M' + f2(tx) + " " + f2(ty) + "l-1 -3M" + f2(tx) + " " + f2(ty) + "l.4 -3.6M" + f2(tx) + " " + f2(ty) + 'l1.4 -2.6" stroke="#4ade80" stroke-width="1" stroke-linecap="round" fill="none"/>'; } }
+    if (!(A.blo && bl)) grass(pad, xl0); if (!(A.bro && br)) grass(xdr1, xe);
+    /* saluran beton U (hanya bila terdeteksi) */
+    function drain(p, w, x0) {
+      o += '<path d="' + path(p, 0) + '" fill="none" stroke="#c4c8cd" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>' +
+        '<path d="' + path(p, 0) + '" fill="none" stroke="#e9ecef" stroke-width=".7" stroke-linejoin="round" opacity=".7" transform="translate(0 -.9)"/>';
+      dim.push([x0, x0 + w, (w / sc).toFixed(1), 0]);
     }
-    var pxL, pxR;
-    seg(dl, "#38bdf8", dl.toFixed(1));
-    pxL = verge(); shoulder(bl, A.pl, A.tl, true);
-    var rx = x, rw = A.W * sc; seg(A.W, "#475569", A.W.toFixed(1) + " m", true);
-    shoulder(br, A.pr, A.tr, false); pxR = verge();
-    seg(dr, "#38bdf8", dr.toFixed(1));
-    /* bangunan di tepi jalan (latar): kiri = rumah/ruko 2 lantai beton, kanan = rumah atap genteng + pagar hijau + tiang listrik */
-    var bw = 58, bx = pad;
-    o += '<rect x="' + bx + '" y="' + (Y - 40) + '" width="' + bw + '" height="40" fill="#9aa3ad"/>' +
-      '<rect x="' + bx + '" y="' + (Y - 43) + '" width="' + bw + '" height="4" fill="#6b7480"/>' +
-      '<rect x="' + bx + '" y="' + (Y - 21) + '" width="' + bw + '" height="3" fill="#7b8590"/>' +
-      '<rect x="' + (bx + 6) + '" y="' + (Y - 35) + '" width="12" height="10" fill="#33414f"/><rect x="' + (bx + 24) + '" y="' + (Y - 35) + '" width="12" height="10" fill="#33414f"/><rect x="' + (bx + 42) + '" y="' + (Y - 35) + '" width="10" height="10" fill="#33414f"/>' +
-      '<rect x="' + (bx + 6) + '" y="' + (Y - 17) + '" width="14" height="17" fill="#26303a"/><rect x="' + (bx + 26) + '" y="' + (Y - 14) + '" width="26" height="14" fill="#3f4b58"/>' +
-      '<ellipse cx="' + (bx + 22) + '" cy="' + (Y - 20) + '" rx="9" ry="5" fill="#2f9e44"/>';
-    var rx0 = Wd - pad - bw;
-    o += '<rect x="' + (rx0 + 4) + '" y="' + (Y - 22) + '" width="' + (bw - 4) + '" height="22" fill="#e6d9c0"/>' +
-      '<polygon points="' + (rx0 + 1) + "," + (Y - 22) + " " + (rx0 + 18) + "," + (Y - 38) + " " + (rx0 + bw - 8) + "," + (Y - 38) + " " + (rx0 + bw) + "," + (Y - 22) + '" fill="#b5412f"/>' +
-      '<path d="M' + (rx0 + 8) + " " + (Y - 28) + "h" + (bw - 14) + "M" + (rx0 + 13) + " " + (Y - 33) + "h" + (bw - 24) + '" stroke="#7d2a1d" stroke-width=".8"/>' +
-      '<rect x="' + (rx0 + 12) + '" y="' + (Y - 18) + '" width="10" height="9" fill="#33414f"/><rect x="' + (rx0 + 30) + '" y="' + (Y - 18) + '" width="10" height="9" fill="#33414f"/>' +
-      '<rect x="' + (rx0 + 4) + '" y="' + (Y - 10) + '" width="' + (bw - 4) + '" height="10" fill="#2f9e44"/><path d="M' + (rx0 + 4) + " " + (Y - 7) + "h" + (bw - 4) + 'M' + (rx0 + 4) + " " + (Y - 3.5) + "h" + (bw - 4) + '" stroke="#1b6b2d" stroke-width=".8"/>' +
-      '<rect x="' + (rx0 - 1) + '" y="' + (Y - 46) + '" width="2" height="46" fill="#6b7480"/><path d="M' + (rx0 - 12) + " " + (Y - 44) + "h24M" + (rx0 - 12) + " " + (Y - 40) + 'h24" stroke="#6b7480" stroke-width="1"/>';
-    /* pohon tepi jalan (hasil deteksi otomatis): batang + tajuk, tinggi digambar sebanding (skala vertikal ringkas) */
-    if (A.tree) [["L", pxL + 16], ["R", pxR - 16]].forEach(function (q) {
-      var T = A.tree[q[0]]; if (!T) return;
-      var hp = Math.max(22, Math.min(50, T.h * 5.5)), cx = q[1], rxx = T.kind === "rapat" ? 20 : T.kind === "sedang" ? 14 : T.kind === "jarang" ? 10 : 11, ry = T.kind === "semak" ? hp * 0.32 : hp * 0.5, cy = Y - hp + ry, g1 = T.kind === "jarang" ? "#3f9d4f" : "#1f7a33";
-      if (T.kind !== "semak") o += '<rect x="' + (cx - 1.6) + '" y="' + cy + '" width="3.2" height="' + (Y - cy) + '" fill="#6b4a2b"/>';
-      o += '<ellipse cx="' + cx + '" cy="' + cy.toFixed(1) + '" rx="' + rxx + '" ry="' + ry.toFixed(1) + '" fill="' + g1 + '" opacity="' + (T.kind === "jarang" ? ".8" : ".95") + '"/>' +
-        '<circle cx="' + (cx - rxx * 0.35).toFixed(1) + '" cy="' + (cy - ry * 0.25).toFixed(1) + '" r="' + (ry * 0.35).toFixed(1) + '" fill="#4ade80" opacity=".55"/><circle cx="' + (cx + rxx * 0.4).toFixed(1) + '" cy="' + (cy + ry * 0.1).toFixed(1) + '" r="' + (ry * 0.3).toFixed(1) + '" fill="#2f9e44" opacity=".7"/>' +
-        '<text x="' + cx + '" y="' + Math.max(7, cy - ry - 2).toFixed(1) + '" text-anchor="middle" font-size="7" font-weight="700" fill="#dcfce7" stroke="#0b1520" stroke-width="2.2" paint-order="stroke">' + (T.cut ? "≥" : "≈") + T.h.toFixed(0) + " m</text>";
+    if (dLp) drain(dLp, xdl1 - xl0, xl0); if (dRp) drain(dRp, xdr1 - xbr1, xbr1);
+    /* tepi pudar untuk bahu yang melebihi jangkauan baca (≥) */
+    if (A.blo && bl) o += '<rect x="' + pad + '" y="' + (Y0 + 1) + '" width="' + M + '" height="' + (YB - Y0 - 1) + '" fill="url(#pqFdL)"/>';
+    if (A.bro && br) o += '<rect x="' + (xe - M) + '" y="' + (Y0 + 1) + '" width="' + M + '" height="' + (YB - Y0 - 1) + '" fill="url(#pqFdR)"/>';
+    /* ---- marka (dari data efektif: terbaca / perkiraan OSM / manual) ---- */
+    var MK = mkLines(A), mk = function (f, solid, col, dx) { f = Math.max(0.015, Math.min(0.985, f)); var mx = rx + f * rw + (dx || 0), my = roadY(f); o += '<rect x="' + f2(mx - 1.1) + '" y="' + f2(my - (solid ? 2.6 : 1.8)) + '" width="2.2" height="' + (solid ? 2.6 : 1.5) + '" fill="' + col + '"' + (solid ? "" : ' opacity=".75"') + "/>"; };
+    MK.edges.forEach(function (e) { mk(e.f, e.solid, "#fff"); });
+    MK.divs.forEach(function (d) { var c = d.yellow ? "#fde047" : "#fff"; if (d.dbl) { mk(d.f, d.solid, c, -1.7); mk(d.f, d.solid, c, 1.7); } else mk(d.f, d.solid, c); });
+    /* ---- rantai dimensi (di atas): saluran | bahu | JALAN | bahu | saluran ---- */
+    dim.push([rx, rx1, A.W.toFixed(1) + " m", 1]);
+    dim.sort(function (a, b) { return a[0] - b[0]; });
+    var cy = 14;
+    dim.forEach(function (q) {
+      var a = q[0], b = q[1], cx = (a + b) / 2, bold = q[3];
+      o += '<path d="M' + f2(a) + " " + (cy - 3.5) + "v7M" + f2(b) + " " + (cy - 3.5) + "v7M" + f2(a) + " " + cy + "H" + f2(b) + '" stroke="' + (bold ? "#fde68a" : "#8fb3d4") + '" stroke-width="' + (bold ? 1.1 : 0.8) + '" fill="none"/>';
+      if (b - a >= 15) o += '<text x="' + f2(cx) + '" y="' + (cy - 5) + '" text-anchor="middle" font-size="' + (bold ? 10 : 8.5) + '" ' + (bold ? 'font-weight="700" fill="#fff"' : 'fill="#cfe0f0"') + ">" + q[2] + "</text>";
     });
-    o += rel(pxL, 1) + patok(pxL) + rel(pxR, -1) + patok(pxR);
-    if (A.km && A.km.ok) {   /* patok KM: badan kuning-oranye, pelat putih (2 baris), kaki merah */
-      var kx = A.km.side === "L" ? pxL + 44 : pxR - 44, kw = 12, kh = 32, kt = Y - kh;
-      o += '<rect x="' + (kx - kw / 2) + '" y="' + kt + '" width="' + kw + '" height="' + (kh - 6) + '" fill="#e0a22b" stroke="#7a5200" stroke-width=".6"/>' +
-        '<polygon points="' + (kx - kw / 2) + "," + kt + " " + kx + "," + (kt - 3) + " " + (kx + kw / 2) + "," + kt + '" fill="#f3c25a" stroke="#7a5200" stroke-width=".6"/>' +
-        '<rect x="' + (kx - 4) + '" y="' + (kt + 3) + '" width="8" height="7" fill="#fff"/><rect x="' + (kx - 4) + '" y="' + (kt + 13) + '" width="8" height="7" fill="#fff"/>' +
-        '<path d="M' + (kx - 2.5) + " " + (kt + 5) + "h5M" + (kx - 2.5) + " " + (kt + 8) + "h3M" + (kx - 2.5) + " " + (kt + 15) + "h5M" + (kx - 2.5) + " " + (kt + 18) + 'h3" stroke="#222" stroke-width=".9"/>' +
-        '<rect x="' + (kx - kw / 2) + '" y="' + (Y - 6) + '" width="' + kw + '" height="6" fill="#d94a4a"/>';
-    }
-    /* ---- marka (dari data efektif: terbaca / perkiraan OSM / manual) + indikator lebar jalan ---- */
-    var MK = mkLines(A), lnD = function (f, solid, col, dx) { var lx = rx + Math.max(0.015, Math.min(0.985, f)) * rw + (dx || 0); o += '<line x1="' + lx.toFixed(1) + '" x2="' + lx.toFixed(1) + '" y1="' + (Y + 1) + '" y2="' + (Y + H - 1) + '" stroke="' + col + '" stroke-width="1.6"' + (solid ? "" : ' stroke-dasharray="3 3"') + '/>'; };
-    MK.edges.forEach(function (e) { lnD(e.f, e.solid, "#fff"); });
-    MK.divs.forEach(function (d) { var c = d.yellow ? "#fde047" : "#fff"; if (d.dbl) { lnD(d.f, d.solid, c, -1.5); lnD(d.f, d.solid, c, 1.5); } else lnD(d.f, d.solid, c); });
-    /* lebar tiap lajur (m) di antara garis */
+    /* bahu 0 m / saluran tak terbaca: tanda jujur di tepi jalan (tanpa mengarang bentuk) */
+    function note(x, txt, anchor, col) { o += '<text x="' + f2(x) + '" y="' + (cy + 1) + '" text-anchor="' + anchor + '" font-size="7.5" fill="' + col + '">' + txt + "</text>"; }
+    if (A.bl != null && !bl) note(rx - 2, "0", "end", "#f59e0b"); if (A.br != null && !br) note(rx1 + 2, "0", "start", "#f59e0b");
+    /* lebar tiap lajur (m) di antara garis pembagi */
     var bf = [0].concat(MK.divs.map(function (d) { return d.f; })).concat([1]).sort(function (a, b) { return a - b; });
-    if (bf.length > 2) for (var li = 0; li < bf.length - 1; li++) { var lw = (bf[li + 1] - bf[li]) * A.W, lpx = (bf[li + 1] - bf[li]) * rw; if (lpx >= 22) o += '<text x="' + (rx + (bf[li] + bf[li + 1]) / 2 * rw).toFixed(1) + '" y="' + (Y + H / 2 + 2.5) + '" text-anchor="middle" font-size="7" fill="#e2e8f0" opacity=".85">' + lw.toFixed(1) + "</text>"; }
-    /* indikator lebar jalan: garis ukur dua arah di bawah badan jalan */
-    var dy = Y + H + 2.5;
-    o += '<path d="M' + rx.toFixed(1) + " " + dy + "H" + (rx + rw).toFixed(1) + "M" + rx.toFixed(1) + " " + (dy - 3) + "v6M" + (rx + rw).toFixed(1) + " " + (dy - 3) + "v6M" + (rx + 4).toFixed(1) + " " + (dy - 2) + "L" + rx.toFixed(1) + " " + dy + "L" + (rx + 4).toFixed(1) + " " + (dy + 2) + "M" + (rx + rw - 4).toFixed(1) + " " + (dy - 2) + "L" + (rx + rw).toFixed(1) + " " + dy + "L" + (rx + rw - 4).toFixed(1) + " " + (dy + 2) + '" stroke="#fde68a" stroke-width="1" fill="none"/>';
+    if (bf.length > 2) for (var li = 0; li < bf.length - 1; li++) {
+      var a2 = rx + bf[li] * rw, b2 = rx + bf[li + 1] * rw, lw = (bf[li + 1] - bf[li]) * A.W;
+      o += '<path d="M' + f2(a2) + " 25.5v4M" + f2(b2) + " 25.5v4M" + f2(a2) + " 27.5H" + f2(b2) + '" stroke="#64748b" stroke-width=".7" fill="none"/>';
+      if (b2 - a2 >= 20) o += '<text x="' + f2((a2 + b2) / 2) + '" y="36.5" text-anchor="middle" font-size="7.5" fill="#e2e8f0" opacity=".9">' + lw.toFixed(1) + "</text>";
+    }
     /* legenda */
-    var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen"], ["url(#pqGr)", "rumput"], ["#9aa3ad", "bangunan"]], lx0 = 5;
-    lg.forEach(function (q) { o += '<rect x="' + lx0 + '" y="92" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="99.5" font-size="7.5" fill="#9db3c9">' + q[1] + "</text>"; lx0 += 46; });
-    var row2 = [];
-    if (A.km && A.km.ok) row2.push(["#e0a22b", "patok KM"]);
-    if (A.tree && (A.tree.L || A.tree.R)) row2.push(["#1f7a33", "pohon"]);
-    var l2 = 5; row2.forEach(function (q) { o += '<rect x="' + l2 + '" y="104" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (l2 + 11) + '" y="111.5" font-size="7.5" fill="#9db3c9">' + q[1] + "</text>"; l2 += 62; });
-    return '<svg viewBox="0 0 ' + Wd + ' ' + (row2.length ? 116 : 104) + '" role="img" aria-label="Penampang jalan">' + defs + o + "</svg>";
+    var lg = [["url(#pqSo)", "tanah"], ["url(#pqAg)", "agregat"], ["url(#pqCe)", "semen/saluran"], ["url(#pqGr)", "rumput"], ["#475569", "aspal"]], lx0 = 5, lw0 = [40, 48, 66, 46, 40];
+    lg.forEach(function (q, j) { o += '<rect x="' + lx0 + '" y="' + (YB + 7) + '" width="8" height="8" rx="1" fill="' + q[0] + '"/><text x="' + (lx0 + 11) + '" y="' + (YB + 14.5) + '" font-size="7.5" fill="#9db3c9">' + q[1] + "</text>"; lx0 += lw0[j]; });
+    return '<svg viewBox="0 0 ' + Wd + " " + (YB + 20) + '" role="img" aria-label="Penampang jalan: saluran, bahu, jalan">' + defs + o + "</svg>";
   }
 
   function setCard(h, html) { if (h.__h !== html) { h.innerHTML = html; h.__h = html; } }
