@@ -114,7 +114,8 @@
 
     var W = [];
     try { if (window.PETAQU_CUACA && PETAQU_CUACA.rows) W = PETAQU_CUACA.rows(); } catch (e) { W = []; }
-    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, D.map(function (d) { return d.t; })]);
+    var Z = []; try { if (window.PETAQU_RAWAN && PETAQU_RAWAN.rows) Z = PETAQU_RAWAN.rows(); } catch (e) { Z = []; }
+    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
     sig = s;
 
@@ -152,6 +153,15 @@
           (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
       });
     }
+    if (Z.length) {
+      h += '<div class="pqf-h">Rawan Bencana &amp; Lalu Lintas</div>';
+      Z.forEach(function (x) {
+        h += '<button type="button" class="pqf-row" data-k="Z:' + x.id + '" style="--c:' + x.c + '">' +
+          '<span class="pqf-ic"><i class="pq-fi">' + x.ic + "</i></span>" +
+          '<span class="pqf-t">' + esc(x.name) + "</span>" +
+          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
+      });
+    }
     if (D.length) {
       h += '<div class="pqf-h">Alat PETAQU</div>';
       D.forEach(function (d, i) {
@@ -181,6 +191,10 @@
       closePanels();
       closeJt();
       try { PETAQU_CUACA.act(k.slice(2)); } catch (e) { }
+    } else if (k.charAt(0) === "Z") {
+      closePanels();
+      closeJt();
+      try { PETAQU_RAWAN.act(k.slice(2)); } catch (e) { }
     } else if (k === "B") {
       closePanels();
       try { PETAQU_BLOK.open(); } catch (e) { }
