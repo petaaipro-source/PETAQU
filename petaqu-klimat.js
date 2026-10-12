@@ -219,6 +219,7 @@
   function render() {
     [...$("pqkTabs").children].forEach(b => b.classList.toggle("on", b.dataset.t === S.tab));
     const B = $("pqkBody"); B.scrollTop = 0; B.innerHTML = ({ awan: tAwan, angin: tAngin, enso: tEnso, musim: tMusim, fen: tFen, pintar: tPintar }[S.tab] || tAwan)();
+    if (S.tab === "pintar") setTimeout(status, 0);
     if (S.tab === "enso") { const q = B.querySelectorAll("select"); if (q[0]) q[0].value = S.enso; if (q[1]) q[1].value = S.iod; }
     if (S.tab === "enso" && !window.__pqOni && !window.__pqOniTry) { window.__pqOniTry = 1; fetchOni().then(ok => { if (ok && S.tab === "enso") render(); }); }
   }
@@ -288,7 +289,7 @@
   }
   function tPintar() {
     return '<div class="pqk-box"><h4>📍 Analisis Langit & Angin (live, titik tengah peta)</h4><div class="pqk-mini">Mengambil data Open-Meteo: tutupan awan rendah/menengah/tinggi, CAPE, angin, hujan → menebak jenis awan + saran kerja.</div><div class="pqk-row" style="margin-top:6px"><button class="pqk-btn" onclick="PETAQU_KLIMAT._live()">Analisis lokasi peta</button></div><div id="pqkLive" style="margin-top:8px"></div></div>' +
-      '<div class="pqk-box"><h4>🎞️ Animasi Peta</h4><div class="pqk-mini">Partikel angin bergerak + lapisan tutupan awan (putih = awan, biru = hujan) dari grid 8×6 titik pada area peta. Warna angin: biru &lt;15, kuning 15–30, oranye 30–50, merah &gt;50 km/j. Otomatis diperbarui saat peta digeser.</div><div class="pqk-row" style="margin-top:6px"><button class="pqk-btn" data-am="wind" onclick="PETAQU_KLIMAT._am(\'wind\')">💨 Angin</button><button class="pqk-btn" data-am="cloud" onclick="PETAQU_KLIMAT._am(\'cloud\')">☁️ Awan</button><button class="pqk-btn g" onclick="PETAQU_KLIMAT._am(\'off\')">⏹ Matikan</button></div><div class="pqk-mini" id="pqkAm" style="margin-top:4px"></div></div>' +
+      '<div class="pqk-box"><h4>🎞️ Animasi Peta (realtime)</h4><div class="pqk-mini">Angin: partikel mengalir sesuai arah &amp; kecepatan angin nyata. Awan: gumpalan hidup yang melayang &amp; &quot;bernapas&quot;, hujan jatuh miring, kilat di sel badai (CAPE tinggi). Data Open-Meteo grid ' + NX + '×' + NY + ' titik, auto-refresh 10 menit &amp; hanya diminta ulang bila peta digeser jauh (hemat kuota). Arahkan kursor ke peta untuk nilai lokal. Penjelasan warna ada di <b>Legenda</b> (kiri-bawah).</div><div class="pqk-row" style="margin-top:6px"><button class="pqk-btn" data-am="wind" style="opacity:' + (AM.wind ? 1 : .6) + '" onclick="PETAQU_KLIMAT._am(\'wind\')">💨 Angin</button><button class="pqk-btn" data-am="cloud" style="opacity:' + (AM.cloud ? 1 : .6) + '" onclick="PETAQU_KLIMAT._am(\'cloud\')">☁️ Awan</button><button class="pqk-btn g" onclick="PETAQU_KLIMAT._now()">↻ Segarkan</button><button class="pqk-btn g" onclick="PETAQU_KLIMAT._am(\'off\')">⏹ Matikan</button></div><div class="pqk-mini" id="pqkAm" style="margin-top:4px"></div><div id="pqkIn" style="margin-top:6px"></div></div>' +
       '<div class="pqk-box"><h4>🔎 Identifikasi Awan (wizard)</h4><div id="pqkWz">' + wizardHTML() + "</div></div>" +
       '<div class="pqk-box"><h4>🌬️ Kalkulator Beaufort</h4><div class="pqk-row"><input class="pqk-q" style="max-width:140px" type="number" min="0" value="20" oninput="document.getElementById(\'pqkBf\').innerHTML=PETAQU_KLIMAT._bf(this.value)"><span class="pqk-mini" style="align-self:center">km/jam</span></div><div id="pqkBf" style="margin-top:6px">' + bfHTML(20) + "</div></div>";
   }
@@ -309,63 +310,180 @@
     } catch (e) { o.textContent = "Gagal memuat (cek koneksi). " + (e && e.message || ""); }
   }
 
-  /* ===================== ANIMASI PETA (angin + awan) ===================== */
-  const NX = 8, NY = 6; let AM = { wind: false, cloud: false, grid: null, cvW: null, cvC: null, raf: 0, parts: [], tm: 0, busy: false };
-  function mkcv(z) { const c = document.createElement("canvas"); c.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;z-index:" + z; gmap().getContainer().appendChild(c); return c; }
+  /* ===================== ANIMASI PETA (angin + awan hidup, realtime) ===================== */
+  const NX = 10, NY = 7, REFRESH = 600000, CELL = 16;
+  const WC = [[10, "#7dd3fc", "< 10", "Lemah / sepoi"], [20, "#4ade80", "10–20", "Sedang"], [30, "#facc15", "20–30", "Cukup kencang"], [50, "#fb923c", "30–50", "Kencang"], [1e9, "#f43f5e", "> 50", "Sangat kencang / berbahaya"]];
+  const wcol = sp => { for (let i = 0; i < 4; i++) if (sp < WC[i][0]) return i; return 4; };
+  let AM = { wind: false, cloud: false, grid: null, field: null, cvW: null, cvC: null, raf: 0, parts: [], puffs: [], drops: [], bolts: [], tm: 0, busy: false, last: 0, upd: 0, iv: 0, hz: null, spr: null, zoom: 0 };
+  const mkcv = z => { const c = document.createElement("canvas"); c.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;z-index:" + z; gmap().getContainer().appendChild(c); return c; };
   function sizecv() { const m = gmap(), z = m.getSize(); [AM.cvW, AM.cvC].forEach(c => { if (c && (c.width !== z.x || c.height !== z.y)) { c.width = z.x; c.height = z.y; } }); }
+  const say = t => { try { toast(t, 2500); } catch (e) { } };
+  const hhmm = t => new Date(t).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+  async function getJ(u) { const r = await fetch(u); const j = await r.json(); if (!r.ok || (j && j.error)) throw new Error("api"); return Array.isArray(j) ? j : [j]; }
   async function fetchGrid() {
     const m = gmap(); if (!m || AM.busy) return; AM.busy = true;
-    const b = m.getBounds().pad(.1), la = [], lo = [], pts = [];
+    const b = m.getBounds().pad(.15), la = [], lo = [];
     for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { const lat = Math.max(-89, Math.min(89, b.getSouth() + (b.getNorth() - b.getSouth()) * j / (NY - 1))), lng = b.getWest() + (b.getEast() - b.getWest()) * i / (NX - 1); la.push(lat.toFixed(3)); lo.push(((lng + 540) % 360 - 180).toFixed(3)); }
+    const base = "https://api.open-meteo.com/v1/forecast?latitude=" + la.join(",") + "&longitude=" + lo.join(",") + "&wind_speed_unit=kmh&timezone=auto&current=";
     try {
-      const u = "https://api.open-meteo.com/v1/forecast?latitude=" + la.join(",") + "&longitude=" + lo.join(",") + "&current=wind_speed_10m,wind_direction_10m,cloud_cover,precipitation&wind_speed_unit=kmh";
-      let j = await (await fetch(u)).json(); if (!Array.isArray(j)) j = [j];
-      AM.grid = { b, v: j.map(o => { const c = o.current || {}, d = (c.wind_direction_10m || 0) * Math.PI / 180, sp = c.wind_speed_10m || 0; return { dx: -Math.sin(d) * sp, dy: Math.cos(d) * sp, sp, cl: c.cloud_cover || 0, pr: c.precipitation || 0 }; }) };
-      drawCloud(); status();
-    } catch (e) { say("Gagal memuat grid cuaca"); }
+      let j; try { j = await getJ(base + "wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,cape,weather_code"); } catch (e) { j = await getJ(base + "wind_speed_10m,wind_direction_10m,cloud_cover,precipitation"); }
+      AM.grid = { b, lat: la.map(Number), lng: lo.map(Number), v: j.map(o => { const c = o.current || {}, d = (c.wind_direction_10m || 0) * Math.PI / 180, sp = c.wind_speed_10m || 0; return { dx: -Math.sin(d) * sp, dy: Math.cos(d) * sp, sp, gu: c.wind_gusts_10m || sp, cl: c.cloud_cover || 0, pr: c.precipitation || 0, cape: c.cape || 0, code: c.weather_code || 0 }; }) };
+      AM.upd = Date.now(); AM.zoom = m.getZoom(); buildField(); status(); startLoop();
+    } catch (e) { say("Gagal memuat data cuaca realtime (cek koneksi / kuota Open-Meteo)"); }
     AM.busy = false;
   }
-  function say(t) { try { toast(t, 2500); } catch (e) { } }
-  function status() { const o = $("pqkAm"); if (o) o.textContent = (AM.wind ? "💨 Angin " : "") + (AM.cloud ? "☁️ Awan " : "") + (AM.grid ? "• " + NX * NY + " titik grid" : ""); }
   function sample(lat, lng) {
     const g = AM.grid; if (!g) return null; const b = g.b;
     let fx = (lng - b.getWest()) / (b.getEast() - b.getWest()) * (NX - 1), fy = (lat - b.getSouth()) / (b.getNorth() - b.getSouth()) * (NY - 1);
     fx = Math.max(0, Math.min(NX - 1.001, fx)); fy = Math.max(0, Math.min(NY - 1.001, fy));
     const i = fx | 0, j = fy | 0, tx = fx - i, ty = fy - j, V = g.v, a = V[j * NX + i], c = V[j * NX + i + 1], d = V[(j + 1) * NX + i], e = V[(j + 1) * NX + i + 1], r = {};
-    ["dx", "dy", "sp", "cl", "pr"].forEach(k => r[k] = (a[k] * (1 - tx) + c[k] * tx) * (1 - ty) + (d[k] * (1 - tx) + e[k] * tx) * ty); return r;
+    ["dx", "dy", "sp", "cl", "pr", "cape"].forEach(k => r[k] = (a[k] * (1 - tx) + c[k] * tx) * (1 - ty) + (d[k] * (1 - tx) + e[k] * tx) * ty); return r;
   }
-  function drawCloud() {
-    const c = AM.cvC; if (!c) return; sizecv(); const x = c.getContext("2d"), m = gmap(); x.clearRect(0, 0, c.width, c.height); if (!AM.cloud || !AM.grid) return;
-    const st = 18; for (let py = 0; py < c.height; py += st) for (let px = 0; px < c.width; px += st) {
-      const ll = m.containerPointToLatLng([px + st / 2, py + st / 2]), s = sample(ll.lat, ll.lng); if (!s) continue;
-      const a = Math.min(.62, s.cl / 100 * .62), rc = s.pr > 2 ? "70,110,200" : s.pr > .2 ? "110,150,215" : "235,242,250";
-      x.fillStyle = "rgba(" + rc + "," + a.toFixed(2) + ")"; x.fillRect(px, py, st, st);
+  /* medan cuaca di ruang layar (cepat dibaca partikel) + kabut awan halus */
+  function buildField() {
+    const m = gmap(); if (!m || !AM.grid || !AM.cvW) return; sizecv();
+    const W = AM.cvW.width, H = AM.cvW.height, cols = Math.ceil(W / CELL) + 1, rows = Math.ceil(H / CELL) + 1, n = cols * rows, F = { cols, rows, W, H };
+    ["dx", "dy", "sp", "cl", "pr", "cape"].forEach(k => F[k] = new Float32Array(n));
+    const hc = AM.hz || (AM.hz = document.createElement("canvas")); hc.width = cols; hc.height = rows; const hx = hc.getContext("2d"), im = hx.createImageData(cols, rows);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const ll = m.containerPointToLatLng([i * CELL, j * CELL]), s = sample(ll.lat, ll.lng), p = j * cols + i; if (!s) continue;
+      ["dx", "dy", "sp", "cl", "pr", "cape"].forEach(k => F[k][p] = s[k]);
+      const rgb = s.pr > 3 ? [64, 90, 158] : s.pr > .2 ? [100, 145, 210] : s.cl > 75 ? [165, 174, 190] : [236, 243, 250], q = p * 4;
+      im.data[q] = rgb[0]; im.data[q + 1] = rgb[1]; im.data[q + 2] = rgb[2]; im.data[q + 3] = Math.min(.4, Math.pow(s.cl / 100, 1.3) * .4) * 255;
+    }
+    hx.putImageData(im, 0, 0); AM.field = F; AM.parts = []; AM.puffs = []; AM.drops = [];
+  }
+  const fi = (F, x, y) => Math.max(0, Math.min(F.rows - 1, (y / CELL) | 0)) * F.cols + Math.max(0, Math.min(F.cols - 1, (x / CELL) | 0));
+  function sprites() {
+    if (AM.spr) return AM.spr; const o = {};
+    ["w:245,248,252", "g:186,195,208", "d:88,99,120", "r:96,140,214", "s:66,58,104"].forEach(t => {
+      const [k, rgb] = t.split(":"), c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
+      [[64, 64, 52], [40, 72, 34], [88, 70, 36], [56, 44, 32], [78, 48, 30], [30, 58, 24], [98, 56, 24]].forEach(b => { const g = x.createRadialGradient(b[0], b[1], 0, b[0], b[1], b[2]); g.addColorStop(0, "rgba(" + rgb + ",.55)"); g.addColorStop(.6, "rgba(" + rgb + ",.22)"); g.addColorStop(1, "rgba(" + rgb + ",0)"); x.fillStyle = g; x.fillRect(0, 0, 128, 128); });
+      o[k] = c;
+    }); return AM.spr = o;
+  }
+  function spawnPuff(F, p) {
+    let x = 0, y = 0, i = 0;
+    for (let t = 0; t < 14; t++) { x = Math.random() * F.W; y = Math.random() * F.H; i = fi(F, x, y); if (Math.random() < Math.pow(F.cl[i] / 100, 1.1) + .01) break; }
+    p = p || {}; p.x = x; p.y = y; p.s = 70 + Math.random() * 110; p.ph = Math.random() * 6.28; p.v = .6 + Math.random() * .8; p.life = 500 + Math.random() * 600; p.age = Math.random() * p.life * (p.fresh ? 0 : 1); p.fresh = 1; return p;
+  }
+  function drawClouds(ts, k) {
+    const c = AM.cvC, F = AM.field, x = c.getContext("2d"), W = c.width, H = c.height, S_ = sprites(); x.clearRect(0, 0, W, H);
+    x.imageSmoothingEnabled = true; x.globalAlpha = .82 + .18 * Math.sin(ts / 2600); x.drawImage(AM.hz, -CELL / 2, -CELL / 2, F.cols * CELL, F.rows * CELL); x.globalAlpha = 1;
+    const N = Math.max(60, Math.min(280, (W * H / 7000) | 0)); while (AM.puffs.length < N) AM.puffs.push(spawnPuff(F)); if (AM.puffs.length > N) AM.puffs.length = N;
+    AM.puffs.forEach(p => {
+      let i = fi(F, p.x, p.y); p.age += k; p.x += F.dx[i] * .028 * p.v * k; p.y += F.dy[i] * .028 * p.v * k; i = fi(F, p.x, p.y);
+      if (p.age > p.life || p.x < -150 || p.y < -150 || p.x > W + 150 || p.y > H + 150) { spawnPuff(F, p); p.age = 0; return; }
+      const cl = F.cl[i], pr = F.pr[i], cp = F.cape[i], sp = (pr > 3 || (cp > 1500 && pr > .3)) ? (cp > 1500 ? S_.s : S_.d) : pr > .2 ? S_.r : cl > 75 ? S_.g : S_.w;
+      const fade = Math.sin(Math.PI * p.age / p.life), a = fade * (.14 + .55 * cl / 100) * (1 + .14 * Math.sin(ts / 900 + p.ph)), z = p.s * (1 + .09 * Math.sin(ts / 1300 + p.ph)) * (1 + .18 * p.age / p.life);
+      if (a < .02) return; x.globalAlpha = Math.min(.85, a); x.drawImage(sp, p.x - z / 2, p.y - z / 2, z, z);
+    });
+    x.globalAlpha = 1;
+    /* hujan jatuh miring (hanya di area berhujan) */
+    const RM = Math.min(700, (W * H / 2600) | 0); let tr = 40;
+    while (AM.drops.length < RM && tr--) { const dx = Math.random() * W, dy = Math.random() * H, pr = F.pr[fi(F, dx, dy)]; if (pr > .2 && Math.random() < Math.min(1, pr / 3)) AM.drops.push({ x: dx, y: dy, l: 6 + Math.min(10, pr * 2) + Math.random() * 4, v: 11 + Math.random() * 8 }); }
+    x.strokeStyle = "rgba(175,208,255,.62)"; x.lineWidth = 1.1; x.beginPath();
+    for (let q = AM.drops.length - 1; q >= 0; q--) {
+      const d = AM.drops[q], i = fi(F, d.x, d.y), vx = Math.max(-6, Math.min(6, F.dx[i] * .06));
+      if (F.pr[i] < .15 || d.y > H + 20 || d.x < -30 || d.x > W + 30) { AM.drops[q] = AM.drops[AM.drops.length - 1]; AM.drops.pop(); continue; }
+      x.moveTo(d.x, d.y); x.lineTo(d.x - vx * 1.3, d.y - d.l); d.x += vx * k; d.y += d.v * k;
+    } x.stroke();
+    /* kilat di sel badai (CAPE tinggi + hujan) */
+    if (Math.random() < .5 && AM.bolts.length < 4) { const bx = Math.random() * W, by = Math.random() * H, i = fi(F, bx, by); if (F.cape[i] > 1200 && F.pr[i] > .3 && Math.random() < .05) { const pts = [[bx, by - 100 - Math.random() * 60]]; for (let s = 0; s < 7; s++) { const l = pts[pts.length - 1]; pts.push([l[0] + (Math.random() - .5) * 36, l[1] + 24 + Math.random() * 12]); } AM.bolts.push({ pts, life: 14, x: bx, y: by - 40 }); } }
+    for (let q = AM.bolts.length - 1; q >= 0; q--) {
+      const b = AM.bolts[q]; b.life -= k; if (b.life <= 0) { AM.bolts.splice(q, 1); continue; }
+      const al = b.life / 14, g = x.createRadialGradient(b.x, b.y, 0, b.x, b.y, 190); g.addColorStop(0, "rgba(220,230,255," + (.3 * al).toFixed(2) + ")"); g.addColorStop(1, "rgba(220,230,255,0)"); x.fillStyle = g; x.fillRect(b.x - 190, b.y - 190, 380, 380);
+      if (((b.life | 0) % 4) !== 1) { x.strokeStyle = "rgba(255,255,235," + Math.min(1, al + .3).toFixed(2) + ")"; x.lineWidth = 2.2; x.shadowColor = "#c7d2fe"; x.shadowBlur = 12; x.beginPath(); b.pts.forEach((p, i) => i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])); x.stroke(); x.shadowBlur = 0; }
     }
   }
-  function loop() {
-    const c = AM.cvW, m = gmap(); if (!c || !AM.wind || !AM.grid) { AM.raf = 0; return; }
-    sizecv(); const x = c.getContext("2d"), W = c.width, H = c.height;
-    x.globalCompositeOperation = "destination-out"; x.fillStyle = "rgba(0,0,0,.08)"; x.fillRect(0, 0, W, H); x.globalCompositeOperation = "source-over";
-    while (AM.parts.length < 700) AM.parts.push({ x: Math.random() * W, y: Math.random() * H, a: Math.random() * 90 });
+  function drawWind(k) {
+    const c = AM.cvW, F = AM.field, x = c.getContext("2d"), W = c.width, H = c.height, K = .075;
+    x.globalCompositeOperation = "destination-out"; x.fillStyle = "rgba(0,0,0," + Math.min(.25, .09 * k).toFixed(3) + ")"; x.fillRect(0, 0, W, H); x.globalCompositeOperation = "source-over";
+    const N = Math.max(150, Math.min(1100, (W * H / 1800) | 0)); while (AM.parts.length < N) AM.parts.push({ x: Math.random() * W, y: Math.random() * H, a: Math.random() * 90, l: 60 + Math.random() * 80 }); if (AM.parts.length > N) AM.parts.length = N;
+    const seg = [[], [], [], [], []];
     AM.parts.forEach(p => {
-      const ll = m.containerPointToLatLng([p.x, p.y]), s = sample(ll.lat, ll.lng); if (!s) return;
-      const k = .035, nx = p.x + s.dx * k, ny = p.y + s.dy * k, col = s.sp > 50 ? "#f43f5e" : s.sp > 30 ? "#f97316" : s.sp > 15 ? "#facc15" : "#7dd3fc";
-      x.strokeStyle = col; x.lineWidth = 1.4; x.beginPath(); x.moveTo(p.x, p.y); x.lineTo(nx, ny); x.stroke(); p.x = nx; p.y = ny; p.a++;
-      if (p.a > 110 || nx < 0 || ny < 0 || nx > W || ny > H) { p.x = Math.random() * W; p.y = Math.random() * H; p.a = 0; }
+      const i = fi(F, p.x, p.y), nx = p.x + F.dx[i] * K * k, ny = p.y + F.dy[i] * K * k; seg[wcol(F.sp[i])].push(p.x, p.y, nx, ny); p.x = nx; p.y = ny; p.a += k;
+      if (p.a > p.l || nx < 0 || ny < 0 || nx > W || ny > H) { p.x = Math.random() * W; p.y = Math.random() * H; p.a = 0; }
     });
-    AM.raf = requestAnimationFrame(loop);
+    x.lineCap = "round"; seg.forEach((s, ci) => { if (!s.length) return; x.strokeStyle = WC[ci][1]; x.lineWidth = 1.1 + ci * .3; x.beginPath(); for (let q = 0; q < s.length; q += 4) { x.moveTo(s[q], s[q + 1]); x.lineTo(s[q + 2], s[q + 3]); } x.stroke(); });
   }
-  function onMove() { clearTimeout(AM.tm); AM.tm = setTimeout(() => { if (AM.wind || AM.cloud) { fetchGrid().then(() => { AM.parts = []; }); } }, 600); }
+  function frame(ts) {
+    AM.raf = 0; if (!(AM.wind || AM.cloud) || !AM.field || document.hidden) return;
+    const k = Math.min(3, (ts - (AM.last || ts)) / 16.7); AM.last = ts; sizecv();
+    if (AM.field.W !== AM.cvW.width || AM.field.H !== AM.cvW.height) buildField();
+    if (AM.cloud) drawClouds(ts, k); if (AM.wind) drawWind(k);
+    AM.raf = requestAnimationFrame(frame);
+  }
+  function startLoop() { if (!AM.raf && AM.field && (AM.wind || AM.cloud)) { AM.last = 0; AM.raf = requestAnimationFrame(frame); } }
+  /* ---------- analisis cerdas dari grid realtime ---------- */
+  function insight() {
+    const g = AM.grid; if (!g) return null; const V = g.v; let sx = 0, sy = 0, ss = 0, cl = 0, mx = -1, mi = 0, gm = 0, rn = 0, hv = 0, st = 0;
+    V.forEach((v, i) => { sx += v.dx; sy += v.dy; ss += v.sp; cl += v.cl; if (v.sp > mx) { mx = v.sp; mi = i; } gm = Math.max(gm, v.gu); if (v.pr > .2) rn++; if (v.pr > 3) hv++; if (v.cape > 1500 && v.pr > .3) st++; });
+    const n = V.length, dir = ((Math.atan2(-sx, sy) * 180 / Math.PI) + 360) % 360, bf = bfIdx(ss / n), adv = [];
+    if (gm >= 50) adv.push("⚠️ Hembusan ≥50 km/j: hentikan crane, kerja di ketinggian & drone di area itu."); if (st) adv.push("⛈️ Potensi badai petir: hindari kerja terbuka/alat tinggi, tunda pengecoran."); if (rn / n > .25) adv.push("🌧️ Hujan cukup luas: tunda pengaspalan (hot mix) & pengecoran beton."); if (!adv.length) adv.push("✅ Kondisi di area peta relatif mendukung pekerjaan lapangan.");
+    return { avg: ss / n, dir, bf, max: mx, mlat: g.lat[mi], mlng: g.lng[mi], gm, cl: cl / n, rn: Math.round(rn / n * 100), hv: Math.round(hv / n * 100), st, adv };
+  }
+  function insightHTML() {
+    const t = insight(); if (!t) return ""; return '<div class="pqk-lv"><span>💨 Rata-rata ' + Math.round(t.avg) + " km/j dari " + compass(t.dir) + " (BF " + t.bf + ")</span><span>maks " + Math.round(t.max) + "</span></div>" +
+      '<div class="pqk-lv"><span>☁️ Tutupan awan rata-rata</span><span>' + Math.round(t.cl) + '%</span></div><div class="pqk-lv"><span>🌧️ Area berhujan / lebat</span><span>' + t.rn + "% / " + t.hv + '%</span></div><div class="pqk-lv"><span>⚡ Titik sel badai petir</span><span>' + t.st + "</span></div>" +
+      '<div class="pqk-mini" style="margin-top:6px">' + t.adv.map(esc).join("<br>") + "</div>";
+  }
+  /* ---------- legenda ---------- */
+  function lgCss() {
+    if ($("pqkLgCss")) return; const s = document.createElement("style"); s.id = "pqkLgCss";
+    s.textContent = "#pqkLg{margin-top:9px;padding-top:8px;border-top:1px solid rgba(148,178,204,.22)}#pqkLg b{display:block;margin:7px 0 3px;font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:#8fa6bd}#pqkLg b:first-child{margin-top:0}#pqkLg .g{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}#pqkLg .r{display:flex;align-items:center;gap:7px;font-size:11px;color:#c4d3e3;line-height:1.2}#pqkLg .r i{width:22px;height:8px;border-radius:4px;flex:none;box-shadow:0 0 0 1px #0006}#pqkLg .r i.c{height:12px;border-radius:50%}#pqkLg small{display:block;margin-top:5px;color:#8fa6bd;font-size:10px;line-height:1.35}#pqkHov{position:fixed;z-index:1400;pointer-events:none;display:none;background:#0a0e17ee;color:#e6f1fb;border:1px solid #94b2cc55;border-radius:8px;padding:5px 9px;font:600 11.5px system-ui,sans-serif;white-space:nowrap;box-shadow:0 6px 18px #0008}";
+    document.head.appendChild(s);
+  }
+  function lg() {
+    const box = $("legend"); if (!box) return; let d = $("pqkLg");
+    if (!(AM.wind || AM.cloud)) { if (d) d.remove(); return; }
+    lgCss(); if (!d) { d = document.createElement("div"); d.id = "pqkLg"; } if (d.parentNode !== box) box.appendChild(d);
+    let h = "";
+    if (AM.wind) h += "<b>💨 Angin (km/j, arah = aliran partikel)</b><div class='g'>" + WC.map(w => "<div class='r'><i style='background:" + w[1] + "'></i><span>" + w[2] + " · " + w[3] + "</span></div>").join("") + "</div>";
+    if (AM.cloud) h += "<b>☁️ Awan, hujan & petir</b><div class='g'>" +
+      "<div class='r'><i class='c' style='background:radial-gradient(#f5f8fcdd,#f5f8fc00 70%)'></i><span>Putih tipis · awan sedikit (&lt;30%)</span></div>" +
+      "<div class='r'><i class='c' style='background:radial-gradient(#bac3d0,#bac3d000 70%)'></i><span>Abu terang · berawan</span></div>" +
+      "<div class='r'><i class='c' style='background:radial-gradient(#586378,#58637800 70%)'></i><span>Abu gelap · mendung tebal</span></div>" +
+      "<div class='r'><i class='c' style='background:radial-gradient(#608cd6,#608cd600 70%)'></i><span>Biru · hujan ringan–sedang</span></div>" +
+      "<div class='r'><i class='c' style='background:radial-gradient(#403a68,#403a6800 70%)'></i><span>Ungu gelap · sel badai</span></div>" +
+      "<div class='r'><i style='background:linear-gradient(100deg,#0000 30%,#afd0ff 30%,#afd0ff 45%,#0000 45%,#0000 60%,#afd0ff 60%,#afd0ff 75%,#0000 75%)'></i><span>Garis miring · hujan jatuh</span></div></div>" +
+      "<div class='r' style='margin-top:4px'><span style='font-size:13px;width:22px;text-align:center'>⚡</span><span>Kilat = CAPE tinggi + hujan (potensi badai petir)</span></div>";
+    h += "<small>Open-Meteo realtime · " + NX * NY + " titik · diperbarui " + (AM.upd ? hhmm(AM.upd) + " (" + Math.max(0, Math.round((Date.now() - AM.upd) / 60000)) + " mnt lalu)" : "…") + " · auto 10 mnt. Kursor di peta = nilai lokal.</small>";
+    d.innerHTML = h;
+  }
+  function status() {
+    const o = $("pqkAm"); if (o) o.textContent = (AM.wind ? "💨 Angin " : "") + (AM.cloud ? "☁️ Awan " : "") + (AM.grid ? "• " + NX * NY + " titik • diperbarui " + hhmm(AM.upd) + " • auto-refresh 10 mnt" : "");
+    const n = $("pqkIn"); if (n) n.innerHTML = insightHTML(); lg();
+    document.querySelectorAll("#pqkPanel [data-am]").forEach(e => e.style.opacity = (e.dataset.am === "wind" ? AM.wind : AM.cloud) ? 1 : .6);
+  }
+  /* ---------- kursor: baca nilai lokal tanpa request ---------- */
+  function hov(e) {
+    const h = $("pqkHov"); if (!h) return; const F = AM.field;
+    if (!F || !(AM.wind || AM.cloud) || (e.target && e.target.closest && e.target.closest(".leaflet-control,#legend,#pqkPanel,#pqFolder"))) { h.style.display = "none"; return; }
+    const r = gmap().getContainer().getBoundingClientRect(), i = fi(F, e.clientX - r.left, e.clientY - r.top), sp = F.sp[i], d = ((Math.atan2(-F.dx[i], F.dy[i]) * 180 / Math.PI) + 360) % 360;
+    h.textContent = (AM.wind ? "💨 " + Math.round(sp) + " km/j dari " + compass(d) + " · " : "") + (AM.cloud ? "☁️ " + Math.round(F.cl[i]) + "% · 🌧️ " + F.pr[i].toFixed(1) + " mm/j" + (F.cape[i] > 1500 && F.pr[i] > .3 ? " ⚡" : "") : "");
+    h.style.display = "block"; h.style.left = Math.min(innerWidth - 230, e.clientX + 14) + "px"; h.style.top = (e.clientY + 16) + "px";
+  }
+  function tick() {
+    if (!(AM.wind || AM.cloud)) return; if (!document.hidden && Date.now() - AM.upd > REFRESH) fetchGrid(); else status();
+  }
+  function needRefetch() {
+    const m = gmap(), g = AM.grid; if (!g) return true; return !g.b.contains(m.getBounds()) || Math.abs(m.getZoom() - AM.zoom) >= 1;
+  }
+  function onMove() {
+    if (AM.grid) buildField(); clearTimeout(AM.tm);
+    AM.tm = setTimeout(() => { if ((AM.wind || AM.cloud) && needRefetch()) fetchGrid(); }, 700);
+  }
   function animToggle(k) {
     const m = gmap(); if (!m) return say("Peta belum siap");
-    if (k === "off") { AM.wind = AM.cloud = false; }
-    else AM[k] = !AM[k];
-    if (!AM.cvW) { AM.cvW = mkcv(451); AM.cvC = mkcv(449); m.on("moveend", onMove); }
-    if (!AM.wind) AM.cvW.getContext("2d").clearRect(0, 0, AM.cvW.width, AM.cvW.height);
-    sizecv(); AM.cloud || drawCloud(); status();
-    if (AM.wind || AM.cloud) { (AM.grid ? Promise.resolve() : fetchGrid()).then(() => { drawCloud(); if (AM.wind && !AM.raf) AM.raf = requestAnimationFrame(loop); }); }
-    const b = document.querySelectorAll("#pqkPanel [data-am]"); b.forEach(e => e.style.opacity = (e.dataset.am === "wind" ? AM.wind : AM.cloud) ? 1 : .6);
+    if (k === "off") { AM.wind = AM.cloud = false; } else AM[k] = !AM[k];
+    if (!AM.cvW) { AM.cvC = mkcv(449); AM.cvW = mkcv(451); m.on("moveend", onMove); m.on("resize", onMove); document.addEventListener("visibilitychange", () => { if (!document.hidden && (AM.wind || AM.cloud)) { Date.now() - AM.upd > REFRESH ? fetchGrid() : startLoop(); } }); const c = m.getContainer(); c.addEventListener("mousemove", hov); c.addEventListener("mouseleave", () => { const h = $("pqkHov"); if (h) h.style.display = "none"; }); lgCss(); const h = document.createElement("div"); h.id = "pqkHov"; document.body.appendChild(h); }
+    sizecv(); if (!AM.wind) AM.cvW.getContext("2d").clearRect(0, 0, AM.cvW.width, AM.cvW.height); if (!AM.cloud) AM.cvC.getContext("2d").clearRect(0, 0, AM.cvC.width, AM.cvC.height);
+    AM.parts = []; AM.puffs = []; AM.drops = []; AM.bolts = [];
+    clearInterval(AM.iv); if (AM.wind || AM.cloud) { AM.iv = setInterval(tick, 15000); if (AM.grid && !needRefetch() && Date.now() - AM.upd < REFRESH) { buildField(); startLoop(); } else fetchGrid(); } else { cancelAnimationFrame(AM.raf); AM.raf = 0; const h = $("pqkHov"); if (h) h.style.display = "none"; }
+    status(); say(k === "off" ? "Animasi cuaca dimatikan" : (k === "wind" ? "Angin" : "Awan") + (AM[k] ? " realtime aktif" : " dimatikan"));
   }
+  function refreshNow() { if (AM.wind || AM.cloud) { fetchGrid(); say("Menyegarkan data realtime…"); } else say("Aktifkan Angin atau Awan dulu"); }
   function open() { if (!P) build(); P.style.display = "flex"; render(); }
   function init() {
     const b = document.createElement("button"); b.id = "pqkBtn"; b.innerHTML = '<i class="fa-solid fa-cloud-sun-rain"></i>'; b.title = "Atlas Langit & Iklim (awan, angin, ENSO)"; b.onclick = () => (P && P.style.display === "flex") ? (P.style.display = "none") : open();
@@ -373,7 +491,14 @@
     typeof PQ_DOCK !== "undefined" ? put() : setTimeout(put, 1000);
   }
   window.PETAQU_KLIMAT = {
-    open, _live: live, _am: animToggle, _bf: bfHTML,
+    open, _live: live, _am: animToggle, _now: refreshNow,
+    isOn: () => AM.wind || AM.cloud,
+    rows: () => [
+      { id: "angin", name: "Angin (animasi realtime)", ic: "\uf72e", c: "#7dd3fc", on: AM.wind },
+      { id: "awan", name: "Awan, hujan & petir (animasi realtime)", ic: "\uf0c2", c: "#e2e8f0", on: AM.cloud },
+      { id: "enso", name: "ENSO, musim & atlas iklim", ic: "\uf0ac", c: "#a78bfa", on: !!(P && P.style.display === "flex" && S.tab === "enso") }
+    ],
+    act: id => { if (id === "angin") animToggle("wind"); else if (id === "awan") animToggle("cloud"); else if (id === "enso") { S.tab = "enso"; save(); open(); } }, _bf: bfHTML,
     _e: v => { S.enso = v; save(); render(); }, _i: v => { S.iod = v; save(); render(); },
     _w: i => { if (i < 0) wzA = []; else wzA.push(WZ[wzA.length][i + 1][1]); const d = $("pqkWz"); if (d) d.innerHTML = wizardHTML(); },
     _f: q => { q = (q || "").toLowerCase(); document.querySelectorAll("#pqkBody .pqk-it").forEach(e => e.style.display = e.textContent.toLowerCase().includes(q) ? "" : "none"); },

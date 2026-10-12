@@ -62,7 +62,7 @@
   function dockItems() {
     var d = $("pqDock");
     var n = d && d.children[1];
-    return n ? Array.prototype.filter.call(n.children, function (a) { return a.tagName === "BUTTON"; }) : [];
+    return n ? Array.prototype.filter.call(n.children, function (a) { return a.tagName === "BUTTON" && a.id !== "pqkBtn" && a.id !== "pqgBtn"; }) : [];
   }
 
   function jtParts() {
@@ -114,7 +114,9 @@
 
     var W = [];
     try { if (window.PETAQU_CUACA && PETAQU_CUACA.rows) W = PETAQU_CUACA.rows(); } catch (e) { W = []; }
+    try { if (window.PETAQU_KLIMAT && PETAQU_KLIMAT.rows) W = W.concat(PETAQU_KLIMAT.rows()); } catch (e) { }
     var Z = []; try { if (window.PETAQU_RAWAN && PETAQU_RAWAN.rows) Z = PETAQU_RAWAN.rows(); } catch (e) { Z = []; }
+    try { if (window.PETAQU_GEMPA && PETAQU_GEMPA.rows) Z = Z.concat(PETAQU_GEMPA.rows()); } catch (e) { }
     var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
     sig = s;
@@ -190,11 +192,13 @@
     } else if (k.charAt(0) === "W") {
       closePanels();
       closeJt();
-      try { PETAQU_CUACA.act(k.slice(2)); } catch (e) { }
+      var wid = k.slice(2);
+      try { if (wid === "angin" || wid === "awan" || wid === "enso") PETAQU_KLIMAT.act(wid); else PETAQU_CUACA.act(wid); } catch (e) { }
     } else if (k.charAt(0) === "Z") {
       closePanels();
       closeJt();
-      try { PETAQU_RAWAN.act(k.slice(2)); } catch (e) { }
+      var zid = k.slice(2);
+      try { if (zid === "gempatsunami") PETAQU_GEMPA.act(); else PETAQU_RAWAN.act(zid); } catch (e) { }
     } else if (k === "B") {
       closePanels();
       try { PETAQU_BLOK.open(); } catch (e) { }

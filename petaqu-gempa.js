@@ -308,10 +308,11 @@
 
   function init() {
     try { BASEMAPS.push({ id: "ring_of_fire", icon: "\u{1F30B}", label: "Ring of Fire (Cincin Api)", url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd", attribution: "&copy; OpenStreetMap &copy; CARTO" } }); renderBasemapList(); const o = window.switchBasemap; window.switchBasemap = function (e) { const r = o.apply(this, arguments); try { rof(e === "ring_of_fire"); } catch (x) { } return r; }; if (typeof currentBaseId !== "undefined" && currentBaseId === "ring_of_fire") rof(true); } catch (e) { console.warn("Basemap Ring of Fire gagal:", e); }
-    const b = document.createElement("button"); b.innerHTML = '<i class="fa-solid fa-water"></i>'; b.title = "Gempa & potensi tsunami"; b.onclick = open;
+    const b = document.createElement("button"); b.innerHTML = '<i class="fa-solid fa-water"></i>'; b.id = "pqgBtn"; b.title = "Gempa & potensi tsunami"; b.onclick = open;
     const put = () => { try { PQ_DOCK.adopt(b, "Gempa & Tsunami"); } catch (e) { b.style.cssText = "position:fixed;left:10px;bottom:220px;z-index:900"; document.body.append(b); } };
     typeof PQ_DOCK !== "undefined" ? put() : setTimeout(put, 900);
   }
-  window.PETAQU_GEMPA = { open, close, _loc: e => { locate(e); return e; }, _assess: assess };
+  const gOn = () => { try { return !!(P && P.style.display && P.style.display !== "none"); } catch (e) { return false; } };
+  window.PETAQU_GEMPA = { open, close, isOn: gOn, rows: () => [{ id: "gempatsunami", name: "Gempa & potensi tsunami (BMKG)", ic: "\uf773", c: "#38bdf8", on: gOn() }], act: () => { gOn() ? close() : open(); }, _loc: e => { locate(e); return e; }, _assess: assess };
   if (typeof document !== "undefined" && document.readyState !== undefined) document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init();
 })();
