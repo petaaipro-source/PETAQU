@@ -33,7 +33,65 @@ body.sidebar-collapsed #sidebarCollapseBtn{width:24px;height:68px;color:var(--cy
 #pqLoginCv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #pqLoginVig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 46%,transparent 40%,#020a10cc 100%)}
 #loginScreen .login-card{z-index:1}
-</style><div id="loginScreen"><canvas id="pqLoginCv" aria-hidden="true"></canvas><div id="pqLoginVig" aria-hidden="true"></div><script>(function(){
+</style><style id="pq-login-card">
+/* Kartu login ala AIBOOK — hanya tampilan; ID, tombol & logika tidak berubah */
+#loginScreen{padding:60px 18px 28px;font-family:var(--display,"Space Grotesk","Inter",system-ui,sans-serif)}
+#loginScreen .login-card{max-width:410px;padding:26px 24px 20px;border-radius:22px;background:linear-gradient(170deg,#0d2c3fe8,#08202fee);border:1px solid #3be6ff2e;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:0 30px 80px #000a,0 0 0 1px #ffffff08 inset,0 0 70px #3be6ff14;transform:perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .15s ease-out;animation:loginIn .7s cubic-bezier(.2,.9,.3,1) backwards}
+#loginScreen .login-card.shake{animation:loginShake .42s}
+#loginScreen .login-card:before{content:"";position:absolute;left:24px;right:24px;top:-1px;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,#3be6ff,#19c8b9,transparent);animation:pqLcTop 3.6s ease-in-out infinite}
+@keyframes pqLcTop{0%,100%{opacity:.35;transform:scaleX(.5)}50%{opacity:1;transform:scaleX(1)}}
+/* judul + pill "Area Terbatas" */
+#loginScreen .login-title{font-size:20px;letter-spacing:.2em}
+#loginScreen .login-sub{display:flex;width:max-content;max-width:100%;align-items:center;gap:8px;margin:6px auto 22px;padding:4px 11px;border:1px solid #ffc24744;border-radius:999px;background:#ffc2470f;color:#ffc247;font:600 10.5px var(--mono,ui-monospace,monospace);letter-spacing:.18em}
+#loginScreen .login-sub:before{content:"";width:6px;height:6px;border-radius:50%;background:#ffc247;box-shadow:0 0 8px #ffc247}
+/* input */
+#loginScreen .login-field label{font:600 12.5px var(--display,system-ui,sans-serif);letter-spacing:.04em;text-transform:none;color:#b6d3df;margin-bottom:7px}
+#loginScreen .login-input-wrap i{left:15px;font-size:15px;transition:color .2s}
+#loginScreen .login-input-wrap:focus-within i{color:#3be6ff}
+#loginScreen .login-input-wrap input{padding:14px 44px 14px 42px;border:1px solid #3be6ff2e;border-radius:14px;background:#04141f99;color:#e8f7fb;font:500 15px var(--display,system-ui,sans-serif);transition:border-color .2s,box-shadow .2s,background .2s}
+#loginScreen .login-input-wrap input::placeholder{color:#4a6b7b}
+#loginScreen .login-input-wrap input:focus{border-color:#3be6ff;background:#05192799;box-shadow:0 0 0 4px #3be6ff1f,0 0 26px #3be6ff26}
+#loginScreen .login-toggle-eye:hover{color:#3be6ff}
+#loginScreen .login-error{border-radius:12px;font:500 12.5px/1.5 var(--mono,ui-monospace,monospace);background:#ff6b8a14;border-color:#ff6b8a59;color:#ff6b8a}
+/* tombol utama */
+#loginScreen .login-btn{padding:15px;border-radius:14px;background:linear-gradient(120deg,#19c8b9,#3be6ff);color:#032029;font:700 16px var(--display,system-ui,sans-serif);letter-spacing:.04em;box-shadow:0 10px 28px #19c8b955,0 0 0 1px #ffffff22 inset;transition:transform .15s,box-shadow .15s}
+#loginScreen .login-btn:hover{filter:none;transform:translateY(-2px);box-shadow:0 14px 34px #3be6ff66}
+#loginScreen .login-btn:active{transform:translateY(1px)}
+#loginScreen .login-btn:after{background:linear-gradient(100deg,transparent,#ffffff77,transparent)}
+/* Google (warna putih tetap, sesuai pedoman merek) */
+#loginScreen #loginGoogle{padding:14px!important;border-radius:14px!important;border:1px solid #ffffff55!important;box-shadow:0 10px 26px #0006;font-family:var(--display,system-ui,sans-serif)!important;font-size:15px!important;transition:transform .15s,box-shadow .15s}
+#loginScreen #loginGoogle:hover{transform:translateY(-2px);box-shadow:0 14px 32px #3be6ff40}
+#loginScreen #loginGoogle:active{transform:translateY(1px)}
+/* tombol sekunder: masuk email/username, coba gratis, daftar, QRIS */
+#loginScreen #pqLoginAlt{margin-top:12px}
+#loginScreen #pqLoginAlt button{width:100%;padding:11px;border:1px solid #3be6ff2e;border-radius:14px;background:#ffffff08;color:#e8f7fb;font:600 13.5px var(--display,system-ui,sans-serif);text-decoration:none;transition:border-color .2s,color .2s}
+#loginScreen #pqLoginAlt button:hover{border-color:#3be6ff;color:#3be6ff}
+#loginScreen #pqTrialBtn{padding:12px!important;border-radius:14px!important;border:1px solid #3be6ff66!important;background:#3be6ff0d!important;font-family:var(--display,system-ui,sans-serif)!important}
+#loginScreen #pqDaftarEntry button.pqd-open{padding:12px;border-radius:14px;border:1px dashed #3be6ff77;background:#3be6ff0a;color:#3be6ff;font:700 14px var(--display,system-ui,sans-serif);transition:border-color .2s,background .2s,transform .15s}
+#loginScreen #pqDaftarEntry button.pqd-open:hover{border-style:solid;border-color:#3be6ff;background:#3be6ff14;transform:translateY(-1px)}
+#loginScreen #pqQrisIco{border:1px solid #3be6ff2e;border-radius:999px;background:#ffffff08;color:#e8f7fb;font:600 12px var(--display,system-ui,sans-serif);transition:border-color .2s}
+#loginScreen #pqQrisIco:hover{border-color:#3be6ff}
+/* footer */
+#loginScreen .login-foot{justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px solid #3be6ff1c;font-size:12px;letter-spacing:0;color:#7fa3b3}
+#loginScreen .login-foot i{display:none}
+#loginScreen .login-foot:before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#4dffb8;box-shadow:0 0 10px #4dffb8;animation:pqLcBl 1.8s ease-in-out infinite}
+#loginScreen .login-foot{justify-content:flex-start;gap:8px}
+@keyframes pqLcBl{50%{opacity:.35}}
+/* HUD atas */
+#pqLoginHud{position:absolute;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:2;display:flex;justify-content:space-between;padding:14px 20px;font:500 11px var(--mono,ui-monospace,monospace);letter-spacing:.14em;color:#7fa3b3;pointer-events:none}
+#pqLoginHud b{color:#3be6ff;font-weight:500}
+#pqLoginHud i{display:inline-block;width:7px;height:7px;margin-right:8px;border-radius:50%;background:#4dffb8;box-shadow:0 0 10px #4dffb8;animation:pqLcBl 1.8s ease-in-out infinite}
+@media(max-width:380px){#loginScreen .login-card{padding:22px 18px 18px}}
+@media(prefers-reduced-motion:reduce){#loginScreen .login-card,#loginScreen .login-card:before,#loginScreen .login-foot:before,#pqLoginHud i{animation:none!important;transition:none!important}}
+</style><div id="loginScreen"><canvas id="pqLoginCv" aria-hidden="true"></canvas><div id="pqLoginVig" aria-hidden="true"></div><div id="pqLoginHud" aria-hidden="true"><span><i></i>PETAQU <b>PETA RUAS</b></span><span id="pqLoginClk">--:--:--</span></div><script>(function(){
+var scr=document.getElementById("loginScreen"),clk=document.getElementById("pqLoginClk"),card=document.getElementById("loginCard"),iv=0;if(!scr)return;
+var pad=function(n){return String(n).padStart(2,"0")};
+function tick(){var d=new Date();if(clk)clk.textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds())}
+function sync(){clearInterval(iv);iv=0;if(scr.classList.contains("hide"))return;tick();iv=setInterval(tick,1000)}
+new MutationObserver(sync).observe(scr,{attributes:true,attributeFilter:["class"]});sync();
+if(card&&matchMedia("(pointer:fine)").matches&&!matchMedia("(prefers-reduced-motion:reduce)").matches){
+ addEventListener("pointermove",function(e){if(scr.classList.contains("hide"))return;var r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;card.style.setProperty("--ry",(x*4).toFixed(2)+"deg");card.style.setProperty("--rx",(-y*4).toFixed(2)+"deg")})}
+})()</script><script>(function(){
 var scr=document.getElementById("loginScreen"),cv=document.getElementById("pqLoginCv");if(!scr||!cv||!cv.getContext)return;
 var x=cv.getContext("2d"),rm=matchMedia("(prefers-reduced-motion:reduce)").matches,W=0,H=0,R=[],raf=0,seed=7;
 var rnd=function(){return(seed=(seed*16807)%2147483647)/2147483647};
