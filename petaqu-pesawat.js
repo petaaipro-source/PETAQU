@@ -6,7 +6,7 @@
 (function () {
   "use strict";
   if (window.__pqPesawat) return; window.__pqPesawat = 1;
-  const KEY = "petaqu_pesawat_v1";
+  const KEY = "petaqu_pesawat_v2";
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const gmap = () => { try { return typeof map !== "undefined" ? map : window.map; } catch (e) { return window.map; } };
@@ -193,8 +193,8 @@ MLG-DPS IW`;
   const CO2 = d => d * 0.1;            // kg/penumpang (indikatif)
 
   /* ===================== STATE ===================== */
-  let S = { on: { ap: true, rt: true, sim: false, live: false, wx: false, hub: false, ring: false, mer: false, lbl: true }, al: Object.keys(AL).concat(["_"]), kls: ["H", "I", "D", "P"], minD: 0, tab: "lapis", from: "CGK", to: "UPG", sel: "CGK" };
-  try { const o = JSON.parse(localStorage.getItem(KEY) || "null"); if (o) { Object.assign(S, o); S.on = Object.assign({ ap: true, rt: true, sim: false, live: false, wx: false, hub: false, ring: false, mer: false, lbl: true }, o.on || {}); S.sim = undefined; } } catch (e) { }
+  let S = { on: { ap: false, rt: false, sim: false, live: false, wx: false, hub: false, ring: false, mer: false, lbl: true }, al: Object.keys(AL).concat(["_"]), kls: ["H", "I", "D", "P"], minD: 0, tab: "lapis", from: "CGK", to: "UPG", sel: "CGK" };
+  try { const o = JSON.parse(localStorage.getItem(KEY) || "null"); if (o) { Object.assign(S, o); S.on = Object.assign({ ap: false, rt: false, sim: false, live: false, wx: false, hub: false, ring: false, mer: false, lbl: true }, o.on || {}); S.sim = undefined; } } catch (e) { }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
   let P = null, G = {}, WX = {}, WXT = 0, planes = [], raf = 0, lastF = 0, liveT = 0, liveM = [], hl = null, status = "";
   const say = t => { status = t; const s = $("pqwSt"); if (s) s.textContent = t; };
