@@ -117,7 +117,8 @@
     try { if (window.PETAQU_KLIMAT && PETAQU_KLIMAT.rows) W = W.concat(PETAQU_KLIMAT.rows()); } catch (e) { }
     var Z = []; try { if (window.PETAQU_RAWAN && PETAQU_RAWAN.rows) Z = PETAQU_RAWAN.rows(); } catch (e) { Z = []; }
     try { if (window.PETAQU_GEMPA && PETAQU_GEMPA.rows) Z = Z.concat(PETAQU_GEMPA.rows()); } catch (e) { }
-    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, D.map(function (d) { return d.t; })]);
+    var N = []; try { if (window.PETAQU_DRAINASE && PETAQU_DRAINASE.rows) N = PETAQU_DRAINASE.rows(); } catch (e) { }
+    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, N, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
     sig = s;
 
@@ -164,6 +165,15 @@
           (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
       });
     }
+    if (N.length) {
+      h += '<div class="pqf-h">Drainase</div>';
+      N.forEach(function (x) {
+        h += '<button type="button" class="pqf-row" data-k="N:' + x.id + '" style="--c:' + x.c + '">' +
+          '<span class="pqf-ic"><i class="pq-fi">' + x.ic + "</i></span>" +
+          '<span class="pqf-t">' + esc(x.name) + "</span>" +
+          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
+      });
+    }
     if (D.length) {
       h += '<div class="pqf-h">Alat PETAQU</div>';
       D.forEach(function (d, i) {
@@ -199,6 +209,10 @@
       closeJt();
       var zid = k.slice(2);
       try { if (zid === "gempatsunami") PETAQU_GEMPA.act(); else PETAQU_RAWAN.act(zid); } catch (e) { }
+    } else if (k.charAt(0) === "N") {
+      closePanels();
+      closeJt();
+      try { PETAQU_DRAINASE.act(k.slice(2)); } catch (e) { }
     } else if (k === "B") {
       closePanels();
       try { PETAQU_BLOK.open(); } catch (e) { }
