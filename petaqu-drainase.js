@@ -177,6 +177,7 @@
     DRAW = null; if (!silent) render();
   }
   function onClick(e) {
+    if (TR.armed) { armTrace(false); trace(e.latlng); return; }
     if (!DRAW) return; const m = getMap(), q = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)];
     if (!DRAW.line) { const k = DRAW.kind; stopDraw(true); addItem({ id: uid(), k, name: "", ll: q, p: Object.assign({}, DEF[k]) }); return; }
     DRAW.pts.push(q);
@@ -230,7 +231,7 @@
     if (DRAW) h += '<div class="rep" style="border-color:#38bdf8"><b>Mode gambar: ' + KIND[DRAW.kind].n + '</b>' + (DRAW.line ? '<p>' + DRAW.pts.length + ' titik — klik searah aliran air.</p><div class="g"><button class="b pri" data-a="finish"><i class="fa-solid fa-check"></i> Selesai</button><button class="b" data-a="undo"><i class="fa-solid fa-rotate-left"></i> Undo titik</button></div>' : '<p>Klik peta untuk menempatkan.</p>') + '<button class="b" style="margin-top:6px;width:100%" data-a="cancel"><i class="fa-solid fa-ban"></i> Batalkan</button></div>';
     h += '<div class="sec">Tambah aset (klik di peta)</div><div class="g">' + Object.keys(KIND).map(k => '<button class="b" style="--c:' + KIND[k].c + '" data-a="add:' + k + '"><i class="fa-solid ' + KIND[k].ic + '"></i>' + KIND[k].n + '</button>').join("") + '</div>';
     h += '<div class="sec">Simulasi hujan</div><label>Intensitas: <b id="dnIv">' + pref.i + '</b> mm/jam <small>(10 gerimis • 50 lebat • 100+ ekstrem)</small></label><input type="range" id="dnI" min="10" max="250" step="5" value="' + pref.i + '"><div class="g" style="margin-top:6px"><button class="b" data-a="live"><i class="fa-solid fa-cloud-showers-heavy" style="--c:#38bdf8"></i> Hujan live area peta</button><button class="b" data-a="toggle"><i class="fa-solid ' + (pref.on ? "fa-eye" : "fa-eye-slash") + '"></i> Lapisan ' + (pref.on ? "ON" : "OFF") + '</button></div>';
-    h += '<div class="sec">Analisis cerdas</div><div class="g"><button class="b pri" data-a="analisis" style="grid-column:1/-1"><i class="fa-solid fa-wand-magic-sparkles" style="color:#fff"></i> Analisis semua aset</button><button class="b" data-a="genang"><i class="fa-solid fa-water" style="--c:#f97316"></i> Cari titik genangan</button><button class="b" data-a="cover"><i class="fa-solid fa-road" style="--c:#34d399"></i> Cakupan per ruas</button></div>';
+    h += '<div class="sec">Analisis cerdas</div><div class="g"><button class="b pri" data-a="analisis" style="grid-column:1/-1"><i class="fa-solid fa-wand-magic-sparkles" style="color:#fff"></i> Analisis semua aset</button><button class="b" data-a="genang"><i class="fa-solid fa-water" style="--c:#f97316"></i> Cari titik genangan</button><button class="b" data-a="cover"><i class="fa-solid fa-road" style="--c:#34d399"></i> Cakupan per ruas</button><button class="b" data-a="trace" style="grid-column:1/-1"><i class="fa-solid fa-route" style="--c:#0ea5e9"></i> Telusur aliran air (klik titik di peta)</button></div>';
     if (extra) h += '<div class="rep">' + extra + '</div>';
     h += '<div class="sec">Daftar aset (' + DB.length + ')</div>';
     h += DB.length ? DB.map(it => { const i = info(it); return '<div class="it" data-a="go:' + it.id + '" style="--c:' + i.c + '"><span class="dot"></span><b>' + esc(it.name) + '</b><em>' + esc(i.s) + '</em></div>'; }).join("") : '<small>Belum ada aset. Tambahkan lewat tombol di atas.</small>';
@@ -251,6 +252,9 @@
     else if (a === "analisis") analisis();
     else if (a === "genang") genangan();
     else if (a === "cover") cover();
+    else if (a === "trace") armTrace(!TR.armed);
+    else if (a === "traceclr") { if (TR.lg && m) m.removeLayer(TR.lg); TR.last = null; extra = null; render(); }
+    else if (a === "trace2sal") { const r = TR.last; if (r && r.pts.length > 1) { let p = r.pts.filter((q, i) => i % 3 === 0 || i === r.pts.length - 1); if (TR.lg && m) m.removeLayer(TR.lg); extra = null; addItem({ id: uid(), k: "saluran", pts: p, z: [r.zs[0], r.zs[r.zs.length - 1]], p: Object.assign({}, DEF.saluran) }); } }
     else if (a.startsWith("go:")) go(a.slice(3));
     else if (a === "saveform") saveForm();
     else if (a === "cancelform") { view = "list"; render(); }
@@ -350,6 +354,45 @@
     render(); m && m.closePopup();
   }
 
+  /* ---------- telusur aliran air (steepest descent pada DEM) ---------- */
+  let TR = { armed: false, last: null, lg: null };
+  const NG = 7, SP = 40;
+  async function flowPath(start, elevFn, maxSteps) {
+    maxSteps = maxSteps || 120; const k = Math.cos(start[0] * Math.PI / 180), dLa = SP / 110540, dLn = SP / (111320 * k);
+    let cur = start.slice(), pts = [cur.slice()], zs = [], sink = false, steps = 0, fresh = true, guard = 0;
+    while (steps < maxSteps && guard++ < 40) {
+      const g = []; for (let r = 0; r < NG; r++) for (let c = 0; c < NG; c++) g.push([cur[0] + (r - 3) * dLa, cur[1] + (c - 3) * dLn]);
+      const z = await elevFn(g); let r = 3, c = 3; if (!zs.length) zs.push(z[24]);
+      for (;;) {
+        let best = null, bz = z[r * NG + c] - .05;
+        for (let a = -1; a <= 1; a++) for (let d = -1; d <= 1; d++) { if (!a && !d) continue; const rr = r + a, cc = c + d; if (rr < 0 || cc < 0 || rr >= NG || cc >= NG) continue; const e = z[rr * NG + cc]; if (e != null && e < bz) { bz = e; best = [rr, cc]; } }
+        if (!best) { if (fresh && r === 3 && c === 3) sink = true; break; }
+        r = best[0]; c = best[1]; fresh = false; steps++; pts.push(g[r * NG + c].map(x => +x.toFixed(6))); zs.push(z[r * NG + c]);
+        if (r === 0 || c === 0 || r === NG - 1 || c === NG - 1 || steps >= maxSteps) break;
+      }
+      if (sink) break; const last = pts[pts.length - 1]; if (last[0] === cur[0] && last[1] === cur[1]) { sink = true; break; } cur = last.slice(); fresh = true;
+    }
+    return { pts, zs, sink, capped: steps >= maxSteps };
+  }
+  async function trace(ll) {
+    const m = getMap(); say("Menelusuri aliran air dari titik itu…");
+    let res; try { res = await flowPath([ll.lat, ll.lng], elev); } catch (e) { return say("Gagal mengambil elevasi (cek koneksi)"); }
+    if (TR.lg) m.removeLayer(TR.lg); TR.lg = L.layerGroup().addTo(m); TR.last = res;
+    if (res.pts.length < 2) { extra = '<h5>Telusur aliran</h5><p>Titik ini sudah di <b>cekungan/titik terendah</b> — air akan menggenang di sini. Cocok untuk inlet/embung/sumur resapan.</p>'; L.circle(res.pts[0], { radius: 25, color: "#ef4444", fillOpacity: .3 }).addTo(TR.lg); return render(); }
+    L.polyline(res.pts, { renderer: R, pane: "dnPane", color: "#0ea5e9", weight: 6, opacity: .9 }).addTo(TR.lg);
+    L.polyline(res.pts, { renderer: R, pane: "dnPane", color: "#fff", weight: 2, className: "dn-flow", interactive: false }).addTo(TR.lg);
+    L.circleMarker(res.pts[0], { radius: 6, color: "#22c55e", fillOpacity: 1 }).bindTooltip("Awal").addTo(TR.lg);
+    const end = res.pts[res.pts.length - 1]; L.circleMarker(end, { radius: 7, color: res.sink ? "#ef4444" : "#f59e0b", fillOpacity: 1 }).bindTooltip(res.sink ? "Cekungan (air menggenang)" : "Ujung penelusuran").addTo(TR.lg);
+    const Ln = plen(res.pts), drop = res.zs[0] - res.zs[res.zs.length - 1], RP = roadPts(null), hit = {}, ass = {};
+    res.pts.forEach(q => { const n = nearest(q, RP); if (n && n.d < 35) hit[n.n] = 1; DB.forEach(a => { if (dAsset(q, a) < 30) ass[a.name] = 1; }); });
+    let h = '<h5>Telusur aliran air</h5><p>Panjang <b>' + f2(Ln, 0) + ' m</b>, turun ' + f2(drop, 1) + ' m (kemiringan rata-rata ' + f2(Ln ? drop / Ln * 100 : 0, 2) + '%).</p><p>Berakhir: ' + (res.sink ? '<b style="color:#f87171">di cekungan — rawan genangan</b>' : res.capped ? 'batas penelusuran (±4,8 km)' : 'di tepi grid') + '.</p>';
+    const hk = Object.keys(hit), ak = Object.keys(ass);
+    h += '<p>Ruas dilintasi: ' + (hk.length ? hk.slice(0, 6).map(esc).join(", ") : 'tidak ada') + '</p><p>Aset drainase dilewati: ' + (ak.length ? ak.slice(0, 6).map(esc).join(", ") : '<b style="color:#f87171">tidak ada — alur ini belum terlayani drainase</b>') + '</p>';
+    h += '<div class="g"><button class="b pri" data-a="trace2sal"><i class="fa-solid fa-plus" style="color:#fff"></i> Jadikan saluran</button><button class="b" data-a="traceclr"><i class="fa-solid fa-eraser"></i> Hapus jalur</button></div><p><small>Resolusi grid ±40 m (indikatif); verifikasi di lapangan.</small></p>';
+    extra = h; render(); m.fitBounds(L.latLngBounds(res.pts), { padding: [60, 60], maxZoom: 18 });
+  }
+  function armTrace(on) { const m = getMap(); if (!m) return; TR.armed = on; m.getContainer().style.cursor = on ? "crosshair" : ""; if (on) { stopDraw(true); say("Klik titik di peta (mis. di jalan/lahan) untuk melihat ke mana air mengalir"); } }
+
   /* ---------- ekspor/impor ---------- */
   function doExport() {
     const fc = { type: "FeatureCollection", name: "petaqu-drainase", features: DB.map(it => ({ type: "Feature", properties: { id: it.id, k: it.k, name: it.name, p: it.p, z: it.z || null }, geometry: it.pts ? { type: "LineString", coordinates: it.pts.map(q => [q[1], q[0]]) } : { type: "Point", coordinates: [it.ll[1], it.ll[0]] } })) };
@@ -382,6 +425,6 @@
     render();
     const t = setInterval(() => { if (getMap()) { clearInterval(t); ensureMap(); } }, 400);
   }
-  window.PETAQU_DRAINASE = { open: () => setOpen(true), close: () => setOpen(false), rows, act, edit: id => { editId = id; view = "form"; setOpen(true); getMap() && getMap().closePopup(); render(); }, del: id => { const it = DB.find(x => x.id === id); if (it && confirm("Hapus " + it.name + "?")) { DB = DB.filter(x => x.id !== id); save(); draw(); getMap() && getMap().closePopup(); } }, expos, _t: { hyd, stat, info, dSeg, hav, setPref: p => Object.assign(pref, p), DEF } };
+  window.PETAQU_DRAINASE = { open: () => setOpen(true), close: () => setOpen(false), rows, act, edit: id => { editId = id; view = "form"; setOpen(true); getMap() && getMap().closePopup(); render(); }, del: id => { const it = DB.find(x => x.id === id); if (it && confirm("Hapus " + it.name + "?")) { DB = DB.filter(x => x.id !== id); save(); draw(); getMap() && getMap().closePopup(); } }, expos, _t: { flowPath, hyd, stat, info, dSeg, hav, setPref: p => Object.assign(pref, p), DEF } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", build); else build();
 })();
