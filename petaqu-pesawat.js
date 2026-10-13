@@ -372,7 +372,7 @@ MLG-DPS IW`;
   function chip(act, key, label, on, col) { return `<span class="chip ${on ? "on" : ""}" data-act="${act}" data-k="${key}">${col ? `<i style="background:${col}"></i>` : ""}${label}</span>`; }
   function row(k, t, sub) { return `<div class="row"><span>${t}<small>${sub}</small></span><input type="checkbox" class="sw" data-act="tg" data-k="${k}" ${S.on[k] ? "checked" : ""}></div>`; }
   function tabLapis() {
-    return row("ap", "✈️ Bandara", "55 bandara, warna menurut kelas") + row("rt", "🛫 Rute penerbangan", "Busur great-circle per maskapai") + row("sim", "🛩️ Pesawat simulasi", "Animasi lalu lintas mengikuti jaringan rute") + row("live", "📡 Pesawat LIVE (ADS-B)", "Posisi nyata via OpenSky, tanpa key") + row("wx", "⛈️ Cuaca & risiko bandara", "Warna bandara = risiko (Open-Meteo)") + row("hub", "🔥 Konektivitas hub", "Lingkar panas menurut jumlah rute") + row("ring", "🎯 Jangkauan 1/2/3 jam", "Dari bandara terpilih: " + S.sel) + row("mer", "🕒 Meridian zona waktu", "WIB · WITA · WIT") + row("lbl", "🏷️ Label kode IATA", "Tampilkan kode di peta")
+    return `<div style="display:flex;gap:6px;margin-bottom:4px"><button class="btn" data-act="off" style="flex:1;background:#ef4444">⏻ Matikan semua</button></div>` + row("ap", "✈️ Bandara", "55 bandara, warna menurut kelas") + row("rt", "🛫 Rute penerbangan", "Busur great-circle per maskapai") + row("sim", "🛩️ Pesawat simulasi", "Animasi lalu lintas mengikuti jaringan rute") + row("live", "📡 Pesawat LIVE (ADS-B)", "Posisi nyata via OpenSky, tanpa key") + row("wx", "⛈️ Cuaca & risiko bandara", "Warna bandara = risiko (Open-Meteo)") + row("hub", "🔥 Konektivitas hub", "Lingkar panas menurut jumlah rute") + row("ring", "🎯 Jangkauan 1/2/3 jam", "Dari bandara terpilih: " + S.sel) + row("mer", "🕒 Meridian zona waktu", "WIB · WITA · WIT") + row("lbl", "🏷️ Label kode IATA", "Tampilkan kode di peta")
       + `<h4>Filter kelas bandara</h4>` + Object.keys(KELAS).map(k => chip("kls", k, KELAS[k], S.kls.includes(k), KCOL[k])).join("")
       + `<h4>Filter maskapai</h4>` + Object.keys(AL).map(k => chip("al", k, AL[k][0], S.al.includes(k), AL[k][1])).join("") + chip("al", "_", "Perintis/lain", S.al.includes("_"), "#94a3b8")
       + `<h4>Jarak minimum rute: <b id="pqwMD">${S.minD}</b> km</h4><input type="range" min="0" max="3500" step="100" value="${S.minD}" id="pqwMin" style="width:100%">`
@@ -423,6 +423,7 @@ MLG-DPS IW`;
       else if (a === "kls") { S.kls = S.kls.includes(k) ? S.kls.filter(x => x !== k) : S.kls.concat(k); refilter(); render(); }
       else if (a === "al") { S.al = S.al.includes(k) ? S.al.filter(x => x !== k) : S.al.concat(k); refilter(); render(); }
       else if (a === "all") { S.al = Object.keys(AL).concat(["_"]); S.kls = ["H", "I", "D", "P"]; S.minD = 0; refilter(); render(); }
+      else if (a === "off") { Object.keys(S.on).forEach(x => { if (x !== "lbl" && S.on[x]) toggle(x, false); }); const m = gmap(); if (hl && m) { m.removeLayer(hl); hl = null; } say("Semua lapisan pesawat dimatikan"); render(); }
       else if (a === "fit") { const m = gmap(); m && m.fitBounds([[-11.2, 95], [6, 141]], { padding: [20, 20] }); }
       else if (a === "geo") geo();
       else if (a === "swap") { const f = S.from; S.from = S.to; S.to = f; save(); render(); runPlan(); }
