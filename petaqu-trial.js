@@ -1,22 +1,22 @@
-/* PETAQU — Uji coba gratis yang DIKONTROL ADMIN (Gmail WAJIB dipilih lewat Google, tidak bisa diketik).
-   Hidup/mati, lama (menit), kuota, jadwal & undangan ditentukan admin di panel Persetujuan akses > Kontrol Gratis
-   (supabase-gratis-kontrol.sql). Tombol "Coba Gratis" HANYA muncul bila server menjawab "on"; selain itu tidak ada jejaknya di layar.
-   Aturan dasar: 1 akun Gmail ATAU 1 perangkat hanya boleh sekali, kecuali admin memberi jatah ulang / undangan.
+/* PETAQU — Uji coba gratis 10 menit (Gmail WAJIB dipilih lewat Google, tidak bisa diketik).
+   Aturan: 1 akun Gmail ATAU 1 perangkat hanya boleh sekali, tidak dapat diulang.
    Alur:
-     1. Tombol "Coba Gratis" -> "Lanjut dengan Google" -> pilih akun Gmail di layar Google (terverifikasi).
+     1. Tombol "Coba Gratis 10 Menit" -> "Lanjut dengan Google" -> pilih akun Gmail di layar Google (terverifikasi).
      2. Saat kembali ke aplikasi, token Google dipakai SEKALI untuk klaim uji coba ke Supabase (RPC claim_trial_g,
         email dibaca server dari token, bukan dari input), lalu langsung keluar. Tidak ada sesi login/akses penuh.
      3. Waktu dihitung jam SERVER (supabase-trial.sql). Di perangkat: localStorage + cookie + IndexedDB + Cache Storage.
      4. Habis waktu -> layar login muncul lagi; tombol terkunci selamanya untuk Gmail/perangkat itu.
-   Bila SQL belum dipasang atau server tak terjangkau: tombol disembunyikan (aman secara bawaan). */
+   Bila SQL belum dipasang: tetap memakai Gmail terverifikasi Google, tetapi pembatasan hanya per perangkat (tanpa server). */
 (function () {
   "use strict";
   if (window.__pqTrial) return;
   window.__pqTrial = 1;
 
-  var DUR = 600000;                     /* cadangan saja; lama sebenarnya dikirim server (r.dur) sesuai pengaturan admin */
-  var K = "pq_trial", AUTHK = "peta_auth_ok", FLAG = "pq_trial_oauth", KODE = "pq_gkode";
-  function durOf(r) { return (r && r.dur > 0) ? r.dur : DUR; }
+  var DUR = 600000;                     /* bawaan 10 menit; durasi sebenarnya diatur admin (lihat CFG / r.dur) */
+  var CFG = { aktif: true, menit: 10, alasan: null };
+  function D(r) { return (r && r.dur) || DUR; }
+  function mnt(r) { return Math.max(1, Math.round(D(r) / 60000)); }
+  var K = "pq_trial", AUTHK = "peta_auth_ok", FLAG = "pq_trial_oauth";
   var $ = function (id) { return document.getElementById(id); };
   var iv = 0, last = 0, ticks = 0, badge = null;
 
@@ -56,8 +56,8 @@
     var m = Math.min.apply(null, c);
     setMark(m);
     if (!rec()) {
-      var dd = +lsGet("pq_tdur") || DUR, end = m + dd;
-      save({ did: deviceId(), email: "", end: end, used: Math.max(0, Math.min(dd, Date.now() - m)), dur: dd, done: Date.now() >= end, local: true });
+      var end = m + DUR;
+      save({ did: deviceId(), email: "", end: end, used: Math.max(0, Math.min(DUR, Date.now() - m)), done: Date.now() >= end, local: true });
     }
   }
 
@@ -140,6 +140,18 @@
     return { tok: tok, err: err };
   })();
 
+  /* ---------- pengaturan dari admin (durasi / buka-tutup / kuota) ---------- */
+  function cfgLock(why) { CFG.aktif = false; CFG.alasan = why; if (!usedBefore()) lockButton(why === "full" ? "Kuota gratis hari ini habis" : "Uji coba gratis sedang ditutup"); }
+  function cfgApply() {
+    var b = $("pqTrialBtn"), n = $("pqTrialNote"); if (!b || usedBefore()) return;
+    if (!CFG.aktif) return cfgLock(CFG.alasan);
+    var s = b.querySelector("span"); if (s) s.textContent = "Coba Gratis " + CFG.menit + " Menit";
+    if (n) n.textContent = "Gratis " + CFG.menit + " menit untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Gmail dipilih lewat Google, tidak bisa diketik.";
+  }
+  async function cfgLoad() {
+    try { var d = await rpc("get_trial_config", {}); if (d && typeof d.menit === "number") { CFG = { aktif: d.aktif !== false, menit: d.menit, alasan: d.alasan || null }; cfgApply(); } } catch (e) { /* SQL belum dipasang / offline: tetap 10 menit */ }
+  }
+
   /* ---------- tampilan ---------- */
   function T(m, e) { try { toast(m, !!e); } catch (x) { /* abaikan */ } }
   function hideLogin() {
@@ -158,14 +170,13 @@
     document.head.appendChild(st);
     badge = document.createElement("div");
     badge.id = "pqTrialBadge";
-    badge.innerHTML = '<i class="fa-solid fa-gift"></i> Uji coba gratis <b>--:--</b>';
+    badge.innerHTML = '<i class="fa-solid fa-gift"></i> Uji coba gratis <b>10:00</b>';
     document.body.appendChild(badge);
   }
   function setBadge(ms) {
     if (!badge) return;
     var s = Math.max(0, Math.ceil(ms / 1000));
-    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), d2 = function (n) { return ("0" + n).slice(-2); };
-    badge.querySelector("b").textContent = h > 0 ? h + ":" + d2(m) + ":" + d2(s % 60) : d2(m) + ":" + d2(s % 60);
+    badge.querySelector("b").textContent = ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + (s % 60)).slice(-2);
     badge.classList.toggle("low", s <= 60);
   }
   function lockButton(txt) {
@@ -178,29 +189,25 @@
   function formMsg(m, ok) {
     var f = $("pqTrialForm"); if (f && m) f.style.display = "";
     var e = $("pqTrialMsg");
-    if (!e) {   /* tombol gratis tidak ada (mis. admin baru saja menutupnya): tampilkan pesan di kotak galat login */
-      var le = $("loginError"), sp = le && le.querySelector("span");
-      if (sp && m) { sp.textContent = m; le.style.color = ok ? "var(--cyan)" : ""; le.classList.add("show"); }
-      return;
-    }
+    if (!e) return;
     e.textContent = m || "";
     e.style.color = ok ? "var(--cyan)" : "#f87171";
     e.style.display = m ? "" : "none";
   }
 
   /* ---------- hitung mundur ---------- */
-  function remaining(r) { return Math.min(r.end - Date.now(), durOf(r) - (r.used || 0)); }
+  function remaining(r) { return Math.min(r.end - Date.now(), D(r) - (r.used || 0)); }
   function stop() { clearInterval(iv); iv = 0; if (badge) { badge.remove(); badge = null; } }
   function finish(r) {
     stop();
     r = r || rec() || {};
-    r.done = true; r.used = durOf(r);
+    r.done = true; r.used = D(r);
     save(r);
     var s = $("loginScreen");
     if (s && lsGet(AUTHK) !== "1") {
       s.classList.remove("hide");
       var e = $("loginError");
-      if (e) { e.querySelector("span").textContent = r.pesan || "Uji coba gratis telah berakhir. Hubungi admin untuk akses penuh."; e.style.color = ""; e.classList.add("show"); }
+      if (e) { e.querySelector("span").textContent = "Uji coba gratis " + mnt(r) + " menit telah berakhir. Hubungi admin untuk akses penuh."; e.style.color = ""; e.classList.add("show"); }
     }
     lockButton("Uji coba telah berakhir");
     T("Uji coba gratis berakhir", true);
@@ -209,8 +216,8 @@
     if (r.local || navigator.onLine === false) return;
     try {
       var d = await rpc("trial_status", { p_device: r.did });
-      if (d && d.reason === "expired") { if (d.pesan) r.pesan = String(d.pesan).slice(0, 240); return finish(r); }   /* habis, atau dihentikan admin */
-      if (d && d.ok && typeof d.remaining === "number") { r.end = Math.min(r.end, Date.now() + d.remaining * 1000); if (d.durasi > 0) r.dur = d.durasi * 1000; save(r); }
+      if (d && d.reason === "expired") return finish(r);
+      if (d && d.ok && typeof d.remaining === "number") { if (d.total) r.dur = d.total * 1000; r.end = Math.min(r.end, Date.now() + d.remaining * 1000); save(r); }
     } catch (e) { /* offline / server bermasalah: lanjut hitungan lokal */ }
   }
   function run(r) {
@@ -232,30 +239,17 @@
   }
   function begin(r, msg) {
     save(r);
-    setMark(r.end - durOf(r)); lsSet("pq_tdur", String(durOf(r)));
+    setMark(r.end - D(r));
     formMsg("");
     hideLogin();
     run(r);
-    T(msg || "Uji coba gratis dimulai");
+    T(msg || "Uji coba gratis dimulai: " + mnt(r) + " menit");
   }
-
-  /* ---------- kode undangan dari admin (tautan ?gratis=KODE) ---------- */
-  function kodeUndangan() {
-    try {
-      var q = new URLSearchParams(location.search).get("gratis");
-      if (q) { lsSet(KODE, q.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 24) + "|" + Date.now()); q = new URLSearchParams(location.search); q.delete("gratis"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash); }
-    } catch (e) { /* abaikan */ }
-    var v = (lsGet(KODE) || "").split("|");
-    if (!v[0] || Date.now() - (+v[1] || 0) > 864e5) { lsDel(KODE); return ""; }
-    return v[0];
-  }
-  var PESAN_TUTUP = "Uji coba gratis sedang tidak tersedia saat ini. Silakan coba lagi nanti atau hubungi admin.";
-  function fmtMenit(sec) { var m = Math.round(sec / 60); return m >= 120 && m % 60 === 0 ? (m / 60) + " jam" : m + " menit"; }
 
   /* ---------- Gmail dipilih lewat Google ---------- */
   function keGoogle() {
     var c = window.PETAQU_CFG;
-    if (usedBefore() && !kodeUndangan()) { lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
+    if (usedBefore()) { lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
     if (!c) return formMsg("Login Google belum dikonfigurasi.");
     if (navigator.onLine === false) return formMsg("Butuh koneksi internet untuk memilih akun Google.");
     deviceId();
@@ -269,24 +263,16 @@
         ? "Pendaftaran akun baru belum diizinkan di Supabase (Authentication > Sign In / Providers > Allow new users to sign up). [" + String(o.err).slice(0, 90) + "]"
         : "Login Google dibatalkan atau gagal: " + String(o.err || "tanpa keterangan").slice(0, 120));
     }
-    var c = window.PETAQU_CFG, tok = o.tok, email = null, kode = kodeUndangan();
+    var c = window.PETAQU_CFG, tok = o.tok, email = null;
     try {
       var r = await fetch(c.url + "/auth/v1/user", { headers: { apikey: c.anon, Authorization: "Bearer " + tok } });
       if (!r.ok) throw 0;
       email = normGmail((await r.json()).email);
     } catch (e) { signOut(tok); return formMsg("Verifikasi Google gagal, coba lagi."); }
     if (!email) { signOut(tok); return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba."); }
-    if (usedBefore() && !kode) { signOut(tok); lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
+    if (usedBefore()) { signOut(tok); lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
     var did = deviceId();
     try {
-      if (kode) {   /* undangan admin: ikat kode ke Gmail yang baru dipilih, lalu klaim memakai menit dari undangan */
-        try {
-          var tb = await rpc("gratis_tebus", { p_kode: kode }, tok);
-          if (tb && tb.ok) lsDel(KODE);
-          else if (tb && tb.reason === "bukan_pemilik") { signOut(tok); return formMsg("Undangan ini dibuat untuk akun Gmail lain. Pilih Gmail yang diundang."); }
-          else if (tb && tb.reason === "undangan_tidak_berlaku") lsDel(KODE);
-        } catch (e2) { if (e2 && e2.code === "nosql") throw e2; }
-      }
       var d = await rpc("claim_trial_g", { p_device: did, p_fp: await fingerprint() }, tok);
       if (d && d.ok && window.__pqInfoPerangkat) {   /* riwayat admin: info perangkat + perkiraan kota (tanpa IP). Opsional, maks 2 dtk, kegagalan diabaikan */
         try {
@@ -298,80 +284,68 @@
       }
       signOut(tok);
       if (!d || !d.ok) {
-        var rs = d && d.reason;
-        if (rs === "expired") { save({ did: did, email: email, end: 0, used: DUR, dur: DUR, done: true }); lockButton("Uji coba telah berakhir"); return formMsg("Uji coba perangkat ini sudah berakhir."); }
-        if (rs === "bad_email") return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba.");
-        if (rs === "used") return formMsg("Uji coba gratis sudah pernah digunakan oleh Gmail atau perangkat ini dan tidak dapat diulang.");
-        if (rs === "nonaktif" || rs === "ditutup" || rs === "kuota_habis" || rs === "penuh") { lockButton("Belum tersedia"); return formMsg(PESAN_TUTUP); }   /* alasan rinci sengaja tidak ditampilkan */
-        if (rs === "diblokir") return formMsg("Uji coba gratis tidak tersedia untuk akun atau perangkat ini. Hubungi admin.");
-        return formMsg("Server menolak klaim uji coba (alasan: " + (rs || "tidak diketahui") + ").");
+        if (d && d.reason === "expired") { save({ did: did, email: email, end: 0, used: DUR, done: true }); lockButton("Uji coba telah berakhir"); return formMsg("Uji coba perangkat ini sudah berakhir."); }
+        if (d && d.reason === "bad_email") return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba.");
+        if (d && (d.reason === "closed" || d.reason === "full")) { cfgLock(d.reason); return formMsg(d.reason === "closed" ? "Uji coba gratis sedang ditutup admin. Silakan coba lagi nanti atau hubungi admin." : "Kuota uji coba gratis hari ini sudah habis. Coba lagi besok atau hubungi admin."); }
+        if (d && d.reason === "used") return formMsg("Uji coba gratis sudah pernah digunakan oleh Gmail atau perangkat ini dan tidak dapat diulang.");
+        return formMsg("Server menolak klaim uji coba (alasan: " + ((d && d.reason) || "tidak diketahui") + ").");
       }
-      var dur = (d.durasi > 0 ? d.durasi : d.remaining) * 1000;
-      begin({ did: did, email: email, end: Date.now() + d.remaining * 1000, used: dur - d.remaining * 1000, dur: dur, done: false }, "Uji coba gratis dimulai: " + fmtMenit(d.remaining));
+      begin({ did: did, email: email, end: Date.now() + d.remaining * 1000, used: (d.total || d.remaining) * 1000 - d.remaining * 1000, dur: (d.total || d.remaining) * 1000, done: false }, "Uji coba gratis dimulai: " + Math.round(d.remaining / 60) + " menit");
     } catch (e) {
       signOut(tok);
-      if (e && e.code === "nosql") return formMsg("Fitur uji coba belum diaktifkan oleh admin.");
+      if (e && e.code === "nosql") {   /* SQL belum dipasang: Gmail tetap terverifikasi, batas per perangkat */
+        return begin({ did: did, email: email, end: Date.now() + DUR, used: 0, done: false, local: true });
+      }
       formMsg(navigator.onLine === false ? "Tidak ada koneksi internet."
         : e && e.status ? "Server menolak (kode " + e.status + "): " + (e.msg || "tanpa keterangan")
         : "Server tidak dapat dihubungi, coba lagi.");
     }
   }
 
-  /* ---------- layar login ---------- */
-  /* Tombol masuk dengan email/username SELALU ada (dipakai admin), terlepas dari ada/tidaknya gratis. */
-  function injectAlt() {
+  /* ---------- tombol di layar login ---------- */
+  function inject() {
     var g = $("loginGoogle");
-    if (!g || $("pqLoginAlt")) return;
-    var a = document.createElement("div");
-    a.id = "pqLoginAlt";
-    a.innerHTML = '<button type="button" id="pqLoginAltBtn">Masuk dengan email / username</button>';
-    g.parentNode.insertBefore(a, g.nextSibling);
-    var u = false, ab = $("pqLoginAltBtn");
-    ab.addEventListener("click", function () {
-      u = !u;
-      var t = $(u ? "tabUser" : "tabEmail"), w = $("pqTrial");
-      if (t) t.click();
-      if (w) w.style.display = u ? "none" : "";
-      ab.textContent = u ? "\u2190 Kembali, masuk dengan Google" : "Masuk dengan email / username";
-    });
-  }
-  /* Tombol gratis hanya disuntikkan bila server menjawab "on". Admin yang mematikan = tombol hilang total. */
-  var cekBusy = false;
-  async function injectTrial() {
-    var g = $("loginGoogle");
-    if (!g || $("pqTrial") || cekBusy) return;
-    cekBusy = true;
-    var kode = kodeUndangan(), on = false;
-    try { var d = await rpc("gratis_publik", { p_kode: kode || null }); on = !!(d && d.on); } catch (e) { on = false; }
-    cekBusy = false;
-    if (!on || $("pqTrial") || lsGet(AUTHK) === "1") return;
+    if (!g || $("pqTrial")) return;
     var w = document.createElement("div");
     w.id = "pqTrial";
     w.style.marginTop = "12px";
     w.innerHTML =
-      '<button type="button" id="pqTrialBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px;border-radius:9px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-size:14px;font-weight:700;cursor:pointer"><i class="fa-solid fa-gift"></i><span>' + (kode ? "Coba Gratis (undangan)" : "Coba Gratis") + '</span></button>' +
+      '<button type="button" id="pqTrialBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px;border-radius:9px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-size:14px;font-weight:700;cursor:pointer"><i class="fa-solid fa-gift"></i><span>Coba Gratis 10 Menit</span></button>' +
       '<div id="pqTrialForm" style="display:none;margin-top:10px">' +
       '<button type="button" class="login-btn" id="pqTrialGo"><i class="fa-brands fa-google"></i> <span>Pilih Gmail dengan Google</span></button>' +
       '<div id="pqTrialMsg" style="display:none;margin-top:8px;font-size:12px;line-height:1.5"></div>' +
-      '<p style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.5">Uji coba gratis untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Gmail dipilih lewat Google, tidak bisa diketik.</p>' +
+      '<p id="pqTrialNote" style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.5">Gratis 10 menit untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Gmail dipilih lewat Google, tidak bisa diketik.</p>' +
       '</div>';
     g.parentNode.insertBefore(w, g.nextSibling);
     $("pqTrialBtn").addEventListener("click", function () { var f = $("pqTrialForm"); f.style.display = f.style.display === "none" ? "" : "none"; });
     $("pqTrialBtn").addEventListener("click", function () { try { window.__pqInfoPerangkat && window.__pqInfoPerangkat().catch(function () { }); } catch (e) { /* abaikan */ } }, { once: true });   /* siapkan lokasi (cache) sebelum pindah ke Google */
     $("pqTrialGo").addEventListener("click", keGoogle);
     g.addEventListener("click", function () { lsDel(FLAG); }, true);   /* login Google biasa tidak boleh dianggap uji coba */
-    if (usedBefore() && !kode) lockButton();
-    if (kode) { var f = $("pqTrialForm"); if (f) f.style.display = ""; }   /* tautan undangan: langsung tampilkan langkah berikutnya */
+    if (usedBefore()) lockButton(); else cfgLoad();
+
+    /* kolom Email/OTP disembunyikan (index.html). Akses: Google (terverifikasi) atau Username untuk akun admin */
+    if (!$("pqLoginAlt")) {
+      var a = document.createElement("div");
+      a.id = "pqLoginAlt";
+      a.innerHTML = '<button type="button" id="pqLoginAltBtn">Masuk dengan email / username</button>';
+      w.parentNode.insertBefore(a, w.nextSibling);
+      var u = false, ab = $("pqLoginAltBtn");
+      ab.addEventListener("click", function () {
+        u = !u;
+        var t = $(u ? "tabUser" : "tabEmail");
+        if (t) t.click();
+        w.style.display = u ? "none" : "";
+        ab.textContent = u ? "\u2190 Kembali, masuk dengan Google" : "Masuk dengan email / username";
+      });
+    }
   }
-  function inject() { injectAlt(); injectTrial(); }
 
   async function start() {
     if (lsGet(AUTHK) === "1") return;
     await recover();
-    injectAlt();
+    inject();
     var r = rec();
-    if (oauth) { await injectTrial(); await selesaiGoogle(oauth); return; }   /* pulang dari Google: kotak pesan harus sudah ada */
-    injectTrial();                                                          /* tidak menunda tampilan; muncul hanya bila admin membuka gratis */
+    if (oauth) { await selesaiGoogle(oauth); return; }
     if (r && !r.done) {
       if (remaining(r) <= 0) return finish(r);
       hideLogin();
