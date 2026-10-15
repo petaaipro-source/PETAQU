@@ -156,7 +156,7 @@
       const g = ev.geometry[ev.geometry.length - 1]; let co = g.coordinates; while (Array.isArray(co[0])) co = co[0]; if (!co || co.length < 2) return;
       const src = (ev.sources && ev.sources[0]) ? ev.sources[0].url : ev.link; let ha = 0, poly = null;
       if (cat === "karhutla") { const mu = String(g.magnitudeUnit || ""), mv = +g.magnitudeValue; if (mv > 0) ha = /acre/i.test(mu) ? mv * .4047 : /hect/i.test(mu) ? mv : /km/i.test(mu) ? mv * 100 : 0; if (g.type === "Polygon" && g.coordinates && g.coordinates[0] && g.coordinates[0].length > 3) { poly = g.coordinates[0].map(c => [c[1], c[0]]); } }
-      out.push({ id: "e" + ev.id, type: cat, t: Date.parse(ev.geometry[0].date), t2: Date.parse(g.date), lat: co[1], lng: co[0], title: ev.title, src: "NASA EONET", url: src, closed: ev.closed, ha, poly, mag: g.magnitudeValue ? g.magnitudeValue + " " + (g.magnitudeUnit || "") : "" });
+      out.push({ id: "e" + ev.id, type: cat, t: Date.parse(ev.geometry[0].date), t2: Date.parse(g.date), lat: co[1], lng: co[0], title: ev.title, src: "NASA EONET", url: src, closed: ev.closed, ha, poly, mag: g.magnitudeValue ? g.magnitudeValue + " " + (g.magnitudeUnit || "") : "", eid: ev.id, desc: ev.description || "", srcs: (ev.sources || []).map(x => ({ id: x.id, url: x.url })), hist: ev.geometry.map(q => ({ t: Date.parse(q.date), v: +q.magnitudeValue || 0, u: String(q.magnitudeUnit || ""), poly: q.type === "Polygon" })) });
     });
   }
   const FIRMS = [["VIIRS S-NPP", "suomi-npp-viirs-c2", "SUOMI_VIIRS_C2", "VIIRS_SNPP_NRT"], ["VIIRS NOAA-20", "noaa-20-viirs-c2", "J1_VIIRS_C2", "VIIRS_NOAA20_NRT"], ["VIIRS NOAA-21", "noaa-21-viirs-c2", "J2_VIIRS_C2", "VIIRS_NOAA21_NRT"], ["MODIS Terra/Aqua", "modis-c6.1", "MODIS_C6_1", "MODIS_NRT"]];
@@ -219,7 +219,7 @@
     if (FC[e.id]) return FC[e.id]; const c = [e.lat, e.lng]; let ring, ha = e.ha;
     if (e.poly) { ring = e.poly; const km = ring.map(q => toKm(q, c)); if (!ha) ha = areaKm2(km) * 100; }
     else ring = blobKm(ha / 100, e.id).map(q => fromKm(q, c));
-    return FC[e.id] = { id: e.id, ring, c, ha, t: e.t2 || e.t, src: "NASA EONET", title: e.title, prov: e.prov, reg: e.reg, url: e.url, active: !e.closed && NOW() - (e.t2 || e.t) < 14 * 864e5, eon: 1, real: !!e.poly };
+    return FC[e.id] = { id: e.id, ring, c, ha, t: e.t2 || e.t, src: "NASA EONET", title: e.title, prov: e.prov, reg: e.reg, url: e.url, active: !e.closed && NOW() - (e.t2 || e.t) < 14 * 864e5, eon: 1, real: !!e.poly, eid: e.eid, desc: e.desc, srcs: e.srcs, hist: e.hist, t0: e.t, closedAt: e.closed ? Date.parse(e.closed) : 0 };
   }
   function clusterFires(H) {
     const cs = .03, G = {}; H.forEach((h, i) => { (G[Math.floor(h.lat / cs) + "_" + Math.floor(h.lng / cs)] = G[Math.floor(h.lat / cs) + "_" + Math.floor(h.lng / cs)] || []).push(i); });
@@ -232,18 +232,65 @@
       if (km.length < 3 || areaKm2(km) < .02) ring = blobKm(want, id);
       else { const R = rng(id); km = km.map(p => { const d = Math.hypot(p[0], p[1]) || 1, f = (d + .45) / d; return [p[0] * f, p[1] * f]; }); ring = chaikin(km, 2).map(p => { const j = 1 + (R() - .5) * .1; return [p[0] * j, p[1] * j]; }); const ar = areaKm2(ring); if (ar < want) { const f = Math.min(2.5, Math.sqrt(want / ar)); ring = ring.map(p => [p[0] * f, p[1] * f]); } }
       const o = pts.reduce((m, q) => q.t > m.t ? q : m, pts[0]), sats = new Set(); pts.forEach(q => (q.sats || []).forEach(x => sats.add(x)));
-      return { id, ring: ring.map(q => fromKm(q, c)), c, ha: areaKm2(ring) * 100, t: o.t, src: "NASA FIRMS \u00B7 " + [...sats].join(", "), title: "Area kebakaran terdeteksi satelit", prov: o.prov, reg: o.reg, n, frp: pts.reduce((s, q) => s + (q.frp || 0), 0), active: NOW() - o.t < 72 * 36e5, hs: 1 };
+      return { id, ring: ring.map(q => fromKm(q, c)), c, ha: areaKm2(ring) * 100, t: o.t, src: "NASA FIRMS \u00B7 " + [...sats].join(", "), title: "Area kebakaran terdeteksi satelit", prov: o.prov, reg: o.reg, n, frp: pts.reduce((s, q) => s + (q.frp || 0), 0), active: NOW() - o.t < 72 * 36e5, hs: 1, t0: pts.reduce((m, q) => q.t < m ? q.t : m, pts[0].t), fmax: pts.reduce((m, q) => Math.max(m, q.frp || 0), 0), conf: pts.reduce((s, q) => s + (q.conf || 0), 0) / n, night: pts.filter(q => q.dn === "N").length, satl: [...sats] };
     });
   }
   function fires() { const lim = NOW() - S.days * 864e5, out = []; FIREH.forEach(f => { if (f.t >= lim && inReg(f)) out.push(f); }); EON_ALL.forEach(e => { if (e.type === "karhutla" && (e.ha > 0 || e.poly) && (e.t2 || e.t) >= lim && inReg(e)) out.push(eonFire(e)); }); return out; }
   const FB = f => L.latLngBounds(f.ring);
   const sc = (ring, c, k) => ring.map(p => [c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k]);
+  /* ---------- popup detail area terbakar ---------- */
+  const fmtN = (v, d) => (+v).toLocaleString("id-ID", { minimumFractionDigits: d || 0, maximumFractionDigits: d == null ? 0 : d });
+  const dur = ms => { const h = ms / 36e5; return h < 1 ? "<1 jam" : h < 48 ? Math.round(h) + " jam" : Math.round(h / 24) + " hari"; };
+  const dms = (v, pos, neg) => { const q = Math.round(Math.abs(v) * 36000), d = Math.floor(q / 36000), m = Math.floor(q % 36000 / 600), sc = (q % 600) / 10; return d + "\u00B0" + m + "\u2032" + sc.toFixed(1) + "\u2033 " + (v >= 0 ? pos : neg); };
+  const wib = t => { try { return new Date(t).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Jakarta" }).replace(/\./g, ":") + " WIB"; } catch (e) { return ""; } };
+  const sec = t => '<div class="ps">' + t + "</div>";
+  const confL = c => c >= 80 ? "tinggi" : c >= 50 ? "sedang" : "rendah";
+  const sizeCls = ha => ha >= 10000 ? "Sangat besar (≥10.000 ha)" : ha >= 1000 ? "Besar (1.000–10.000 ha)" : ha >= 100 ? "Sedang (100–1.000 ha)" : "Kecil (&lt;100 ha)";
+  const perimKm = ring => { let p = 0; for (let i = 0; i < ring.length; i++) { const a = ring[i], b = ring[(i + 1) % ring.length]; p += hav(a[0], a[1], b[0], b[1]); } return p; };
+  function hotIn(f) { const bb = FB(f), a = [], r = f.ring; HOT.forEach(h => { if (bb.contains([h.lat, h.lng]) && pip(r, h.lat, h.lng)) a.push(h); }); return a; }
+  function fireStat(f) {
+    const bb = FB(f), sw = bb.getSouthWest(), ne = bb.getNorthEast(), c = f.c;
+    return { w: hav(c[0], sw.lng, c[0], ne.lng), h: hav(sw.lat, c[1], ne.lat, c[1]), perim: perimKm(f.ring), hot: hotIn(f) };
+  }
   function firePopup(f) {
-    const km2 = f.ha / 100, ff = f.ha / .714;
-    let h = '<div class="ph" style="background:linear-gradient(135deg,#7c2d12,#ea580c 60%,#f59e0b)"><div class="pe">\u{1F525}</div><div class="pt"><b>' + esc(f.title) + "</b><small>" + (f.active ? "Aktif / baru terdeteksi" : "Sudah padam / lama") + (f.real ? " \u00B7 batas resmi EONET" : " \u00B7 bentuk perkiraan") + '</small></div></div><div class="pb">';
-    h += rowP("\u{1F4D0}", "Luas", "<b>" + nf(f.ha) + " ha</b> \u00B7 " + (km2 < 10 ? km2.toFixed(2) : nf(km2)) + " km\u00B2") + rowP("\u26BD", "Setara", "\u2248" + nf(ff) + " lapangan sepak bola");
-    if (f.n) h += rowP("\u{1F6F0}", "Titik panas", nf(f.n) + " \u00B7 FRP " + nf(f.frp) + " MW"); h += rowP("\u{1F550}", "Terdeteksi", fDT(f.t) + " <em>" + ago(f.t) + "</em>") + rowP("\u{1F4CD}", "Wilayah", esc((f.reg ? f.reg + ", " : "") + (f.prov || "")));
-    h += '<div class="pn">' + (f.real ? "Polygon dari data NASA EONET." : f.hs ? "Bentuk & luas diperkirakan dari gugus titik panas satelit (\u00B1, 1 piksel VIIRS \u2248 14 ha) \u2014 bukan batas resmi." : "Bentuk digambar menyesuaikan luas yang dilaporkan; batas sebenarnya bisa berbeda.") + '</div><div class="pf"><span>' + esc(f.src) + "</span>" + (f.url ? '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">Detail \u2197</a>' : "") + "</div></div>";
+    const km2 = f.ha / 100, ff = f.ha / .714, ST = fireStat(f), now = NOW(), t1 = f.t, t0 = f.t0 || f.t, span = Math.max(0, t1 - t0);
+    const status = f.eon ? (f.closedAt ? "Selesai (ditutup NASA " + fD(f.closedAt) + ")" : f.active ? "Berlangsung (update <14 hari)" : "Tidak ada pembaruan >14 hari") : (f.active ? "Aktif — titik panas <72 jam" : "Sudah lama / kemungkinan padam");
+    let h = '<div class="ph" style="background:linear-gradient(135deg,#7c2d12,#ea580c 60%,#f59e0b)"><div class="pe">\u{1F525}</div><div class="pt"><b>' + esc(f.title) + "</b><small>" + (f.active ? "\u{1F534} Aktif / baru terdeteksi" : "⚪ Sudah padam / lama") + (f.real ? " · batas resmi EONET" : " · bentuk perkiraan") + '</small></div></div><div class="pb">';
+    h += sec("Ukuran area");
+    h += rowP("\u{1F4D0}", "Luas", "<b>" + fmtN(f.ha) + " ha</b> · " + (km2 < 10 ? km2.toFixed(2) : fmtN(km2, 1)) + " km²") + rowP("\u{1F3F7}", "Kelas", sizeCls(f.ha)) + rowP("⚽", "Setara", "≈" + nf(ff) + " lapangan sepak bola") + rowP("↔", "Dimensi", "±" + ST.w.toFixed(1) + " km (T–B) × " + ST.h.toFixed(1) + " km (U–S)") + rowP("⭕", "Keliling", "±" + ST.perim.toFixed(1) + " km");
+    h += sec("Waktu & status");
+    h += rowP("\u{1F6A6}", "Status", esc(status));
+    if (f.eon && f.t0 && f.t0 !== f.t) h += rowP("\u{1F7E2}", "Awal", fDT(t0) + " <em>" + ago(t0) + "</em>");
+    h += rowP("\u{1F550}", f.eon ? "Update akhir" : "Deteksi akhir", fDT(t1) + " <em>" + ago(t1) + "</em>");
+    h += rowP("\u{1F5D3}", "Update (WIB)", wib(t1));
+    if (f.hs && f.t0 && span > 36e5) h += rowP("\u{1F7E2}", "Deteksi awal", fDT(t0) + " <em>" + ago(t0) + "</em>");
+    if (span > 36e5) h += rowP("⏱", "Rentang", dur(span) + " (awal → update akhir)");
+    if (f.eon && f.hist && f.hist.length > 1) {
+      const rows = f.hist.filter(q => q.v > 0).slice(-6).map(q => '<div class="hg"><span>' + fD(q.t) + "</span><b>" + fmtN(/acre/i.test(q.u) ? q.v * .4047 : /km/i.test(q.u) ? q.v * 100 : q.v) + " ha</b></div>").join("");
+      h += rowP("\u{1F4C8}", "Pembaruan", f.hist.length + "× laporan");
+      if (rows) h += '<div class="hgw"><i>Riwayat pertumbuhan luas:</i>' + rows + "</div>";
+    }
+    h += sec("Titik panas satelit");
+    const H = ST.hot;
+    if (f.hs) {
+      h += rowP("\u{1F6F0}", "Jumlah titik", nf(f.n) + " titik") + rowP("\u{1F525}", "Daya total", "FRP " + nf(f.frp) + " MW") + rowP("\u{1F4A5}", "Titik terkuat", "FRP " + nf(f.fmax) + " MW") + rowP("\u{1F3AF}", "Keyakinan", "±" + Math.round(f.conf) + "% (" + confL(f.conf) + ")") + rowP("\u{1F319}", "Siang/malam", (f.n - f.night) + " siang · " + f.night + " malam") + rowP("\u{1F4E1}", "Satelit", esc((f.satl || []).join(", ")));
+    } else if (H.length) {
+      const fr = H.reduce((q, x) => q + (x.frp || 0), 0), mx = H.reduce((q, x) => Math.max(q, x.frp || 0), 0), sats = new Set(); H.forEach(x => (x.sats || []).forEach(y => sats.add(y)));
+      h += rowP("\u{1F6F0}", "Dalam polygon", nf(H.length) + " titik") + rowP("\u{1F525}", "Daya total", "FRP " + nf(fr) + " MW") + rowP("\u{1F4A5}", "Titik terkuat", "FRP " + nf(mx) + " MW") + rowP("\u{1F4E1}", "Satelit", esc([...sats].join(", ")));
+    } else h += '<div class="pn" style="border-color:#64748b">Tidak ada titik panas FIRMS yang tercatat di dalam polygon pada rentang data yang dimuat (24–120 jam terakhir).</div>';
+    h += sec("Lokasi");
+    h += rowP("\u{1F4CD}", "Wilayah", esc((f.reg ? f.reg + ", " : "") + (f.prov || "—")));
+    const lat = f.c[0], lng = f.c[1];
+    h += rowP("\u{1F9ED}", "Pusat (DD)", lat.toFixed(5) + ", " + lng.toFixed(5)) + rowP("\u{1F9ED}", "Pusat (DMS)", dms(lat, "LU", "LS") + " " + dms(lng, "BT", "BB"));
+    h += '<div class="pa"><a href="https://www.google.com/maps?q=' + lat.toFixed(5) + "," + lng.toFixed(5) + '" target="_blank" rel="noopener">\u{1F5FA} Google Maps</a><a href="#" onclick="try{navigator.clipboard.writeText(\'' + lat.toFixed(6) + ", " + lng.toFixed(6) + '\');this.textContent=\'✔ Tersalin\'}catch(e){}return false">\u{1F4CB} Salin koordinat</a></div>';
+    if (f.eon) {
+      h += sec("Data sumber");
+      if (f.eid) h += rowP("\u{1F516}", "ID EONET", esc(f.eid));
+      if (f.desc) h += rowP("\u{1F4DD}", "Keterangan", esc(f.desc));
+      if (f.srcs && f.srcs.length) h += rowP("\u{1F517}", "Rujukan", f.srcs.slice(0, 3).map(x => '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.id || "sumber") + "</a>").join(" · "));
+    }
+    h += '<div class="pn">' + (f.real ? "Polygon asli dari data NASA EONET (batas resmi sumber). Luas mengikuti laporan sumber." : f.hs ? "Bentuk & luas diperkirakan dari gugus titik panas satelit (±, 1 piksel VIIRS ≈ 14 ha) — bukan batas resmi. Titik dalam jarak <3 km digabung jadi satu area." : "Bentuk digambar menyesuaikan luas yang dilaporkan EONET; batas sebenarnya bisa berbeda.") + "</div>";
+    h += '<div class="pf"><span>' + esc(f.src) + "</span>" + (f.url ? '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">Detail ↗</a>' : "") + "</div></div>";
     return h;
   }
   function drawBurn(bnd) {
@@ -251,7 +298,7 @@
     F.forEach((f, i) => {
       const live = f.active, K = [1, .8, .42], cls = ["pqbs-burn" + (live ? "" : " out"), "pqbs-front", "pqbs-core"], P = [];
       const fresh = !GROWN[f.id]; GROWN[f.id] = 1;
-      [0, 1, live ? 2 : -1].forEach((n, j) => { if (n < 0) return; const pl = L.polygon(fresh ? sc(f.ring, f.c, .03) : sc(f.ring, f.c, K[n]), { className: cls[n], interactive: n === 0, smoothFactor: .6 }); if (n === 0) pl.bindPopup(firePopup(f), { maxWidth: 300, className: "pqbs-pop" }); if (!live && n === 1) return; BG.addLayer(pl); P.push({ pl, k: K[n], j }); });
+      [0, 1, live ? 2 : -1].forEach((n, j) => { if (n < 0) return; const pl = L.polygon(fresh ? sc(f.ring, f.c, .03) : sc(f.ring, f.c, K[n]), { className: cls[n], interactive: n === 0, smoothFactor: .6 }); if (n === 0) pl.bindPopup(firePopup(f), { maxWidth: 340, className: "pqbs-pop" }); if (!live && n === 1) return; BG.addLayer(pl); P.push({ pl, k: K[n], j }); });
       if (fresh) items.push({ f, P });
       if (live && i < 30 && z >= 8) { let sp = ""; for (let q = 0; q < 6; q++) sp += '<i style="--dx:' + Math.round((q - 2.5) * 9) + "px;animation-delay:" + (q * .38).toFixed(2) + 's"></i>'; BG.addLayer(L.marker(f.c, { icon: L.divIcon({ className: "", html: '<div class="pqbs-spk">' + sp + "</div>", iconSize: [0, 0] }), interactive: false, keyboard: false })); }
     });
@@ -340,10 +387,13 @@
     else if (e.t) s += rowP("\u{1F550}", "Waktu", (e.cur ? fD(e.t) : fDT(e.t)) + ' <em>' + (e.cur ? new Date(e.t).getUTCFullYear() : ago(e.t)) + "</em>");
     if (e.t2 && e.t2 - e.t > 36e5) s += rowP("\u21BB", "Pembaruan", fD(e.t2) + (e.closed ? " (selesai)" : " (berlangsung)"));
     if (e.d != null) s += rowP("\u2B07", "Kedalaman", Math.round(e.d) + " km (" + (e.d < 70 ? "dangkal" : e.d < 300 ? "menengah" : "dalam") + ")");
-    if (e.type === "hotspot") { s += rowP("\u{1F321}", "Daya api (FRP)", (e.frp ? e.frp.toFixed(1) : "-") + " MW"); s += rowP("\u{1F6F0}", "Satelit", esc((e.sats || []).join(", "))); s += rowP("\u{1F3AF}", "Keyakinan", Math.round(e.conf) + "% \u00B7 " + (e.dn === "N" ? "malam" : "siang")); }
+    if (e.type === "hotspot") { const fr = e.frp || 0; s += rowP("\u{1F321}", "Daya api (FRP)", (fr ? fr.toFixed(1) : "-") + " MW \u00B7 " + (fr >= 100 ? "sangat kuat" : fr >= 40 ? "kuat" : fr >= 10 ? "sedang" : "lemah")); s += rowP("\u{1F6F0}", "Satelit", esc((e.sats || []).join(", "))); s += rowP("\u{1F3AF}", "Keyakinan", Math.round(e.conf) + "% (" + confL(e.conf) + ") \u00B7 " + (e.dn === "N" ? "malam" : "siang")); s += rowP("\u{1F5D3}", "WIB", wib(e.t)); s += rowP("\u{1F4CF}", "Resolusi", "\u00B1375 m (VIIRS) / 1 km (MODIS)"); }
     if (e.alert) s += rowP("\u{1F6A8}", "Siaga GDACS", esc(e.alert));
     if (e.reg || e.prov) s += rowP("\u{1F4CD}", "Wilayah", esc((e.off ? "Dekat " : "") + (e.reg ? e.reg + ", " : "") + (e.prov || "")));
     if (e.place) s += rowP("\u{1F9ED}", "Lokasi", esc(e.place)); if (e.felt) s += rowP("\u{1F4E3}", "Dirasakan", esc(e.felt)); if (e.mag) s += rowP("\u{1F4CF}", "Ukuran", esc(e.mag));
+    if (e.eid) s += rowP("\u{1F516}", "ID EONET", esc(e.eid));
+    if (e.desc) s += rowP("\u{1F4DD}", "Keterangan", esc(e.desc));
+    if (e.lat != null && e.lng != null) s += rowP("\u{1F9ED}", "Koordinat", (+e.lat).toFixed(4) + ", " + (+e.lng).toFixed(4) + ' <a href="https://www.google.com/maps?q=' + (+e.lat).toFixed(5) + "," + (+e.lng).toFixed(5) + '" target="_blank" rel="noopener" style="color:#7dd3fc">\u2197 peta</a>');
     if (e.deaths) s += rowP("\u{1F480}", "Korban", "\u2248" + nf(e.deaths) + " jiwa");
     if (e.note) s += '<div class="pn">' + esc(e.note) + "</div>";
     s += '<div class="pf"><span>' + esc(e.src || "MAGMA/PVMBG") + "</span>" + (e.url ? '<a href="' + esc(e.url) + '" target="_blank" rel="noopener">Detail \u2197</a>' : e.vol ? '<a href="https://magma.esdm.go.id/" target="_blank" rel="noopener">MAGMA \u2197</a>' : "") + "</div></div>";
@@ -351,7 +401,7 @@
   }
   const bdg = (cls, c, sz, inner, pulse) => L.divIcon({ className: "", html: '<div class="pqbs-b ' + cls + (pulse ? " pqbs-pulse" : "") + '" style="--c:' + c + ";width:" + sz + "px;height:" + sz + "px;font-size:" + Math.round(sz * .5) + 'px">' + inner + "</div>", iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2] });
   function mk(e) {
-    const h = HZ[e.type], o = { maxWidth: 300, className: "pqbs-pop" }, recent = NOW() - (e.t2 || e.t) < 3 * 864e5; let m;
+    const h = HZ[e.type], o = { maxWidth: 340, className: "pqbs-pop" }, recent = NOW() - (e.t2 || e.t) < 3 * 864e5; let m;
     if (e.vol) m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-vol", e.k === 1 ? "#f97316" : "#fbbf24", e.k === 1 ? 30 : 24, "\u{1F30B}", e.k === 1), zIndexOffset: 400 });
     else if (e.cur) m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-star", h.c, 32, e.tsu ? "\u{1F30A}" : h.e, true), zIndexOffset: 800 });
     else if (e.type === "hotspot") { const f = e.frp || 0; m = L.circleMarker([e.lat, e.lng], { radius: 3.5 + Math.min(4.5, Math.sqrt(f) / 2.2), color: "#fff", weight: .7, fillColor: f >= 100 ? "#be123c" : f >= 40 ? "#ef4444" : f >= 10 ? "#f97316" : "#fbbf24", fillOpacity: .9 }); }
@@ -401,7 +451,7 @@
     ".pqbs-pulse::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--c);animation:pqbsP 1.9s ease-out infinite;pointer-events:none}@keyframes pqbsP{0%{transform:scale(.7);opacity:.95}100%{transform:scale(2);opacity:0}}" +
     ".pqbs-pop .leaflet-popup-content-wrapper{background:linear-gradient(170deg,#0b2233,#120c20);color:#e6f1f7;border-radius:16px;padding:0;overflow:hidden;border:1px solid #ffffff26;box-shadow:0 14px 40px #000c}.pqbs-pop .leaflet-popup-content{margin:0!important;width:auto!important;min-width:250px;font:12.5px/1.45 system-ui}.pqbs-pop .leaflet-popup-tip{background:#0e1626}.pqbs-pop a.leaflet-popup-close-button{color:#fff!important;top:7px;right:8px;font-size:18px;z-index:3}" +
     ".pqbs-pop .ph{display:flex;gap:10px;align-items:center;padding:11px 32px 11px 12px;color:#fff;text-shadow:0 1px 3px #0008}.pqbs-pop .pe{width:42px;height:42px;border-radius:12px;background:#00000040;display:flex;align-items:center;justify-content:center;font-size:21px;flex:none}.pqbs-pop .pe b{font-size:21px}.pqbs-pop .pt b{display:block;font-size:13.5px;line-height:1.25}.pqbs-pop .pt small{opacity:.9;font-size:11px}" +
-    ".pqbs-pop .pb{padding:9px 12px 11px}.pqbs-pop .pr{display:flex;gap:7px;padding:3px 0;align-items:baseline}.pqbs-pop .pr span{width:16px;text-align:center}.pqbs-pop .pr i{font-style:normal;color:#8fb0c2;width:68px;flex:none;font-size:11px}.pqbs-pop .pr b{font-weight:600;flex:1;color:#f1f7fb}.pqbs-pop .pr em{font-style:normal;color:#8fb0c2;font-size:11px;margin-left:4px}.pqbs-pop .pn{margin:7px 0 3px;padding:7px 9px;border-radius:9px;background:#ffffff0d;border-left:3px solid #fb923c;color:#cfe3ef;font-size:11.5px}.pqbs-pop .pf{display:flex;justify-content:space-between;margin-top:8px;padding-top:7px;border-top:1px solid #ffffff18;font-size:11px;color:#8fb0c2}.pqbs-pop .pf a{color:#7dd3fc;font-weight:700;text-decoration:none}";
+    ".pqbs-pop .pb{padding:9px 12px 11px;max-height:56vh;overflow-y:auto;overscroll-behavior:contain}.pqbs-pop .ps{margin:8px 0 2px;padding-bottom:2px;border-bottom:1px solid #ffffff18;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#fdba74}.pqbs-pop .pa{display:flex;gap:8px;margin:5px 0 2px}.pqbs-pop .pa a{flex:1;text-align:center;padding:5px 6px;border-radius:8px;background:#ffffff12;color:#7dd3fc;font-weight:700;font-size:11px;text-decoration:none}.pqbs-pop .hgw{margin:2px 0 3px 23px;padding:4px 8px;border-radius:8px;background:#ffffff0a;font-size:11px}.pqbs-pop .hgw i{font-style:normal;color:#8fb0c2;display:block;margin-bottom:2px}.pqbs-pop .hg{display:flex;justify-content:space-between}.pqbs-pop .pr b a{color:#7dd3fc}.pqbs-pop .pr{display:flex;gap:7px;padding:3px 0;align-items:baseline}.pqbs-pop .pr span{width:16px;text-align:center}.pqbs-pop .pr i{font-style:normal;color:#8fb0c2;width:78px;flex:none;font-size:11px}.pqbs-pop .pr b{font-weight:600;flex:1;color:#f1f7fb}.pqbs-pop .pr em{font-style:normal;color:#8fb0c2;font-size:11px;margin-left:4px}.pqbs-pop .pn{margin:7px 0 3px;padding:7px 9px;border-radius:9px;background:#ffffff0d;border-left:3px solid #fb923c;color:#cfe3ef;font-size:11.5px}.pqbs-pop .pf{display:flex;justify-content:space-between;margin-top:8px;padding-top:7px;border-top:1px solid #ffffff18;font-size:11px;color:#8fb0c2}.pqbs-pop .pf a{color:#7dd3fc;font-weight:700;text-decoration:none}";
   function build() {
     if (P) return; const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
     P = document.createElement("div"); P.id = "pqbsPanel";
