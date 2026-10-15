@@ -220,49 +220,72 @@
   function plainText(A) { const d = document.createElement("div"); d.innerHTML = narrative(A).join("\n"); return "RIWAYAT & RISIKO BENCANA \u2014 " + A.R.name + (S.kab ? ", " + S.prov : "") + "\n" + d.textContent + "\nSumber: USGS, BMKG, NASA EONET, kurasi PETAQU. Indikatif; rujuk BNPB (inarisk.bnpb.go.id) & BMKG."; }
 
   /* ---------- peta ---------- */
+  const rowP = (ic, l, v) => v ? '<div class="pr"><span>' + ic + '</span><i>' + l + '</i><b>' + v + '</b></div>' : "";
   function popup(e) {
-    const h = HZ[e.type]; let s = '<div style="font:12.5px/1.5 system-ui;color:#0b1a24;min-width:210px"><b style="font-size:14px">' + h.e + " " + esc(e.title) + "</b>";
-    if (e.type === "gempa" && e.m != null) s += '<br><b style="font-size:17px">M' + e.m.toFixed(1) + "</b>" + (e.tsu ? ' <span style="background:#fb923c;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700">tsunami</span>' : "");
-    if (e.vol) s += "<br>\u26F0 " + nf(e.elev) + " mdpl \u00B7 " + (e.k === 1 ? "sangat aktif" : "aktif") + '<br>' + esc(e.note) + '<br><a href="https://magma.esdm.go.id/" target="_blank" rel="noopener">Status resmi: MAGMA Indonesia</a>';
-    else { if (e.t) s += "<br>\u{1F550} " + (e.cur ? fD(e.t) : fDT(e.t)) + (e.cur ? "" : " \u00B7 " + ago(e.t)); if (e.t2 && e.t2 - e.t > 36e5) s += "<br>\u21BB Pembaruan: " + fD(e.t2) + (e.closed ? " (selesai)" : " (berlangsung)"); }
-    if (e.d != null) s += "<br>\u2B07 Kedalaman " + Math.round(e.d) + " km";
-    if (e.reg || e.prov) s += "<br>\u{1F4CD} " + esc((e.off ? "Dekat " : "") + (e.reg ? e.reg + ", " : "") + (e.prov || ""));
-    if (e.place) s += "<br>" + esc(e.place); if (e.felt) s += "<br>\u{1F4E3} " + esc(e.felt); if (e.mag) s += "<br>Ukuran: " + esc(e.mag);
-    if (e.deaths) s += "<br>\u{1F480} \u2248" + nf(e.deaths) + " jiwa"; if (e.note && !e.vol) s += "<br>" + esc(e.note);
-    s += '<br><span style="color:#567">Sumber: ' + esc(e.src || "") + "</span>"; if (e.url) s += ' \u00B7 <a href="' + esc(e.url) + '" target="_blank" rel="noopener">detail</a>'; return s + "</div>";
+    const h = HZ[e.type], c = h.c, q = e.type === "gempa" && e.m != null;
+    const kind = e.vol ? "Gunung api " + (e.k === 1 ? "sangat aktif" : "aktif") : e.cur ? "Kejadian besar bersejarah" : h.n;
+    let s = '<div class="ph" style="background:linear-gradient(135deg,' + c + "," + c + '88)"><div class="pe">' + (q ? '<b>' + e.m.toFixed(1) + '</b>' : e.tsu ? "\u{1F30A}" : h.e) + '</div><div class="pt"><b>' + esc(e.title) + "</b><small>" + esc(kind) + (e.tsu ? " \u00B7 \u{1F30A} tsunami" : "") + "</small></div></div><div class=\"pb\">";
+    if (e.vol) s += rowP("\u26F0", "Tinggi", nf(e.elev) + " mdpl");
+    else if (e.t) s += rowP("\u{1F550}", "Waktu", (e.cur ? fD(e.t) : fDT(e.t)) + ' <em>' + (e.cur ? new Date(e.t).getUTCFullYear() : ago(e.t)) + "</em>");
+    if (e.t2 && e.t2 - e.t > 36e5) s += rowP("\u21BB", "Pembaruan", fD(e.t2) + (e.closed ? " (selesai)" : " (berlangsung)"));
+    if (e.d != null) s += rowP("\u2B07", "Kedalaman", Math.round(e.d) + " km (" + (e.d < 70 ? "dangkal" : e.d < 300 ? "menengah" : "dalam") + ")");
+    if (e.reg || e.prov) s += rowP("\u{1F4CD}", "Wilayah", esc((e.off ? "Dekat " : "") + (e.reg ? e.reg + ", " : "") + (e.prov || "")));
+    if (e.place) s += rowP("\u{1F9ED}", "Lokasi", esc(e.place)); if (e.felt) s += rowP("\u{1F4E3}", "Dirasakan", esc(e.felt)); if (e.mag) s += rowP("\u{1F4CF}", "Ukuran", esc(e.mag));
+    if (e.deaths) s += rowP("\u{1F480}", "Korban", "\u2248" + nf(e.deaths) + " jiwa");
+    if (e.note) s += '<div class="pn">' + esc(e.note) + "</div>";
+    s += '<div class="pf"><span>' + esc(e.src || "MAGMA/PVMBG") + "</span>" + (e.url ? '<a href="' + esc(e.url) + '" target="_blank" rel="noopener">Detail \u2197</a>' : e.vol ? '<a href="https://magma.esdm.go.id/" target="_blank" rel="noopener">MAGMA \u2197</a>' : "") + "</div></div>";
+    return s;
   }
+  const bdg = (cls, c, sz, inner, pulse) => L.divIcon({ className: "", html: '<div class="pqbs-b ' + cls + (pulse ? " pqbs-pulse" : "") + '" style="--c:' + c + ";width:" + sz + "px;height:" + sz + "px;font-size:" + Math.round(sz * .5) + 'px">' + inner + "</div>", iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2] });
   function mk(e) {
-    let m;
-    if (e.vol) m = L.marker([e.lat, e.lng], { icon: L.divIcon({ className: "", html: '<div style="font-size:' + (e.k === 1 ? 20 : 16) + 'px;filter:drop-shadow(0 1px 3px #000)">\u{1F30B}</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 400 });
-    else if (e.cur) m = L.marker([e.lat, e.lng], { icon: L.divIcon({ className: "", html: '<div style="width:26px;height:26px;border-radius:50%;background:' + HZ[e.type].c + ';border:2px solid #fff;box-shadow:0 0 0 3px ' + HZ[e.type].c + '66,0 2px 8px #000a;display:flex;align-items:center;justify-content:center;font-size:13px">' + (e.tsu ? "\u{1F30A}" : HZ[e.type].e) + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] }), zIndexOffset: 800 });
-    else if (e.type === "gempa") { const r = Math.max(3, 2.6 * (e.m - 3.2)); m = L.circleMarker([e.lat, e.lng], { radius: r, color: "#fff", weight: .8, fillColor: e.m >= 6 ? "#f43f5e" : e.m >= 5 ? "#fb923c" : "#facc15", fillOpacity: .78 }); }
-    else m = L.circleMarker([e.lat, e.lng], { radius: 7, color: "#fff", weight: 1.2, fillColor: HZ[e.type].c, fillOpacity: .85 });
-    return m.bindPopup(popup(e), { maxWidth: 300 });
+    const h = HZ[e.type], o = { maxWidth: 300, className: "pqbs-pop" }, recent = NOW() - (e.t2 || e.t) < 3 * 864e5; let m;
+    if (e.vol) m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-vol", e.k === 1 ? "#f97316" : "#fbbf24", e.k === 1 ? 30 : 24, "\u{1F30B}", e.k === 1), zIndexOffset: 400 });
+    else if (e.cur) m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-star", h.c, 32, e.tsu ? "\u{1F30A}" : h.e, true), zIndexOffset: 800 });
+    else if (e.type === "gempa") {
+      const mc = e.m >= 6 ? "#f43f5e" : e.m >= 5 ? "#fb923c" : "#facc15";
+      if (e.m >= 5.5) { const z = Math.round(24 + (e.m - 5.5) * 10); m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-q", mc, z, "<b>" + e.m.toFixed(1) + "</b>", recent), zIndexOffset: 600 + Math.round(e.m * 10) }); }
+      else m = L.circleMarker([e.lat, e.lng], { radius: Math.max(3, 2.5 * (e.m - 3.4)), color: "#ffffffcc", weight: .8, fillColor: mc, fillOpacity: .8 });
+    } else m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-ev", h.c, 24, h.e, recent && !e.closed), zIndexOffset: 300 });
+    return m.bindPopup(popup(e), o);
+  }
+  function clusterMk(a) {
+    const n = a.length, h = HZ[a[0].type], la = a.reduce((s, e) => s + e.lat, 0) / n, ln = a.reduce((s, e) => s + e.lng, 0) / n, sz = Math.round(30 + Math.min(22, Math.log2(n) * 6));
+    const m = L.marker([la, ln], { icon: L.divIcon({ className: "", html: '<div class="pqbs-b pqbs-cl" style="--c:' + h.c + ";width:" + sz + "px;height:" + sz + 'px"><span>' + h.e + "</span><b>" + n + "</b></div>", iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2] }), zIndexOffset: 200 });
+    m.bindTooltip(n + " " + h.n.toLowerCase() + " \u2014 klik untuk zoom", { direction: "top" }); m.on("click", () => map.setView([la, ln], Math.min(map.getZoom() + 2, 10))); return m;
   }
   const vis = () => { const lim = NOW() - S.days * 864e5; return LIVE.filter(e => S.t.gempa && e.t >= lim && e.m >= S.mag && inReg(e)).concat(EON_ALL.filter(e => S.t[e.type] && (e.t2 || e.t) >= lim && inReg(e))).sort((a, b) => (b.t2 || b.t) - (a.t2 || a.t)); };
   function draw() {
     if (typeof map === "undefined" || !map || !map.getPane) return;
     if (!LG) { LG = L.layerGroup().addTo(map); HG = L.layerGroup().addTo(map); OL = L.layerGroup().addTo(map); }
     LG.clearLayers(); HG.clearLayers(); OL.clearLayers(); MK = {}; LST = [];
-    const R = regionObj(); if (R && anyOn()) R.list.forEach(k => OL.addLayer(L.polygon(k.rings, { color: "#22d3ee", weight: 2, fill: false, dashArray: "6 5", interactive: false })));
+    const R = regionObj(); if (R && anyOn()) R.list.forEach(k => OL.addLayer(L.polygon(k.rings, { color: "#22d3ee", weight: 2.5, fillColor: "#22d3ee", fillOpacity: .06, dashArray: "7 6", interactive: false })));
     if (!anyOn()) return;
-    LST = vis(); LST.slice(0, 1500).forEach(e => { const m = mk(e); MK[e.id] = m; LG.addLayer(m); });
-    if (S.t.hist) CUR.filter(inReg).forEach(e => { const m = mk(e); MK[e.id] = m; LG.addLayer(m); });
-    if (S.t.vol) VOL.filter(v => !S.prov || inReg(v) || (R && distToReg(R, v.lat, v.lng) < 45)).forEach(v => { const m = mk(v); MK[v.id] = m; LG.addLayer(m); });
+    const add = e => { const m = mk(e); MK[e.id] = m; LG.addLayer(m); }, z = map.getZoom(), cell = z >= 8 ? 0 : 360 / Math.pow(2, z) * .2, cl = {};
+    LST = vis(); LST.slice(0, 2500).forEach(e => { if (!cell || (e.type === "gempa" && e.m >= 5.5)) add(e); else { const k = e.type + Math.floor(e.lat / cell) + "_" + Math.floor(e.lng / cell); (cl[k] = cl[k] || []).push(e); } });
+    Object.keys(cl).forEach(k => { const a = cl[k]; if (a.length === 1) add(a[0]); else LG.addLayer(clusterMk(a)); });
+    if (S.t.hist) CUR.filter(inReg).forEach(add);
+    if (S.t.vol) VOL.filter(v => !S.prov || inReg(v) || (R && distToReg(R, v.lat, v.lng) < 45)).forEach(add);
     const H = HIST[S.prov + "|" + S.kab]; if (H && S.tab === "his" && histMarkers) H.eq.filter(e => e.m >= 5).slice(0, 1200).forEach(e => HG.addLayer(mk(e)));
   }
   function fit() { const R = regionObj(); if (R && typeof map !== "undefined") map.fitBounds([[R.bb[0], R.bb[1]], [R.bb[2], R.bb[3]]], { padding: [30, 30], maxZoom: 11 }); else if (typeof map !== "undefined") map.fitBounds([[-11.5, 95], [6.5, 141]]); }
-  function fly(id) { const m = MK[id]; if (!m) return; const ll = m.getLatLng(); map.setView(ll, Math.max(map.getZoom(), 8)); m.openPopup(); }
+  function fly(id) { const m = MK[id]; if (m) { map.setView(m.getLatLng(), Math.max(map.getZoom(), 8)); m.openPopup(); return; } const e = LST.concat(CUR, VOL).find(x => x.id === id); if (!e) return; map.setView([e.lat, e.lng], Math.max(map.getZoom(), 9)); setTimeout(() => { const mm = MK[id]; if (mm) mm.openPopup(); }, 700); }
 
   /* ---------- panel ---------- */
-  const CSS = "#pqbsPanel{position:fixed;z-index:2950;top:70px;right:12px;width:368px;max-width:calc(100vw - 20px);max-height:calc(100% - 90px);display:none;flex-direction:column;background:#071a26f5;color:#e6f1f7;border:1px solid #fb923c66;border-radius:12px;font:12.5px system-ui;box-shadow:0 8px 30px #000a}#pqbsPanel.on{display:flex}" +
-    "#pqbsPanel .h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #ffffff18;font-weight:800;font-size:13.5px}#pqbsPanel .h b{flex:1}#pqbsPanel .x{cursor:pointer;opacity:.7;font-size:16px;background:none;border:0;color:inherit}" +
-    "#pqbsPanel .rg{display:flex;gap:6px;padding:8px 12px 0}#pqbsPanel select{flex:1;min-width:0;background:#0b2a3b;color:#e6f1f7;border:1px solid #ffffff2a;border-radius:7px;padding:5px;font:12px system-ui}" +
-    "#pqbsPanel .tb{display:flex;gap:4px;padding:8px 12px 0}#pqbsPanel .tb button{flex:1;padding:6px 2px;border-radius:7px;border:1px solid #ffffff22;background:#0b2a3b;color:#cfe;font:700 11.5px system-ui;cursor:pointer}#pqbsPanel .tb button.a{background:#fb923c;color:#1a0b00;border-color:#fb923c}" +
-    "#pqbsPanel .bd{overflow:auto;padding:8px 12px 12px;flex:1}#pqbsPanel .ch{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}#pqbsPanel .c{padding:4px 8px;border-radius:14px;border:1px solid #ffffff2a;cursor:pointer;font-size:11.5px;background:#0b2a3b;opacity:.55}#pqbsPanel .c.a{opacity:1;border-color:var(--c);background:#ffffff14;font-weight:700}" +
-    "#pqbsPanel .it{display:flex;gap:8px;padding:6px 4px;border-bottom:1px solid #ffffff12;cursor:pointer;align-items:flex-start}#pqbsPanel .it:hover{background:#ffffff0d}#pqbsPanel .it .e{font-size:16px;width:22px;text-align:center}#pqbsPanel .it small{display:block;color:#8fb0c2;font-size:11px}" +
-    "#pqbsPanel .bx{background:#ffffff0c;border:1px solid #ffffff14;border-radius:9px;padding:8px 10px;margin-bottom:8px}#pqbsPanel h4{margin:10px 0 5px;font-size:12px;color:#fdba74;letter-spacing:.3px}#pqbsPanel .bar{height:7px;border-radius:5px;background:#ffffff18;overflow:hidden;margin:2px 0 6px}#pqbsPanel .bar i{display:block;height:100%}" +
-    "#pqbsPanel .rw{display:flex;justify-content:space-between;gap:8px}#pqbsPanel .mut{color:#8fb0c2;font-size:11px}#pqbsPanel .btn{padding:6px 10px;border-radius:7px;border:1px solid #fb923c88;background:#fb923c22;color:#ffd7b0;cursor:pointer;font:700 11.5px system-ui;margin:2px 4px 2px 0}#pqbsPanel a{color:#7dd3fc}#pqbsPanel p{margin:5px 0;line-height:1.5}";
+  const CSS = "#pqbsPanel{position:fixed;z-index:2950;top:70px;right:12px;width:380px;max-width:calc(100vw - 20px);max-height:calc(100% - 90px);display:none;flex-direction:column;background:linear-gradient(165deg,#071a26f2,#150d24f2);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);color:#e6f1f7;border:1px solid #fb923c55;border-radius:18px;font:12.5px system-ui;box-shadow:0 20px 60px #000c,inset 0 1px 0 #ffffff14;overflow:hidden}#pqbsPanel.on{display:flex;animation:pqbsIn .28s ease}@keyframes pqbsIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}" +
+    "#pqbsPanel .h{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(120deg,#f9731633,#f43f5e22 60%,transparent);border-bottom:1px solid #ffffff14}#pqbsPanel .h>span{font-size:22px;filter:drop-shadow(0 0 8px #fb923c)}#pqbsPanel .h b{flex:1;font-size:15px;letter-spacing:.3px;background:linear-gradient(90deg,#fed7aa,#fb923c,#f43f5e);-webkit-background-clip:text;background-clip:text;color:transparent}#pqbsPanel .x{cursor:pointer;width:26px;height:26px;border-radius:50%;background:#ffffff14;border:0;color:#fff;font-size:13px}#pqbsPanel .x:hover{background:#f43f5e}" +
+    "#pqbsPanel .rg{display:flex;gap:6px;padding:10px 14px 0}#pqbsPanel select{flex:1;min-width:0;background:#0b2a3bcc;color:#e6f1f7;border:1px solid #ffffff26;border-radius:10px;padding:7px 6px;font:12px system-ui;outline:0}#pqbsPanel select:focus{border-color:#fb923c}" +
+    "#pqbsPanel .tb{display:flex;gap:4px;margin:10px 14px 0;padding:3px;background:#00000040;border-radius:12px}#pqbsPanel .tb button{flex:1;padding:7px 2px;border-radius:9px;border:0;background:transparent;color:#9fc3d6;font:700 11.5px system-ui;cursor:pointer;transition:.2s}#pqbsPanel .tb button.a{background:linear-gradient(135deg,#fb923c,#f43f5e);color:#fff;box-shadow:0 3px 12px #f43f5e66}" +
+    "#pqbsPanel .bd{overflow:auto;padding:10px 14px 14px;flex:1;scrollbar-width:thin;scrollbar-color:#fb923c55 transparent}#pqbsPanel .ch{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}#pqbsPanel .c{padding:4px 9px;border-radius:14px;border:1px solid #ffffff26;cursor:pointer;font-size:11.5px;background:#ffffff08;opacity:.6;transition:.2s}#pqbsPanel .c:hover{opacity:.95}#pqbsPanel .c.a{opacity:1;border-color:var(--c);background:linear-gradient(135deg,var(--c)33,transparent);font-weight:700;box-shadow:0 0 10px var(--c)44}" +
+    "#pqbsPanel .it{display:flex;gap:9px;padding:7px 6px;border-radius:10px;cursor:pointer;align-items:center;transition:.15s;border-left:3px solid var(--c,#ffffff22);margin-bottom:3px;background:#ffffff06}#pqbsPanel .it:hover{background:#ffffff14;transform:translateX(2px)}#pqbsPanel .it .e{font-size:15px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#ffffff10;flex:none;font-weight:800}#pqbsPanel .it small{display:block;color:#8fb0c2;font-size:11px;margin-top:1px}" +
+    "#pqbsPanel .bx{background:linear-gradient(145deg,#ffffff10,#ffffff05);border:1px solid #ffffff16;border-radius:14px;padding:10px 12px;margin-bottom:10px}#pqbsPanel h4{margin:12px 0 6px;font-size:11.5px;color:#fdba74;letter-spacing:.8px;text-transform:uppercase}#pqbsPanel .bar{height:7px;border-radius:5px;background:#ffffff16;overflow:hidden;margin:3px 0 7px}#pqbsPanel .bar i{display:block;height:100%;border-radius:5px;transition:width .6s}" +
+    "#pqbsPanel .rw{display:flex;justify-content:space-between;gap:8px;align-items:center}#pqbsPanel .mut{color:#8fb0c2;font-size:11px}#pqbsPanel .btn{padding:7px 11px;border-radius:9px;border:1px solid #fb923c77;background:linear-gradient(135deg,#fb923c33,#f43f5e22);color:#ffe1c4;cursor:pointer;font:700 11.5px system-ui;margin:2px 4px 2px 0;transition:.2s}#pqbsPanel .btn:hover{background:linear-gradient(135deg,#fb923c,#f43f5e);color:#fff}#pqbsPanel a{color:#7dd3fc}#pqbsPanel p{margin:5px 0;line-height:1.55}" +
+    "#pqbsPanel .sg{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:9px}#pqbsPanel .st{background:linear-gradient(160deg,#ffffff12,#ffffff05);border:1px solid #ffffff14;border-radius:12px;padding:8px 4px;text-align:center}#pqbsPanel .st b{display:block;font-size:21px;line-height:1.1;color:var(--c,#fff);text-shadow:0 0 14px var(--c,transparent)}#pqbsPanel .st span{font-size:10.5px;color:#8fb0c2}" +
+    "#pqbsPanel .stk{display:flex;height:9px;border-radius:6px;overflow:hidden;margin:6px 0 4px;background:#ffffff14}#pqbsPanel .stk i{display:block;height:100%}#pqbsPanel .lg{display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;color:#9fc3d6;margin:2px 0 8px}#pqbsPanel .lg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px}#pqbsPanel .gz{display:flex;align-items:center;gap:10px}#pqbsPanel .gz svg{width:110px;flex:none}" +
+    ".pqbs-b{position:relative;border-radius:50%;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 35% 30%,#fff8,var(--c) 55%);border:2px solid #fff;box-shadow:0 0 14px var(--c),0 2px 7px #000b;color:#fff;font-weight:800;cursor:pointer;transition:transform .15s}.pqbs-b:hover{transform:scale(1.18)}.pqbs-q b{font-size:.8em;text-shadow:0 1px 2px #000}.pqbs-star{border-radius:30%;border-color:#fde047}.pqbs-vol{border-color:#fed7aa}.pqbs-cl{flex-direction:column;line-height:1;border-width:3px}.pqbs-cl span{font-size:12px}.pqbs-cl b{font-size:12px;text-shadow:0 1px 2px #000}" +
+    ".pqbs-pulse::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--c);animation:pqbsP 1.9s ease-out infinite;pointer-events:none}@keyframes pqbsP{0%{transform:scale(.7);opacity:.95}100%{transform:scale(2);opacity:0}}" +
+    ".pqbs-pop .leaflet-popup-content-wrapper{background:linear-gradient(170deg,#0b2233,#120c20);color:#e6f1f7;border-radius:16px;padding:0;overflow:hidden;border:1px solid #ffffff26;box-shadow:0 14px 40px #000c}.pqbs-pop .leaflet-popup-content{margin:0!important;width:auto!important;min-width:250px;font:12.5px/1.45 system-ui}.pqbs-pop .leaflet-popup-tip{background:#0e1626}.pqbs-pop a.leaflet-popup-close-button{color:#fff!important;top:7px;right:8px;font-size:18px;z-index:3}" +
+    ".pqbs-pop .ph{display:flex;gap:10px;align-items:center;padding:11px 32px 11px 12px;color:#fff;text-shadow:0 1px 3px #0008}.pqbs-pop .pe{width:42px;height:42px;border-radius:12px;background:#00000040;display:flex;align-items:center;justify-content:center;font-size:21px;flex:none}.pqbs-pop .pe b{font-size:21px}.pqbs-pop .pt b{display:block;font-size:13.5px;line-height:1.25}.pqbs-pop .pt small{opacity:.9;font-size:11px}" +
+    ".pqbs-pop .pb{padding:9px 12px 11px}.pqbs-pop .pr{display:flex;gap:7px;padding:3px 0;align-items:baseline}.pqbs-pop .pr span{width:16px;text-align:center}.pqbs-pop .pr i{font-style:normal;color:#8fb0c2;width:68px;flex:none;font-size:11px}.pqbs-pop .pr b{font-weight:600;flex:1;color:#f1f7fb}.pqbs-pop .pr em{font-style:normal;color:#8fb0c2;font-size:11px;margin-left:4px}.pqbs-pop .pn{margin:7px 0 3px;padding:7px 9px;border-radius:9px;background:#ffffff0d;border-left:3px solid #fb923c;color:#cfe3ef;font-size:11.5px}.pqbs-pop .pf{display:flex;justify-content:space-between;margin-top:8px;padding-top:7px;border-top:1px solid #ffffff18;font-size:11px;color:#8fb0c2}.pqbs-pop .pf a{color:#7dd3fc;font-weight:700;text-decoration:none}";
   function build() {
     if (P) return; const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
     P = document.createElement("div"); P.id = "pqbsPanel";
@@ -292,9 +315,12 @@
     const L2 = LST, n = L2.length, eqN = L2.filter(e => e.type === "gempa").length, mx = L2.filter(e => e.type === "gempa").reduce((m, e) => Math.max(m, e.m), 0);
     let h = chips() + '<div class="ch">' + [7, 30, 90, 365].map(d => '<span class="c' + (S.days === d ? " a" : "") + '" data-d="' + d + '" style="--c:#22d3ee">' + (d === 365 ? "1 th" : d + " hr") + "</span>").join("") + [4.5, 5, 6].map(m => '<span class="c' + (S.mag === m ? " a" : "") + '" data-m="' + m + '" style="--c:#f43f5e">M\u2265' + m + "</span>").join("") + "</div>";
     if (S.loading) h += '<p class="mut">\u23F3 Memuat data USGS / BMKG / NASA\u2026</p>';
-    h += '<div class="bx"><b>' + nf(n) + "</b> kejadian dalam " + (S.days === 365 ? "1 tahun" : S.days + " hari") + (S.prov ? " di <b>" + esc(S.kab || S.prov) + "</b>" : " di Indonesia") + (eqN ? "<br>Gempa: " + eqN + " \u00B7 terkuat <b>M" + mx.toFixed(1) + "</b>" : "") + '<div class="mut">Gempa M\u22654,5 (USGS/BMKG) \u00B7 banjir, longsor, karhutla, badai, gunung api (NASA EONET: kejadian besar)</div></div>';
+    const by = {}; L2.forEach(e => by[e.type] = (by[e.type] || 0) + 1);
+    h += '<div class="sg"><div class="st" style="--c:#fb923c"><b>' + nf(n) + '</b><span>kejadian</span></div><div class="st" style="--c:#facc15"><b>' + nf(eqN) + '</b><span>gempa</span></div><div class="st" style="--c:#f43f5e"><b>' + (mx ? "M" + mx.toFixed(1) : "-") + '</b><span>terkuat</span></div></div>';
+    if (n) h += '<div class="stk">' + Object.keys(by).map(t => '<i title="' + HZ[t].n + ": " + by[t] + '" style="width:' + by[t] / n * 100 + "%;background:" + HZ[t].c + '"></i>').join("") + '</div><div class="mut" style="margin-bottom:4px">' + (S.days === 365 ? "1 tahun" : S.days + " hari") + " terakhir \u00B7 " + esc(S.kab || S.prov || "Seluruh Indonesia") + '</div>';
+    h += '<div class="lg"><span><i style="background:#facc15"></i>M&lt;5</span><span><i style="background:#fb923c"></i>M5\u20136</span><span><i style="background:#f43f5e"></i>M\u22656</span><span>\u25CC berdenyut = baru/berlangsung</span></div>';
     if (!anyOn()) h += '<p class="mut">Aktifkan minimal satu jenis bencana di atas untuk menampilkannya di peta.</p>';
-    h += L2.slice(0, 80).map(e => '<div class="it" data-i="' + esc(e.id) + '"><span class="e">' + HZ[e.type].e + '</span><span><b>' + esc(e.type === "gempa" ? "M" + e.m.toFixed(1) + " \u00B7 " + (e.place || e.reg || e.title) : e.title) + "</b><small>" + esc((e.reg ? e.reg + ", " : "") + (e.prov || "") + " \u00B7 " + ago(e.t2 || e.t) + (e.d ? " \u00B7 " + Math.round(e.d) + " km" : "") + " \u00B7 " + e.src) + "</small></span></div>").join("");
+    h += L2.slice(0, 80).map(e => '<div class="it" data-i="' + esc(e.id) + '" style="--c:' + (e.type === "gempa" ? (e.m >= 6 ? "#f43f5e" : e.m >= 5 ? "#fb923c" : "#facc15") : HZ[e.type].c) + '"><span class="e" style="color:' + HZ[e.type].c + '">' + (e.type === "gempa" ? e.m.toFixed(1) : HZ[e.type].e) + '</span><span><b>' + esc(e.type === "gempa" ? (e.place || e.reg || e.title) : e.title) + "</b><small>" + esc((e.reg ? e.reg + ", " : "") + (e.prov || "") + " \u00B7 " + ago(e.t2 || e.t) + (e.d ? " \u00B7 " + Math.round(e.d) + " km" : "") + " \u00B7 " + e.src) + "</small></span></div>").join("");
     if (n > 80) h += '<p class="mut">+' + (n - 80) + " lainnya di peta\u2026</p>"; if (!n && !S.loading) h += '<p class="mut">Tidak ada kejadian sesuai filter.</p>';
     return h + '<p><button class="btn" data-a="reload">\u21BB Muat ulang</button></p>';
   }
@@ -306,7 +332,8 @@
         '<p class="mut">Basis data kurasi (BNPB/PVMBG/BMKG/USGS); angka korban perkiraan.</p>';
     }
     const A = analyze(); if (!A) return '<p class="mut">\u23F3 Memuat riwayat ' + esc(S.kab || S.prov) + " (katalog gempa USGS sejak 1900, NASA EONET)\u2026</p>";
-    let h = '<div class="bx"><div class="rw"><b style="font-size:14px">' + esc(A.R.name) + '</b><b style="color:' + LVL(A.overall)[1] + '">' + LVL(A.overall)[0] + " \u00B7 " + A.overall + '/100</b></div><div class="bar"><i style="width:' + A.overall + "%;background:" + LVL(A.overall)[1] + '"></i></div>' + narrative(A).map(s => "<p>" + s + "</p>").join("") + "</div>";
+    const gc = LVL(A.overall)[1], gv = A.overall;
+    let h = '<div class="bx"><div class="gz"><svg viewBox="0 0 120 74"><path d="M10 62 A50 50 0 0 1 110 62" stroke="#ffffff1c" stroke-width="11" fill="none" stroke-linecap="round"/><path d="M10 62 A50 50 0 0 1 110 62" stroke="' + gc + '" stroke-width="11" fill="none" stroke-linecap="round" pathLength="100" stroke-dasharray="' + gv + ' 100" style="filter:drop-shadow(0 0 6px ' + gc + ')"/><text x="60" y="56" text-anchor="middle" font-size="26" font-weight="800" fill="#fff">' + gv + '</text></svg><div><b style="font-size:15px">' + esc(A.R.name) + '</b><div style="color:' + gc + ';font-weight:800;font-size:13px">' + LVL(gv)[0] + ' \u00B7 skor risiko</div><div class="mut">' + esc(S.kab ? S.prov : "Provinsi") + "</div></div></div>" + narrative(A).map(x => "<p>" + x + "</p>").join("") + "</div>";
     h += "<h4>Skor risiko per jenis bahaya</h4>" + A.ks.map(k => '<div class="rw"><span>' + NM[k] + '</span><span style="color:' + LVL(A.sc[k])[1] + '">' + LVL(A.sc[k])[0] + " " + A.sc[k] + '</span></div><div class="bar"><i style="width:' + A.sc[k] + "%;background:" + LVL(A.sc[k])[1] + '"></i></div>').join("");
     if (A.H.ok) {
       const cy = new Date().getUTCFullYear(), yr = []; for (let y = Math.max(A.Y0, cy - 39); y <= cy; y++) yr.push([y, A.eq.filter(e => e.m >= 5 && new Date(e.t).getUTCFullYear() === y).length]);
@@ -339,8 +366,8 @@
   /* ---------- kontrol ---------- */
   function setPanel(v) { build(); S.panel = v; if (v) { try { if (window.PETAQU_GEMPA) PETAQU_GEMPA.close(); } catch (e) { } if (!anyOn()) { Object.keys(HZ).forEach(k => S.t[k] = true); S.t.hist = true; S.t.vol = true; } fillKab(); load(); draw(); } render(); }
   function toggle(k) { if (!S.t[k] && !loaded) load(); S.t[k] = !S.t[k]; draw(); render(); }
-  function init() { if (started) return true; if (typeof map === "undefined" || !map || !map.getPane || !document.body || typeof L === "undefined") return false; started = true; build(); fillKab(); return true; }
-  window.PETAQU_BENCANA_SEMUA = { open: () => setPanel(true), close: () => setPanel(false), toggle: k => { build(); toggle(k); }, select: (p, k) => { build(); S.prov = p || ""; S.kab = k || ""; fillKab(); regionChanged(); }, _t: { analyze, locate, CUR, VOL, HZ, S } };
+  function init() { if (started) return true; if (typeof map === "undefined" || !map || !map.getPane || !document.body || typeof L === "undefined") return false; started = true; build(); fillKab(); let zt; map.on("zoomend", () => { clearTimeout(zt); zt = setTimeout(() => { if (anyOn()) draw(); }, 200); }); return true; }
+  window.PETAQU_BENCANA_SEMUA = { open: () => setPanel(true), close: () => setPanel(false), toggle: k => { build(); toggle(k); }, select: (p, k) => { build(); S.prov = p || ""; S.kab = k || ""; fillKab(); regionChanged(); }, _t: { popup, mk, tabNow, tabHis, tabRank, analyze, locate, CUR, VOL, HZ, S } };
   window.PQ_FOLDER_EXTRA = window.PQ_FOLDER_EXTRA || [];
   window.PQ_FOLDER_EXTRA.push({
     title: "Bencana Indonesia",
