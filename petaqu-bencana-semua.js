@@ -23,9 +23,11 @@
     banjir: { n: "Banjir", e: "\u{1F4A7}", c: "#38bdf8" },
     longsor: { n: "Tanah longsor", e: "\u26F0\uFE0F", c: "#a16207" },
     karhutla: { n: "Kebakaran hutan & lahan", e: "\u{1F525}", c: "#f97316" },
-    badai: { n: "Badai & cuaca ekstrem", e: "\u{1F300}", c: "#a78bfa" }
+    badai: { n: "Badai & cuaca ekstrem", e: "\u{1F300}", c: "#a78bfa" },
+    hotspot: { n: "Titik panas satelit", e: "\u{1F6F0}\uFE0F", c: "#ef4444" },
+    kering: { n: "Kekeringan", e: "\u{1F3DC}\uFE0F", c: "#facc15" }
   };
-  const EON = { floods: "banjir", landslides: "longsor", volcanoes: "gunung", wildfires: "karhutla", severeStorms: "badai" };
+  const EON = { floods: "banjir", landslides: "longsor", volcanoes: "gunung", wildfires: "karhutla", severeStorms: "badai", drought: "kering" };
   const TIPS = {
     gempa: "Kenali jalur evakuasi & titik kumpul; saat guncangan lakukan Merunduk-Berlindung-Berpegangan; siapkan tas siaga bencana; pastikan bangunan tahan gempa.",
     tsunami: "Bila gempa kuat/lama terasa di pesisir, segera ke tempat tinggi tanpa menunggu sirine; hafal rute evakuasi vertikal/horizontal.",
@@ -33,6 +35,8 @@
     banjir: "Pantau peringatan dini cuaca BMKG; amankan dokumen & listrik; kenali titik kumpul; jangan menerobos arus deras.",
     longsor: "Waspadai lereng curam, retakan tanah, mata air keruh & hujan lebat berhari-hari; hindari hunian di bawah tebing.",
     karhutla: "Jangan membakar lahan; pantau titik panas; gunakan masker saat kabut asap; lapor ke BPBD/Manggala Agni.",
+    hotspot: "Laporkan titik api ke BPBD/Manggala Agni; jangan membakar lahan; siapkan masker saat asap.",
+    kering: "Hemat air, pantau status siaga kekeringan BMKG; waspada karhutla di lahan gambut kering.",
     badai: "Pangkas pohon rapuh, amankan atap & baliho; ikuti peringatan dini BMKG; hindari area terbuka saat petir."
   };
 
@@ -122,7 +126,7 @@
       const b = k.bb; if (e.lat >= b[0] && e.lat <= b[2] && e.lng >= b[1] && e.lng <= b[3]) { let c = false; k.rings.forEach(r => { if (pip(r, e.lat, e.lng)) c = !c; }); if (c) { e.prov = k.p; e.reg = k.n; e.off = false; return e; } }
       const d = hav(e.lat, e.lng, k.c[0], k.c[1]); if (d < bd) { bd = d; best = k; }
     }
-    if (best) { e.prov = best.p; e.reg = best.n; } e.off = true; return e;
+    if (best) { e.prov = best.p; e.reg = best.n; e._k = best; } e.off = true; return e;
   }
   const provs = () => { const s = new Set(); kabs().forEach(k => s.add(k.p)); return [...s].sort(); };
   const kabOf = p => kabs().filter(k => k.p === p).map(k => k.n).sort();
@@ -135,8 +139,8 @@
   const distToReg = (R, lat, lng) => { let b = 1e9; R.list.forEach(k => k.rings.forEach(r => { for (let i = 0; i < r.length; i += 2) { const d = hav(lat, lng, r[i][0], r[i][1]); if (d < b) b = d; } })); return b; };
 
   /* ---------- state ---------- */
-  const S = { t: {}, days: 30, mag: 4.5, prov: "", kab: "", tab: "now", panel: false, loading: 0 };
-  let LIVE = [], EON_ALL = [], HIST = {}, LG = null, HG = null, OL = null, MK = {}, LST = [], P = null, started = false, loaded = false, histMarkers = false;
+  const S = { t: {}, days: 30, mag: 4.5, hs: "24h", sb: "off", sov: {}, sop: .85, sd: new Date(Date.now() - 864e5).toISOString().slice(0, 10), src: {}, prov: "", kab: "", tab: "now", panel: false, loading: 0 };
+  let HOT = [], hotLoaded = false, SBL = null, SOL = {}, LIVE = [], EON_ALL = [], HIST = {}, LG = null, HG = null, OL = null, MK = {}, LST = [], P = null, started = false, loaded = false, histMarkers = false;
   CUR.forEach(locate); VOL.forEach(locate);
   const anyOn = () => Object.keys(S.t).some(k => S.t[k]);
 
@@ -144,7 +148,7 @@
   const tmo = (u, ms) => { const c = new AbortController(); const id = setTimeout(() => c.abort(), ms || 25000); return fetch(u, { signal: c.signal }).then(r => { clearTimeout(id); if (!r.ok) throw 0; return r.json(); }); };
   function addEq(list, e) { if ([e.t, e.lat, e.lng, e.m].some(isNaN)) return; if (list.some(x => Math.abs(x.t - e.t) < 12e4 && hav(x.lat, x.lng, e.lat, e.lng) < 150)) return; list.push(e); }
   const usgsUrl = (bb, mm, start) => "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minlatitude=" + bb[0] + "&maxlatitude=" + bb[2] + "&minlongitude=" + bb[1] + "&maxlongitude=" + bb[3] + "&minmagnitude=" + mm + "&orderby=time&limit=20000&starttime=" + start;
-  const eonUrl = (bb, extra) => "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&bbox=" + bb[1] + "," + bb[2] + "," + bb[3] + "," + bb[0] + "&category=floods,landslides,volcanoes,wildfires,severeStorms&limit=1000" + (extra || "");
+  const eonUrl = (bb, extra) => "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&bbox=" + bb[1] + "," + bb[2] + "," + bb[3] + "," + bb[0] + "&category=floods,landslides,volcanoes,wildfires,severeStorms,drought&limit=1000" + (extra || "");
   function usgsList(j, out) { (j.features || []).forEach(f => { const c = f.geometry.coordinates, p = f.properties; addEq(out, { id: "u" + f.id, type: "gempa", t: p.time, lat: c[1], lng: c[0], m: +p.mag, d: Math.max(1, c[2] || 10), src: "USGS", title: "Gempa M" + (+p.mag).toFixed(1), place: p.place || "", url: p.url, tsu: p.tsunami === 1 }); }); }
   function eonList(j, out) {
     (j.events || []).forEach(ev => {
@@ -154,19 +158,69 @@
       out.push({ id: "e" + ev.id, type: cat, t: Date.parse(ev.geometry[0].date), t2: Date.parse(g.date), lat: co[1], lng: co[0], title: ev.title, src: "NASA EONET", url: src, closed: ev.closed, mag: g.magnitudeValue ? g.magnitudeValue + " " + (g.magnitudeUnit || "") : "" });
     });
   }
+  const FIRMS = [["VIIRS S-NPP", "suomi-npp-viirs-c2", "SUOMI_VIIRS_C2", "VIIRS_SNPP_NRT"], ["VIIRS NOAA-20", "noaa-20-viirs-c2", "J1_VIIRS_C2", "VIIRS_NOAA20_NRT"], ["VIIRS NOAA-21", "noaa-21-viirs-c2", "J2_VIIRS_C2", "VIIRS_NOAA21_NRT"], ["MODIS Terra/Aqua", "modis-c6.1", "MODIS_C6_1", "MODIS_NRT"]];
+  const SATB = [["off", "Mati", "", 0], ["MODIS_Terra_CorrectedReflectance_TrueColor", "MODIS Terra", "jpg", 9], ["MODIS_Aqua_CorrectedReflectance_TrueColor", "MODIS Aqua", "jpg", 9], ["VIIRS_SNPP_CorrectedReflectance_TrueColor", "VIIRS S-NPP", "jpg", 9], ["VIIRS_NOAA20_CorrectedReflectance_TrueColor", "VIIRS NOAA-20", "jpg", 9]];
+  const SATO = [["VIIRS_SNPP_Thermal_Anomalies_375m_All", "\u{1F525} Anomali termal VIIRS", "png", 9], ["MODIS_Combined_Value_Added_AOD", "\u{1F32B} Asap/aerosol (AOD)", "png", 6]];
+  const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k) || ""; localStorage.setItem(k, v); } catch (e) { return ""; } };
+  const txt = (u, ms) => { const c = new AbortController(); const id = setTimeout(() => c.abort(), ms || 40000); return fetch(u, { signal: c.signal }).then(r => { clearTimeout(id); if (!r.ok) throw 0; return r.text(); }); };
+  function parseFirms(t, name, out) {
+    const ln = t.trim().split(/\r?\n/), hd = (ln[0] || "").split(","), ix = k => hd.indexOf(k); const iLa = ix("latitude"), iLo = ix("longitude"), iD = ix("acq_date"), iT = ix("acq_time"), iC = ix("confidence"), iF = ix("frp"), iN = ix("daynight");
+    if (iLa < 0 || iLo < 0 || iD < 0) return -1; let n = 0;
+    for (let i = 1; i < ln.length; i++) {
+      const c = ln[i].split(","), la = +c[iLa], lo = +c[iLo]; if (!(la > -12.5 && la < 7.5 && lo > 94 && lo < 142)) continue;
+      const cf = c[iC], cn = isNaN(+cf) ? ({ l: 20, n: 60, h: 90 }[cf] || 50) : +cf; if (cn < 30) continue;
+      const tm = String(c[iT] || "0000").padStart(4, "0"), t = Date.parse(c[iD] + "T" + tm.slice(0, 2) + ":" + tm.slice(2) + ":00Z"); if (isNaN(t)) continue;
+      out.push({ sat: name, lat: la, lng: lo, t, frp: +c[iF] || 0, conf: cn, dn: c[iN], d: c[iD] }); n++;
+    } return n;
+  }
+  const edgeKm = e => { const k = e._k; if (!k) return 1e9; let b = 1e9; k.rings.forEach(r => r.forEach(q => { const d = hav(e.lat, e.lng, q[0], q[1]); if (d < b) b = d; })); return b; };
+  async function loadHot(force) {
+    if (hotLoaded && !force) return; hotLoaded = true; S.loading++; render();
+    const key = ls("pq_firms_key"), px = ls("pq_bnc_px"), span = S.hs, days = span === "24h" ? 1 : span === "48h" ? 2 : 5, raw = [], wrap = u => px ? px + encodeURIComponent(u) : u;
+    await Promise.all(FIRMS.map(async f => {
+      let t = null, err = "";
+      try { t = await txt(wrap("https://firms.modaps.eosdis.nasa.gov/data/active_fire/" + f[1] + "/csv/" + f[2] + "_SouthEast_Asia_" + span + ".csv")); } catch (x) { err = "diblokir CORS / tidak tersedia"; }
+      let n = t != null ? parseFirms(t, f[0], raw) : -1;
+      if (n < 0 && key) { try { t = await txt(wrap("https://firms.modaps.eosdis.nasa.gov/api/area/csv/" + key + "/" + f[3] + "/94,-12.5,142,7.5/" + days)); n = parseFirms(t, f[0], raw); err = n < 0 ? "MAP_KEY tidak valid" : ""; } catch (x) { err = "API key gagal"; } }
+      S.src[f[0]] = n >= 0 ? { ok: 1, n } : { ok: 0, err: err || "format tidak dikenali" };
+    }));
+    const M = {}; raw.forEach(r => { const k = Math.round(r.lat * 100) + "_" + Math.round(r.lng * 100) + "_" + r.d, o = M[k]; if (!o) M[k] = { ...r, sats: [r.sat] }; else { if (o.sats.indexOf(r.sat) < 0) o.sats.push(r.sat); if (r.frp > o.frp) { o.frp = r.frp; o.t = r.t; } } });
+    const out = Object.keys(M).map(k => { const m = M[k]; return { id: "h" + k, type: "hotspot", t: m.t, lat: m.lat, lng: m.lng, frp: m.frp, conf: m.conf, dn: m.dn, sats: m.sats, title: "Titik panas satelit", src: "NASA FIRMS \u00B7 " + m.sats.join(", ") }; });
+    out.forEach(locate); HOT = out.filter(e => !e.off || edgeKm(e) < 8).sort((a, b) => b.t - a.t);
+    S.src["Titik panas (gabungan)"] = { ok: HOT.length > 0 ? 1 : 0, n: HOT.length, err: HOT.length ? "" : "belum ada data \u2014 isi MAP_KEY/proxy" };
+    S.loading--; draw(); render();
+  }
+  function gdacsList(j, out) {
+    const M = { FL: "banjir", TC: "badai", VO: "gunung", WF: "karhutla", DR: "kering" };
+    (j.features || []).forEach(f => { const p = f.properties || {}, g = f.geometry || {}, ty = M[p.eventtype]; if (!ty || !g.coordinates) return; let co = g.coordinates; while (Array.isArray(co[0])) co = co[0]; const la = co[1], lo = co[0]; if (!(la > -12.5 && la < 7.5 && lo > 94 && lo < 142)) return;
+      out.push({ id: "g" + p.eventid + "_" + (p.episodeid || 0), type: ty, t: Date.parse(p.fromdate), t2: Date.parse(p.todate || p.fromdate), lat: la, lng: lo, title: p.name || p.eventname || HZ[ty].n, alert: p.alertlevel, note: String(p.description || "").slice(0, 200), src: "GDACS (PBB/UE)", url: (p.url || {}).report || (p.url || {}).details, closed: p.iscurrent === "false" || p.iscurrent === false }); });
+  }
+  const mkTile = o => L.tileLayer("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/" + o[0] + "/default/" + S.sd + "/GoogleMapsCompatible_Level" + o[3] + "/{z}/{y}/{x}." + o[2], { maxNativeZoom: o[3], maxZoom: 19, opacity: S.sop, zIndex: o[2] === "jpg" ? 20 : 22, attribution: "NASA GIBS" });
+  function applySat() {
+    if (typeof map === "undefined" || !map || !map.getPane) return; if (SBL) { map.removeLayer(SBL); SBL = null; }
+    Object.keys(SOL).forEach(k => { map.removeLayer(SOL[k]); delete SOL[k]; });
+    const b = SATB.find(x => x[0] === S.sb); if (b && b[0] !== "off") SBL = mkTile(b).addTo(map);
+    SATO.forEach(o => { if (S.sov[o[0]]) SOL[o[0]] = mkTile(o).addTo(map); });
+  }
   async function load(force) {
     if (loaded && !force) return; loaded = true; S.loading++; render();
     const iso = new Date(NOW() - 365 * 864e5).toISOString().slice(0, 19), nat = [-12.5, 94, 7.5, 142], out = [], ev = [];
     const B = ["gempaterkini", "gempadirasakan"].map(n => tmo("https://data.bmkg.go.id/DataMKG/TEWS/" + n + ".json", 15000));
-    const [u, e, ...b] = await Promise.allSettled([tmo(usgsUrl(nat, 4.5, iso)), tmo(eonUrl(nat, "&days=730")), ...B]);
+    const gd = new Date(NOW() - 120 * 864e5).toISOString().slice(0, 10), gt = new Date().toISOString().slice(0, 10);
+    const [u, e, gx, ...b] = await Promise.allSettled([tmo(usgsUrl(nat, 4.5, iso)), tmo(eonUrl(nat, "&days=730")), tmo("https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=FL,TC,VO,WF,DR&fromdate=" + gd + "&todate=" + gt, 30000), ...B]);
+    S.src["USGS (gempa)"] = u.status === "fulfilled" ? { ok: 1, n: ((u.value || {}).features || []).length } : { ok: 0, err: "gagal dimuat" };
+    S.src["NASA EONET"] = e.status === "fulfilled" ? { ok: 1, n: ((e.value || {}).events || []).length } : { ok: 0, err: "gagal dimuat" };
+    S.src["GDACS (PBB/UE)"] = gx.status === "fulfilled" ? { ok: 1, n: ((gx.value || {}).features || []).length } : { ok: 0, err: "gagal/CORS" };
+    S.src["BMKG (gempa)"] = b.some(r => r.status === "fulfilled") ? { ok: 1, n: 0 } : { ok: 0, err: "gagal/CORS" };
     b.forEach(r => { if (r.status === "fulfilled") ((r.value.Infogempa || {}).gempa || []).forEach(g => { const c = String(g.Coordinates || "").split(",").map(Number); addEq(out, { id: "b" + g.DateTime, type: "gempa", t: Date.parse(g.DateTime), lat: c[0], lng: c[1], m: +g.Magnitude, d: parseFloat(g.Kedalaman) || 10, src: "BMKG", title: "Gempa M" + (+g.Magnitude).toFixed(1), place: g.Wilayah || "", felt: g.Dirasakan || "", tsu: /berpotensi tsunami/i.test(g.Potensi || "") && !/tidak/i.test(g.Potensi || "") }); }); });
     if (u.status === "fulfilled") usgsList(u.value, out);
     if (e.status === "fulfilled") eonList(e.value, ev);
+    if (gx.status === "fulfilled") gdacsList(gx.value, ev);
     if (out.length) { out.forEach(locate); out.sort((a, b) => b.t - a.t); LIVE = out; try { localStorage.setItem("pq_bnc_eq", JSON.stringify(out.slice(0, 1500))); } catch (x) { } }
     else { try { LIVE = JSON.parse(localStorage.getItem("pq_bnc_eq") || "[]"); } catch (x) { LIVE = []; } say(LIVE.length ? "Offline: data gempa tersimpan dipakai" : "Gagal memuat data gempa (USGS/BMKG)"); }
     if (ev.length) { ev.forEach(locate); ev.sort((a, b) => b.t2 - a.t2); EON_ALL = ev; try { localStorage.setItem("pq_bnc_eon", JSON.stringify(ev.slice(0, 600))); } catch (x) { } }
     else { try { EON_ALL = JSON.parse(localStorage.getItem("pq_bnc_eon") || "[]"); } catch (x) { EON_ALL = []; } }
-    S.loading--; draw(); render();
+    S.loading--; draw(); render(); if (S.t.hotspot) loadHot();
   }
   async function loadHist() {
     const R = regionObj(); if (!R) return; const key = S.prov + "|" + S.kab; if (HIST[key]) return;
@@ -195,14 +249,14 @@
       tsunami: Math.min(100, tsuC * 35 + offM7 * 12 + (curR.some(x => x.tsu) ? 10 : 0)),
       gunung: Math.min(100, vn.reduce((s, x) => s + (x.v.k === 1 ? (x.inside ? 50 : x.d < 25 ? 38 : 20) : (x.inside ? 28 : 12)), 0)),
       banjir: Math.min(100, ec("banjir") * 14 + cc("banjir") * 30), longsor: Math.min(100, ec("longsor") * 16 + cc("longsor") * 30),
-      karhutla: Math.min(100, ec("karhutla") * 10 + cc("karhutla") * 25), badai: Math.min(100, ec("badai") * 18)
+      karhutla: Math.min(100, ec("karhutla") * 10 + cc("karhutla") * 25 + Math.round(HOT.filter(inReg).length / 3)), badai: Math.min(100, ec("badai") * 18)
     };
     const ks = Object.keys(sc).sort((a, b) => sc[b] - sc[a]), overall = Math.min(100, Math.round(sc[ks[0]] * .6 + (sc[ks[1]] + sc[ks[2]]) / 2 * .4));
     const top = eq.slice().sort((a, b) => b.m - a.m).slice(0, 6), deadly = curR.filter(x => x.deaths).sort((a, b) => b.deaths - a.deaths);
     return { R, H, eq, e45, yrs, Y0, rate, p10, b, last5, longRate, trend, allEv, ec, cc, vn, sc, ks, overall, top, deadly, curR, n: { 5: cnt(5), 6: cnt(6), 7: cnt(7) } };
   }
   const LVL = v => v < 20 ? ["Rendah", "#34d399"] : v < 45 ? ["Sedang", "#facc15"] : v < 70 ? ["Tinggi", "#fb923c"] : ["Sangat tinggi", "#f43f5e"];
-  const NM = { gempa: "Gempa bumi", tsunami: "Tsunami", gunung: "Gunung api", banjir: "Banjir", longsor: "Longsor", karhutla: "Karhutla", badai: "Badai/cuaca ekstrem" };
+  const NM = { hotspot: "Titik panas", kering: "Kekeringan", gempa: "Gempa bumi", tsunami: "Tsunami", gunung: "Gunung api", banjir: "Banjir", longsor: "Longsor", karhutla: "Karhutla", badai: "Badai/cuaca ekstrem" };
   function narrative(A) {
     const nm = A.R.name, o = [], lv = LVL(A.overall)[0].toLowerCase();
     o.push("Profil kebencanaan " + nm + (S.kab ? ", " + S.prov : "") + " tergolong <b>" + lv + "</b> (skor " + A.overall + "/100), dengan bahaya dominan <b>" + NM[A.ks[0]].toLowerCase() + "</b>" + (A.sc[A.ks[1]] >= 20 ? " dan " + NM[A.ks[1]].toLowerCase() : "") + ".");
@@ -214,6 +268,7 @@
     } else if (!A.H.ok) o.push("Katalog gempa USGS belum bisa dimuat (periksa koneksi); analisis memakai data lain.");
     if (A.vn.length) o.push("Gunung api terdekat: " + A.vn.slice(0, 3).map(x => "<b>" + esc(x.v.title.replace("Gunung ", "")) + "</b> (" + (x.inside ? "di wilayah ini" : Math.round(x.d) + " km") + ")").join(", ") + ".");
     if (A.deadly.length) { const d = A.deadly[0]; o.push("Kejadian paling mematikan tercatat: <b>" + esc(d.title) + "</b> (" + new Date(d.t).getUTCFullYear() + ", \u2248" + nf(d.deaths) + " jiwa)."); }
+    const hh = HOT.filter(inReg).length; if (hh) o.push("Satelit (NASA FIRMS) mendeteksi <b>" + nf(hh) + "</b> titik panas di wilayah ini dalam " + ({ "24h": "24 jam", "48h": "48 jam", "7d": "7 hari" })[S.hs] + " terakhir.");
     const hy = A.ec("banjir") + A.ec("longsor"); if (hy) o.push("NASA EONET mencatat " + A.ec("banjir") + " kejadian banjir & " + A.ec("longsor") + " longsor besar di wilayah ini (belum termasuk kejadian kecil lokal \u2014 lihat DIBI/InaRISK BNPB).");
     return o;
   }
@@ -229,6 +284,8 @@
     else if (e.t) s += rowP("\u{1F550}", "Waktu", (e.cur ? fD(e.t) : fDT(e.t)) + ' <em>' + (e.cur ? new Date(e.t).getUTCFullYear() : ago(e.t)) + "</em>");
     if (e.t2 && e.t2 - e.t > 36e5) s += rowP("\u21BB", "Pembaruan", fD(e.t2) + (e.closed ? " (selesai)" : " (berlangsung)"));
     if (e.d != null) s += rowP("\u2B07", "Kedalaman", Math.round(e.d) + " km (" + (e.d < 70 ? "dangkal" : e.d < 300 ? "menengah" : "dalam") + ")");
+    if (e.type === "hotspot") { s += rowP("\u{1F321}", "Daya api (FRP)", (e.frp ? e.frp.toFixed(1) : "-") + " MW"); s += rowP("\u{1F6F0}", "Satelit", esc((e.sats || []).join(", "))); s += rowP("\u{1F3AF}", "Keyakinan", Math.round(e.conf) + "% \u00B7 " + (e.dn === "N" ? "malam" : "siang")); }
+    if (e.alert) s += rowP("\u{1F6A8}", "Siaga GDACS", esc(e.alert));
     if (e.reg || e.prov) s += rowP("\u{1F4CD}", "Wilayah", esc((e.off ? "Dekat " : "") + (e.reg ? e.reg + ", " : "") + (e.prov || "")));
     if (e.place) s += rowP("\u{1F9ED}", "Lokasi", esc(e.place)); if (e.felt) s += rowP("\u{1F4E3}", "Dirasakan", esc(e.felt)); if (e.mag) s += rowP("\u{1F4CF}", "Ukuran", esc(e.mag));
     if (e.deaths) s += rowP("\u{1F480}", "Korban", "\u2248" + nf(e.deaths) + " jiwa");
@@ -241,6 +298,7 @@
     const h = HZ[e.type], o = { maxWidth: 300, className: "pqbs-pop" }, recent = NOW() - (e.t2 || e.t) < 3 * 864e5; let m;
     if (e.vol) m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-vol", e.k === 1 ? "#f97316" : "#fbbf24", e.k === 1 ? 30 : 24, "\u{1F30B}", e.k === 1), zIndexOffset: 400 });
     else if (e.cur) m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-star", h.c, 32, e.tsu ? "\u{1F30A}" : h.e, true), zIndexOffset: 800 });
+    else if (e.type === "hotspot") { const f = e.frp || 0; m = L.circleMarker([e.lat, e.lng], { radius: 3.5 + Math.min(4.5, Math.sqrt(f) / 2.2), color: "#fff", weight: .7, fillColor: f >= 100 ? "#be123c" : f >= 40 ? "#ef4444" : f >= 10 ? "#f97316" : "#fbbf24", fillOpacity: .9 }); }
     else if (e.type === "gempa") {
       const mc = e.m >= 6 ? "#f43f5e" : e.m >= 5 ? "#fb923c" : "#facc15";
       if (e.m >= 5.5) { const z = Math.round(24 + (e.m - 5.5) * 10); m = L.marker([e.lat, e.lng], { icon: bdg("pqbs-q", mc, z, "<b>" + e.m.toFixed(1) + "</b>", recent), zIndexOffset: 600 + Math.round(e.m * 10) }); }
@@ -253,7 +311,7 @@
     const m = L.marker([la, ln], { icon: L.divIcon({ className: "", html: '<div class="pqbs-b pqbs-cl" style="--c:' + h.c + ";width:" + sz + "px;height:" + sz + 'px"><span>' + h.e + "</span><b>" + n + "</b></div>", iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2] }), zIndexOffset: 200 });
     m.bindTooltip(n + " " + h.n.toLowerCase() + " \u2014 klik untuk zoom", { direction: "top" }); m.on("click", () => map.setView([la, ln], Math.min(map.getZoom() + 2, 10))); return m;
   }
-  const vis = () => { const lim = NOW() - S.days * 864e5; return LIVE.filter(e => S.t.gempa && e.t >= lim && e.m >= S.mag && inReg(e)).concat(EON_ALL.filter(e => S.t[e.type] && (e.t2 || e.t) >= lim && inReg(e))).sort((a, b) => (b.t2 || b.t) - (a.t2 || a.t)); };
+  const vis = () => { const lim = NOW() - S.days * 864e5; return LIVE.filter(e => S.t.gempa && e.t >= lim && e.m >= S.mag && inReg(e)).concat(HOT.filter(e => S.t.hotspot && e.t >= lim && inReg(e))).concat(EON_ALL.filter(e => S.t[e.type] && (e.t2 || e.t) >= lim && inReg(e))).sort((a, b) => (b.t2 || b.t) - (a.t2 || a.t)); };
   function draw() {
     if (typeof map === "undefined" || !map || !map.getPane) return;
     if (!LG) { LG = L.layerGroup().addTo(map); HG = L.layerGroup().addTo(map); OL = L.layerGroup().addTo(map); }
@@ -261,7 +319,7 @@
     const R = regionObj(); if (R && anyOn()) R.list.forEach(k => OL.addLayer(L.polygon(k.rings, { color: "#22d3ee", weight: 2.5, fillColor: "#22d3ee", fillOpacity: .06, dashArray: "7 6", interactive: false })));
     if (!anyOn()) return;
     const add = e => { const m = mk(e); MK[e.id] = m; LG.addLayer(m); }, z = map.getZoom(), cell = z >= 8 ? 0 : 360 / Math.pow(2, z) * .2, cl = {};
-    LST = vis(); LST.slice(0, 2500).forEach(e => { if (!cell || (e.type === "gempa" && e.m >= 5.5)) add(e); else { const k = e.type + Math.floor(e.lat / cell) + "_" + Math.floor(e.lng / cell); (cl[k] = cl[k] || []).push(e); } });
+    LST = vis(); const bnd = (!cell && LST.length > 400) ? map.getBounds().pad(.4) : null; LST.slice(0, 20000).forEach(e => { if (bnd && !bnd.contains([e.lat, e.lng]) && !(e.type === "gempa" && e.m >= 5.5)) return; if (!cell || (e.type === "gempa" && e.m >= 5.5)) add(e); else { const k = e.type + Math.floor(e.lat / cell) + "_" + Math.floor(e.lng / cell); (cl[k] = cl[k] || []).push(e); } });
     Object.keys(cl).forEach(k => { const a = cl[k]; if (a.length === 1) add(a[0]); else LG.addLayer(clusterMk(a)); });
     if (S.t.hist) CUR.filter(inReg).forEach(add);
     if (S.t.vol) VOL.filter(v => !S.prov || inReg(v) || (R && distToReg(R, v.lat, v.lng) < 45)).forEach(add);
@@ -289,15 +347,19 @@
   function build() {
     if (P) return; const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
     P = document.createElement("div"); P.id = "pqbsPanel";
-    P.innerHTML = '<div class="h"><span>\u{1F30B}</span><b>Bencana Indonesia</b><button class="x" data-a="close">\u2715</button></div><div class="rg"><select id="pqbP"></select><select id="pqbK"></select></div><div class="tb"><button data-t="now">Terkini</button><button data-t="his">Riwayat & Risiko</button><button data-t="rank">Peringkat</button></div><div class="bd" id="pqbB"></div>';
-    document.body.appendChild(P); P.addEventListener("click", onClick); $("pqbP").onchange = e => { S.prov = e.target.value; S.kab = ""; regionChanged(); }; $("pqbK").onchange = e => { S.kab = e.target.value; regionChanged(); };
+    P.innerHTML = '<div class="h"><span>\u{1F30B}</span><b>Bencana Indonesia</b><button class="x" data-a="close">\u2715</button></div><div class="rg"><select id="pqbP"></select><select id="pqbK"></select></div><div class="tb"><button data-t="now">Terkini</button><button data-t="his">Riwayat</button><button data-t="rank">Peringkat</button><button data-t="sat">\u{1F6F0} Satelit</button></div><div class="bd" id="pqbB"></div>';
+    document.body.appendChild(P); P.addEventListener("click", onClick); P.addEventListener("input", e => { if (e.target.id === "pqbsOp") { S.sop = e.target.value / 100; Object.values(SOL).concat(SBL ? [SBL] : []).forEach(l => l.setOpacity(S.sop)); } }); $("pqbP").onchange = e => { S.prov = e.target.value; S.kab = ""; regionChanged(); }; $("pqbK").onchange = e => { S.kab = e.target.value; regionChanged(); };
     const sp = $("pqbP"); sp.innerHTML = '<option value="">\u{1F1EE}\u{1F1E9} Seluruh Indonesia</option>' + provs().map(p => '<option>' + esc(p) + "</option>").join("");
   }
   function regionChanged() { fillKab(); draw(); if (S.prov) { fit(); loadHist(); } else fit(); render(); }
   function fillKab() { const k = $("pqbK"); k.style.display = S.prov ? "" : "none"; k.innerHTML = '<option value="">Semua kab/kota</option>' + (S.prov ? kabOf(S.prov).map(n => '<option' + (n === S.kab ? " selected" : "") + ">" + esc(n) + "</option>").join("") : ""); $("pqbP").value = S.prov; }
   function onClick(ev) {
-    const t = ev.target.closest("[data-a],[data-t],[data-k],[data-i],[data-d],[data-m],[data-r]"); if (!t) return;
+    const t = ev.target.closest("[data-a],[data-t],[data-k],[data-i],[data-d],[data-m],[data-r],[data-hs],[data-sb],[data-sv],[data-sdd]"); if (!t) return;
     if (t.dataset.t) { S.tab = t.dataset.t; if (S.tab === "his" && S.prov) loadHist(); draw(); render(); return; }
+    if (t.dataset.hs) { S.hs = t.dataset.hs; loadHot(true); return; }
+    if (t.dataset.sb) { S.sb = t.dataset.sb; applySat(); render(); return; }
+    if (t.dataset.sv) { S.sov[t.dataset.sv] = !S.sov[t.dataset.sv]; applySat(); render(); return; }
+    if (t.dataset.sdd) { const d = new Date(S.sd + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + +t.dataset.sdd); if (d.getTime() <= NOW()) { S.sd = d.toISOString().slice(0, 10); applySat(); render(); } return; }
     if (t.dataset.a === "close") { setPanel(false); return; }
     if (t.dataset.k) { toggle(t.dataset.k); return; }
     if (t.dataset.d) { S.days = +t.dataset.d; draw(); render(); return; }
@@ -306,6 +368,8 @@
     if (t.dataset.r) { const [p, k] = t.dataset.r.split("|"); S.prov = p; S.kab = k || ""; fillKab(); regionChanged(); S.tab = "his"; render(); return; }
     const a = t.dataset.a;
     if (a === "hm") { histMarkers = !histMarkers; draw(); render(); } else if (a === "copy") { const A = analyze(); if (A) { try { navigator.clipboard.writeText(plainText(A)); say("Ringkasan disalin"); } catch (e) { say("Gagal menyalin", 1); } } }
+    else if (a === "hotreload") loadHot(true);
+    else if (a === "savekey") { ls("pq_firms_key", ($("pqbsKey").value || "").trim()); ls("pq_bnc_px", ($("pqbsPx").value || "").trim()); loadHot(true); say("Pengaturan disimpan"); }
     else if (a === "reload") { loaded = false; HIST = {}; load(true); if (S.prov) loadHist(); }
     else if (a === "all") { S.prov = ""; S.kab = ""; fillKab(); draw(); fit(); render(); }
   }
@@ -318,10 +382,13 @@
     const by = {}; L2.forEach(e => by[e.type] = (by[e.type] || 0) + 1);
     h += '<div class="sg"><div class="st" style="--c:#fb923c"><b>' + nf(n) + '</b><span>kejadian</span></div><div class="st" style="--c:#facc15"><b>' + nf(eqN) + '</b><span>gempa</span></div><div class="st" style="--c:#f43f5e"><b>' + (mx ? "M" + mx.toFixed(1) : "-") + '</b><span>terkuat</span></div></div>';
     if (n) h += '<div class="stk">' + Object.keys(by).map(t => '<i title="' + HZ[t].n + ": " + by[t] + '" style="width:' + by[t] / n * 100 + "%;background:" + HZ[t].c + '"></i>').join("") + '</div><div class="mut" style="margin-bottom:4px">' + (S.days === 365 ? "1 tahun" : S.days + " hari") + " terakhir \u00B7 " + esc(S.kab || S.prov || "Seluruh Indonesia") + '</div>';
-    h += '<div class="lg"><span><i style="background:#facc15"></i>M&lt;5</span><span><i style="background:#fb923c"></i>M5\u20136</span><span><i style="background:#f43f5e"></i>M\u22656</span><span>\u25CC berdenyut = baru/berlangsung</span></div>';
+    h += '<div class="lg"><span><i style="background:#facc15"></i>M&lt;5</span><span><i style="background:#fb923c"></i>M5\u20136</span><span><i style="background:#f43f5e"></i>M\u22656</span><span>\u25CC berdenyut = baru/berlangsung</span><span><i style="background:#ef4444"></i>titik panas (FRP)</span></div>';
     if (!anyOn()) h += '<p class="mut">Aktifkan minimal satu jenis bencana di atas untuk menampilkannya di peta.</p>';
-    h += L2.slice(0, 80).map(e => '<div class="it" data-i="' + esc(e.id) + '" style="--c:' + (e.type === "gempa" ? (e.m >= 6 ? "#f43f5e" : e.m >= 5 ? "#fb923c" : "#facc15") : HZ[e.type].c) + '"><span class="e" style="color:' + HZ[e.type].c + '">' + (e.type === "gempa" ? e.m.toFixed(1) : HZ[e.type].e) + '</span><span><b>' + esc(e.type === "gempa" ? (e.place || e.reg || e.title) : e.title) + "</b><small>" + esc((e.reg ? e.reg + ", " : "") + (e.prov || "") + " \u00B7 " + ago(e.t2 || e.t) + (e.d ? " \u00B7 " + Math.round(e.d) + " km" : "") + " \u00B7 " + e.src) + "</small></span></div>").join("");
-    if (n > 80) h += '<p class="mut">+' + (n - 80) + " lainnya di peta\u2026</p>"; if (!n && !S.loading) h += '<p class="mut">Tidak ada kejadian sesuai filter.</p>';
+    const HS = L2.filter(e => e.type === "hotspot");
+    if (S.t.hotspot) { const g = {}, lv = S.prov ? "reg" : "prov"; HS.forEach(e => { const k = e[lv]; if (!k) return; const o = g[k] = g[k] || { n: 0, f: 0 }; o.n++; o.f += e.frp || 0; }); const rows = Object.keys(g).sort((a, b) => g[b].n - g[a].n).slice(0, 8), mx = rows.length ? g[rows[0]].n : 1;
+      h += '<h4>\u{1F6F0} Titik panas satelit (' + ({ "24h": "24 jam", "48h": "48 jam", "7d": "7 hari" })[S.hs] + ') \u00B7 ' + nf(HS.length) + '</h4>' + (rows.length ? rows.map(k => '<div class="it" data-r="' + esc(S.prov ? S.prov + "|" + k : k + "|") + '" style="--c:#ef4444"><span style="flex:1"><div class="rw"><b>' + esc(k) + '</b><span>' + g[k].n + ' titik \u00B7 ' + nf(g[k].f) + ' MW</span></div><div class="bar"><i style="width:' + g[k].n / mx * 100 + '%;background:linear-gradient(90deg,#fbbf24,#ef4444)"></i></div></span></div>').join("") : '<p class="mut">' + (S.loading ? "\u23F3 Memuat FIRMS\u2026" : "Belum ada titik panas terbaca \u2014 lihat tab Satelit (status sumber / MAP_KEY).") + '</p>'); }
+    h += L2.filter(e => e.type !== "hotspot").slice(0, 80).map(e => '<div class="it" data-i="' + esc(e.id) + '" style="--c:' + (e.type === "gempa" ? (e.m >= 6 ? "#f43f5e" : e.m >= 5 ? "#fb923c" : "#facc15") : HZ[e.type].c) + '"><span class="e" style="color:' + HZ[e.type].c + '">' + (e.type === "gempa" ? e.m.toFixed(1) : HZ[e.type].e) + '</span><span><b>' + esc(e.type === "gempa" ? (e.place || e.reg || e.title) : e.title) + "</b><small>" + esc((e.reg ? e.reg + ", " : "") + (e.prov || "") + " \u00B7 " + ago(e.t2 || e.t) + (e.d ? " \u00B7 " + Math.round(e.d) + " km" : "") + " \u00B7 " + e.src) + "</small></span></div>").join("");
+    if (n - HS.length > 80) h += '<p class="mut">+' + (n - HS.length - 80) + " lainnya di peta\u2026</p>"; if (!n && !S.loading) h += '<p class="mut">Tidak ada kejadian sesuai filter.</p>';
     return h + '<p><button class="btn" data-a="reload">\u21BB Muat ulang</button></p>';
   }
   function tabHis() {
@@ -357,17 +424,26 @@
     return '<div class="ch">' + [7, 30, 90, 365].map(d => '<span class="c' + (S.days === d ? " a" : "") + '" data-d="' + d + '" style="--c:#22d3ee">' + (d === 365 ? "1 th" : d + " hr") + "</span>").join("") + '</div><p class="mut">Wilayah paling aktif (gempa M\u2265' + S.mag + " + kejadian EONET) " + (S.prov ? "di " + esc(S.prov) + " per kab/kota" : "per provinsi") + ". Klik untuk riwayat lengkap.</p>" +
       rows.map(r => '<div class="it" data-r="' + esc(lvl === "prov" ? r[0] + "|" : S.prov + "|" + r[0]) + '"><span style="flex:1"><div class="rw"><b>' + esc(r[0]) + "</b><span>" + r[1].n + " kejadian" + (r[1].mx ? " \u00B7 M" + r[1].mx.toFixed(1) : "") + '</span></div><div class="bar"><i style="width:' + (r[1].n / mx * 100) + '%;background:#fb923c"></i></div><small>' + Object.keys(r[1].by).map(t => HZ[t].e + r[1].by[t]).join("  ") + "</small></span></div>").join("") + (rows.length ? "" : '<p class="mut">Belum ada data' + (S.loading ? " (memuat\u2026)" : "") + ".</p>") + (S.prov ? '<p><button class="btn" data-a="all">\u2190 Semua provinsi</button></p>' : "");
   }
+  function tabSat() {
+    const ok = k => S.src[k] ? (S.src[k].ok ? '<span style="color:#34d399">\u2713 ' + (S.src[k].n ? nf(S.src[k].n) : "OK") + "</span>" : '<span style="color:#f87171">\u2717 ' + esc(S.src[k].err || "") + "</span>") : '<span class="mut">\u2026</span>';
+    let h = "<h4>Status sumber data</h4><div class=\"bx\">" + ["USGS (gempa)", "BMKG (gempa)", "NASA EONET", "GDACS (PBB/UE)"].concat(FIRMS.map(f => f[0]), ["Titik panas (gabungan)"]).map(k => '<div class="rw"><span>' + k + "</span>" + ok(k) + "</div>").join("") + "</div>";
+    h += "<h4>Periode titik panas</h4><div class=\"ch\">" + [["24h", "24 jam"], ["48h", "48 jam"], ["7d", "7 hari"]].map(x => '<span class="c' + (S.hs === x[0] ? " a" : "") + '" data-hs="' + x[0] + '" style="--c:#ef4444">' + x[1] + "</span>").join("") + '<span class="c" data-a="hotreload" style="--c:#22d3ee">\u21BB Muat ulang</span></div>';
+    h += "<h4>Citra satelit (NASA GIBS)</h4><div class=\"ch\">" + SATB.map(b => '<span class="c' + (S.sb === b[0] ? " a" : "") + '" data-sb="' + b[0] + '" style="--c:#38bdf8">' + b[1] + "</span>").join("") + "</div><div class=\"ch\">" + SATO.map(o => '<span class="c' + (S.sov[o[0]] ? " a" : "") + '" data-sv="' + o[0] + '" style="--c:#f97316">' + o[1] + "</span>").join("") + "</div>";
+    h += '<div class="rw" style="margin:4px 0"><button class="btn" data-sdd="-1">\u25C0</button><b>' + S.sd + '</b><button class="btn" data-sdd="1">\u25B6</button></div><div class="rw"><span class="mut">Transparansi</span><input type="range" id="pqbsOp" min="20" max="100" value="' + Math.round(S.sop * 100) + '" style="flex:1"></div><p class="mut">Citra harian terbaru biasanya baru tersedia beberapa jam setelah lewat satelit; bila kosong, mundurkan 1 hari.</p>';
+    h += '<h4>Akses data (opsional)</h4><input id="pqbsKey" placeholder="NASA FIRMS MAP_KEY (gratis)" value="' + esc(ls("pq_firms_key")) + '" style="width:100%;box-sizing:border-box;background:#0b2a3b;color:#e6f1f7;border:1px solid #ffffff2a;border-radius:8px;padding:7px;margin-bottom:5px"><input id="pqbsPx" placeholder="URL proxy CORS (opsional)" value="' + esc(ls("pq_bnc_px")) + '" style="width:100%;box-sizing:border-box;background:#0b2a3b;color:#e6f1f7;border:1px solid #ffffff2a;border-radius:8px;padding:7px"><p><button class="btn" data-a="savekey">Simpan & muat ulang</button><a class="btn" style="text-decoration:none;display:inline-block" href="https://firms.modaps.eosdis.nasa.gov/api/map_key/" target="_blank" rel="noopener">Minta MAP_KEY</a></p><p class="mut">Titik panas dari NASA FIRMS: VIIRS S-NPP/NOAA-20/NOAA-21 (375 m) + MODIS (1 km), digabung & dihapus duplikatnya. Bila browser memblokir (CORS), isi MAP_KEY atau pasang proxy (lihat firms-proxy-worker.js).</p>';
+    return h;
+  }
   function render() {
     if (!P) return; P.classList.toggle("on", S.panel); if (!S.panel) return;
     P.querySelectorAll(".tb button").forEach(b => b.classList.toggle("a", b.dataset.t === S.tab));
-    const b = $("pqbB"), sc = b.scrollTop, tab = S.tab === "his" ? tabHis : S.tab === "rank" ? tabRank : tabNow; b.innerHTML = tab(); b.scrollTop = sc;
+    const b = $("pqbB"), sc = b.scrollTop, tab = S.tab === "his" ? tabHis : S.tab === "rank" ? tabRank : S.tab === "sat" ? tabSat : tabNow; b.innerHTML = tab(); b.scrollTop = sc;
   }
 
   /* ---------- kontrol ---------- */
   function setPanel(v) { build(); S.panel = v; if (v) { try { if (window.PETAQU_GEMPA) PETAQU_GEMPA.close(); } catch (e) { } if (!anyOn()) { Object.keys(HZ).forEach(k => S.t[k] = true); S.t.hist = true; S.t.vol = true; } fillKab(); load(); draw(); } render(); }
-  function toggle(k) { if (!S.t[k] && !loaded) load(); S.t[k] = !S.t[k]; draw(); render(); }
-  function init() { if (started) return true; if (typeof map === "undefined" || !map || !map.getPane || !document.body || typeof L === "undefined") return false; started = true; build(); fillKab(); let zt; map.on("zoomend", () => { clearTimeout(zt); zt = setTimeout(() => { if (anyOn()) draw(); }, 200); }); return true; }
-  window.PETAQU_BENCANA_SEMUA = { open: () => setPanel(true), close: () => setPanel(false), toggle: k => { build(); toggle(k); }, select: (p, k) => { build(); S.prov = p || ""; S.kab = k || ""; fillKab(); regionChanged(); }, _t: { popup, mk, tabNow, tabHis, tabRank, analyze, locate, CUR, VOL, HZ, S } };
+  function toggle(k) { if (!S.t[k] && !loaded) load(); S.t[k] = !S.t[k]; if (S.t.hotspot) loadHot(); draw(); render(); }
+  function init() { if (started) return true; if (typeof map === "undefined" || !map || !map.getPane || !document.body || typeof L === "undefined") return false; started = true; build(); fillKab(); let zt, lz = -1; map.on("moveend", () => { clearTimeout(zt); zt = setTimeout(() => { if (!anyOn()) return; const z = map.getZoom(); if (z !== lz || (z >= 8 && LST.length > 400)) { lz = z; draw(); } }, 220); }); return true; }
+  window.PETAQU_BENCANA_SEMUA = { open: () => setPanel(true), close: () => setPanel(false), toggle: k => { build(); toggle(k); }, select: (p, k) => { build(); S.prov = p || ""; S.kab = k || ""; fillKab(); regionChanged(); }, _t: { loadHot, tabSat, HOT: () => HOT, SRC: () => S.src, popup, mk, tabNow, tabHis, tabRank, analyze, locate, CUR, VOL, HZ, S } };
   window.PQ_FOLDER_EXTRA = window.PQ_FOLDER_EXTRA || [];
   window.PQ_FOLDER_EXTRA.push({
     title: "Bencana Indonesia",
