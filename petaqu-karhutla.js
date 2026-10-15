@@ -18,7 +18,7 @@
   const lvi = t => t < .25 ? 0 : t < .45 ? 1 : t < .65 ? 2 : 3;
   const STOPS = [[0, [250, 204, 21, 0]], [.2, [250, 204, 21, 70]], [.4, [251, 146, 60, 140]], [.6, [239, 68, 68, 185]], [.8, [185, 28, 28, 215]], [1, [88, 10, 60, 238]]];
   function ramp(t) { t = clamp(t); for (let k = 1; k < STOPS.length; k++) if (t <= STOPS[k][0]) { const a = STOPS[k - 1], b = STOPS[k], f = (t - a[0]) / (b[0] - a[0]); return a[1].map((v, i) => v + (b[1][i] - v) * f); } return STOPS[5][1]; }
-  const TAB = { rawan: ["Kerawanan", "fa-fire-flame-simple", "#f97316"], potensi: ["Potensi 7 hari", "fa-calendar-days", "#ef4444"], sim: ["Simulasi api", "fa-fire", "#fb7185"] };
+  const TAB = { rawan: ["Kerawanan", "fa-fire-flame-simple", "#f97316"], potensi: ["Potensi 7 hari", "fa-calendar-days", "#ef4444"], sim: ["Simulasi api", "fa-fire", "#fb7185"], wil: ["Wilayah", "fa-map-location-dot", "#a78bfa"] };
 
   /* zona gambut kasar (poligon [lat,lng]) - indikatif, untuk bobot bahan bakar & bara dalam tanah */
   const PEAT = [
@@ -88,7 +88,7 @@
 
   /* ---------- state ---------- */
   let Pn, IMG, MK, FX, CTX, F = null, tab = "potensi", day = 0, op = .72, busy = false, minim = false, play = null, raf = 0, fxOn = true;
-  let PT = [], EM = [], HS = [], SIM = null, simArm = false, simSpeed = 2, lastT = 0, pxs = null;
+  let KAB = null, RG = null, HL = null, REG = null, WR = { prov: "", q: "", dyn: null, busy: false }, PT = [], EM = [], HS = [], SIM = null, simArm = false, simSpeed = 2, lastT = 0, pxs = null;
   try { const p = JSON.parse(localStorage.getItem(PREF) || "{}"); if (TAB[p.tab]) tab = p.tab; if (p.op >= .2 && p.op <= 1) op = p.op; if (p.fx === false) fxOn = false; } catch (e) { }
   const savePref = () => { try { localStorage.setItem(PREF, JSON.stringify({ tab, op, fx: fxOn })); } catch (e) { } };
   const fld = () => !F ? null : tab === "rawan" ? F.rawan : F.danger[Math.min(day, F.days - 1)];
@@ -240,7 +240,7 @@
     if ($("pqkCss")) return; const s = document.createElement("style"); s.id = "pqkCss";
     s.textContent = "#pqkPanel{position:fixed;right:12px;top:70px;z-index:1300;width:min(390px,94vw);max-height:calc(100vh - 92px);display:none;flex-direction:column;background:#120b0af7;border:1px solid #5a2a22;border-radius:14px;color:var(--text,#f3e3dc);font:12.5px/1.45 var(--mono,system-ui);box-shadow:0 14px 40px #000a,0 0 34px #f9731622;backdrop-filter:blur(10px)}#pqkPanel.pqk-min #pqkBody,#pqkPanel.pqk-min #pqkCtl,#pqkPanel.pqk-min #pqkTabs,#pqkPanel.pqk-min #pqkDays{display:none}" +
       "#pqkHd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #4a2620}#pqkHd b{flex:1;font-size:13.5px}#pqkHd i.fl{color:#fb923c;animation:pqkf 1.1s ease-in-out infinite alternate}@keyframes pqkf{from{filter:drop-shadow(0 0 2px #f97316);transform:scale(1)}to{filter:drop-shadow(0 0 9px #ef4444);transform:scale(1.18)}}#pqkHd button{background:0 0;border:0;color:#c9a99c;cursor:pointer;font-size:15px;padding:3px 6px}#pqkHd button:hover{color:#fb923c}" +
-      "#pqkTabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px 12px 4px}.pqk-t{display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 4px;border-radius:9px;border:1px solid #4a2620;background:#1c110f;color:#c9a99c;font:700 11px var(--mono,system-ui);cursor:pointer}.pqk-t.on{color:#1a0a05;border-color:transparent}" +
+      "#pqkTabs{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:10px 12px 4px}.pqk-t{display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 4px;border-radius:9px;border:1px solid #4a2620;background:#1c110f;color:#c9a99c;font:700 11px var(--mono,system-ui);cursor:pointer}.pqk-t.on{color:#1a0a05;border-color:transparent}" +
       "#pqkDays{display:flex;gap:4px;padding:6px 12px 2px;align-items:flex-end}.pqk-d{flex:1;border:1px solid #4a2620;border-radius:8px;background:#1c110f;color:#c9a99c;cursor:pointer;padding:3px 0 4px;text-align:center;font:700 9.5px var(--mono,system-ui)}.pqk-d i{display:block;margin:0 auto 3px;width:70%;border-radius:3px 3px 0 0;min-height:3px}.pqk-d.on{border-color:#fb923c;color:#fff;box-shadow:0 0 10px #f9731655}" +
       "#pqkCtl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 12px}#pqkCtl input[type=range]{flex:1;min-width:70px;accent-color:#fb923c}.pqk-b{background:#1c110f;border:1px solid #4a2620;color:#f3e3dc;border-radius:8px;padding:6px 10px;font:700 11px var(--mono,system-ui);cursor:pointer}.pqk-b:hover,.pqk-b.on{border-color:#fb923c;color:#fb923c}.pqk-b.pri{background:#f97316;color:#1a0a05;border-color:#f97316}" +
       "#pqkSt{padding:2px 12px 6px;font-size:10.5px;color:#b59486}#pqkBody{overflow:auto;padding:0 12px 12px}.pqk-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:6px 0 10px}.pqk-card{background:#1c110f;border:1px solid #4a2620;border-radius:10px;padding:8px 6px;text-align:center}.pqk-card b{display:block;font-size:16px}.pqk-card small{font-size:9px;color:#b59486;text-transform:uppercase;letter-spacing:.4px}" +
@@ -271,8 +271,8 @@
     };
   }
   function tabs() { document.querySelectorAll(".pqk-t").forEach(t => { const on = t.dataset.k === tab; t.classList.toggle("on", on); t.style.background = on ? TAB[t.dataset.k][2] : ""; }); const dv = $("pqkDays"); if (dv) dv.style.display = F && F.wx && tab !== "rawan" ? "flex" : "none"; }
-  function setTab(k) { tab = k; savePref(); tabs(); if (F) { paint(); F.X = null; body(); markers(F.X = exposure()); } }
-  function setDay(d) { day = clamp(d, 0, (F ? F.days : FUT) - 1); if (F) { paint(); F.X = exposure(); markers(F.X); body(); days(); } }
+  function setTab(k) { tab = k; savePref(); tabs(); if (k === "wil") wilEnsure(); else rgClear(); if (F) { paint(); F.X = null; body(); markers(F.X = exposure()); } }
+  function setDay(d) { day = clamp(d, 0, (F ? F.days : FUT) - 1); if (tab === "wil") rgDraw(); if (F) { paint(); F.X = exposure(); markers(F.X); body(); days(); } }
   function stopPlay() { if (play) { clearInterval(play); play = null; } const b = $("pqkPl"); if (b) b.innerHTML = '<i class="fa-solid fa-play"></i>'; }
   function togglePlay() { if (play) { stopPlay(); return; } if (!F || !F.wx) { say("Butuh data cuaca"); return; } if (tab === "rawan") setTab("potensi"); $("pqkPl").innerHTML = '<i class="fa-solid fa-pause"></i>'; play = setInterval(() => setDay((day + 1) % F.days), 1500); }
   function days() {
@@ -290,7 +290,7 @@
   function body() {
     if (!F) return; const f = fld(), land = []; for (let i = 0; i < f.length; i++) if (F.land[i]) land.push(f[i]);
     const X = F.X = F.X || exposure(), mxv = land.length ? Math.max(...land) : 0, hi = land.length ? land.filter(v => v >= .55).length / land.length : 0, top = lvi(mxv), hiRoads = X.roads.filter(r => r.mx >= .55).length;
-    let h = "";
+    let h = tab === "wil" ? wilHtml() : "";
     if (tab === "sim") {
       h += '<div class="pqk-cards" style="grid-template-columns:repeat(3,1fr)"><button class="pqk-b pri" id="pqkIg"><i class="fa-solid fa-fire"></i> Nyalakan api</button><button class="pqk-b" id="pqkSp">Kecepatan ×' + simSpeed + '</button><button class="pqk-b" id="pqkRs"><i class="fa-solid fa-rotate-left"></i> Reset</button></div><div id="pqkSim"></div>';
     } else {
@@ -309,7 +309,70 @@
     h += '<div class="pqk-h">Jembatan paling terpapar (' + X.br.length + ")</div>";
     h += X.br.slice(0, 6).map(x => { const l = lvi(x.v); return '<div class="pqk-it" data-go="' + x.la + "," + x.lo + '"><i style="background:' + LV[l][1] + '"></i><div><b>' + esc(x.j.nama || "Jembatan") + "</b><small>" + esc(x.j.ruas || "") + '</small></div><em style="color:' + LV[l][1] + '">' + pct(x.v) + "</em></div>"; }).join("") || '<div class="pqk-note">Tidak ada jembatan di area ini.</div>';
     h += '<div class="pqk-note"><b>Metode:</b> kekeringan bahan bakar = neraca air (hujan &minus; 0,85&times;evapotranspirasi, 30 hari + prakiraan) &rarr; &times; cuaca api (kelembapan min, suhu, angin) &times; bahan bakar (gambut +, dataran rendah +, pegunungan &minus;), hujan &ge;10 mm memadamkan. Zona gambut berupa poligon <b>kasar</b>. Ini <b>indikatif</b> untuk prioritas patroli/inspeksi, bukan pengganti <a href="https://sipongi.menlhk.go.id" target="_blank" rel="noopener">SiPongi KLHK</a>, <a href="https://firms.modaps.eosdis.nasa.gov/map/" target="_blank" rel="noopener">NASA FIRMS</a> (titik panas satelit nyata) &amp; peringatan BMKG. Sumber: Open-Meteo.</div>';
-    $("pqkBody").innerHTML = h; if (tab === "sim") simInfo();
+    $("pqkBody").innerHTML = h; if (tab === "sim") simInfo(); if (tab === "wil") wilBind();
+  }
+
+
+  /* ---------- WILAYAH: semua provinsi, kabupaten & kota ---------- */
+  function wilEnsure(cb) {
+    const go = () => { const R = window.PETAQU_RAWAN; if (!R || !R._t || !R._t.build) { say("Modul Rawan belum siap, coba lagi"); return; } if (!KAB) { try { KAB = R._t.build(); } catch (e) { console.warn(e); say("Gagal memuat batas wilayah"); return; } } rgDraw(); if (tab === "wil") { wilList(); } cb && cb(); };
+    if (window.PQ_KABBATAS) { go(); return; } say("Memuat batas wilayah…"); const sc = document.createElement("script"); sc.src = "data-kabbatas.js"; sc.onload = go; sc.onerror = () => say("Gagal memuat data-kabbatas.js"); document.head.appendChild(sc);
+  }
+  const wst = K => (K.h && K.h.karhutla != null ? K.h.karhutla : 0) / 100;
+  const wval = (K, i) => WR.dyn && WR.dyn[i] ? WR.dyn[i][Math.min(day, FUT - 1)] : wst(K);
+  function wrows() { if (!KAB) return []; const q = WR.q.trim().toLowerCase(); return KAB.map((K, i) => ({ K, i, v: wval(K, i) })).filter(r => (!WR.prov || r.K.p === WR.prov) && (!q || (r.K.n + " " + r.K.p).toLowerCase().includes(q))); }
+  function wilHtml() {
+    const P = KAB ? Object.keys(KAB.PM || {}).sort() : [];
+    return '<div id="pqkWil"><div class="pqk-cards" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><select class="pqk-b" id="pqkPv" style="grid-column:1/3"><option value="">Semua Indonesia (' + (KAB ? KAB.length : "…") + ' kab/kota)</option>' + P.map(x => '<option value="' + esc(x) + '"' + (x === WR.prov ? " selected" : "") + ">" + esc(x) + "</option>").join("") + '</select><input class="pqk-b" id="pqkQ" placeholder="Cari kab/kota…" value="' + esc(WR.q) + '" style="font-weight:400"><button class="pqk-b pri" id="pqkDy" title="Ambil cuaca 7 hari tiap wilayah (±' + (KAB ? Math.ceil(KAB.length / 50) : 11) + ' permintaan)">' + (WR.dyn ? "Perbarui potensi" : "Hitung potensi 7 hari") + '</button></div><div id="pqkWs" class="pqk-note" style="margin:0 0 6px">' + (WR.dyn ? "Warna & urutan = <b>potensi " + esc(dayName(day)) + "</b> (pilih hari di atas)." : "Warna & urutan = <b>kerawanan statis</b> (skor wilayah). Tekan <b>Hitung potensi 7 hari</b> untuk potensi dinamis semua wilayah.") + '</div>' + (REG ? regCard() : "") + '<div id="pqkWl"></div></div>';
+  }
+  function wilBind() {
+    const pv = $("pqkPv"), q = $("pqkQ"), dy = $("pqkDy"), wl = $("pqkWl");
+    if (pv) pv.onchange = () => { WR.prov = pv.value; rgDraw(true); wilList(); };
+    if (q) q.oninput = () => { WR.q = q.value; wilList(); };
+    if (dy) dy.onclick = wilDyn;
+    if (wl) wl.onclick = e => { const it = e.target.closest("[data-k]"); if (it) wilFocus(+it.dataset.k); };
+    wilList();
+  }
+  function wilList() {
+    const wl = $("pqkWl"); if (!wl) return; if (!KAB) { wl.innerHTML = '<div class="pqk-note">Memuat batas wilayah…</div>'; return; }
+    const R = wrows().sort((a, b) => b.v - a.v);
+    wl.innerHTML = '<div class="pqk-h">' + R.length + " wilayah · urut tertinggi</div>" + R.slice(0, 80).map(r => { const l = lvi(r.v); return '<div class="pqk-it" data-k="' + r.i + '"><i style="background:' + LV[l][1] + '"></i><div><b>' + esc(r.K.n) + "</b><small>" + esc(r.K.p) + '</small></div><em style="color:' + LV[l][1] + '">' + pct(r.v) + "</em></div>"; }).join("") + (R.length > 80 ? '<div class="pqk-note">Menampilkan 80 teratas — persempit dengan provinsi/pencarian.</div>' : "");
+  }
+  function rgClear() { if (RG) { map.removeLayer(RG); RG = null; } if (HL) { map.removeLayer(HL); HL = null; } }
+  function rgDraw(fit) {
+    if (!KAB || tab !== "wil") return; if (RG) map.removeLayer(RG);
+    if (!map.getPane("pqkRg")) { map.createPane("pqkRg"); map.getPane("pqkRg").style.zIndex = 260; }
+    RG = L.layerGroup().addTo(map); const rend = L.canvas({ pane: "pqkRg" }); let s = 90, w = 180, n = -90, e = -180, any = false;
+    wrows().forEach(r => { const K = r.K, l = lvi(r.v), b = K.bb; any = true; s = Math.min(s, b[0]); w = Math.min(w, b[1]); n = Math.max(n, b[2]); e = Math.max(e, b[3]);
+      L.polygon(K.rings, { renderer: rend, pane: "pqkRg", color: "#1b0f0d", weight: .7, fillColor: LV[l][1], fillOpacity: .42 }).bindTooltip(esc(K.n) + " · " + pct(r.v) + " (" + LV[l][0] + ")", { sticky: true }).on("click", () => wilFocus(r.i)).addTo(RG); });
+    if (fit && any) map.fitBounds([[s, w], [n, e]], { padding: [30, 30] });
+  }
+  function wilFocus(i) {
+    const K = KAB[i]; if (!K) return; REG = { K, i }; if (HL) map.removeLayer(HL); HL = L.polygon(K.rings, { color: "#fff", weight: 2.5, fill: false, interactive: false }).addTo(map);
+    map.fitBounds([[K.bb[0], K.bb[1]], [K.bb[2], K.bb[3]]], { padding: [30, 30] }); busy = false; map.once("moveend", () => setTimeout(() => run().then(() => { if (tab === "wil") body(); }), 150));
+  }
+  function regStats(R) {
+    if (!F) return null; const K = R.K, o = []; for (let d = 0; d < F.days; d++) o.push({ mx: 0, sum: 0, n: 0 });
+    for (let r = 0; r < FG; r++) for (let c = 0; c < FG; c++) { const i = r * FG + c; if (!F.land[i]) continue; const la = F.b.n - (F.b.n - F.b.s) * r / (FG - 1), lo = F.b.w + (F.b.e - F.b.w) * c / (FG - 1); if (la < K.bb[0] || la > K.bb[2] || lo < K.bb[1] || lo > K.bb[3] || !K.rings.some(g => inPoly(la, lo, g))) continue; for (let d = 0; d < F.days; d++) { const v = F.danger[d][i]; o[d].n++; o[d].sum += v; if (v > o[d].mx) o[d].mx = v; } }
+    return o[0].n ? o : null;
+  }
+  function regCard() {
+    const R = REG, st = wst(R.K), S = regStats(R); let h = '<div class="pqk-note" style="border-color:#a78bfa;margin:0 0 8px"><b>' + esc(R.K.n) + "</b> · " + esc(R.K.p) + "<br>Kerawanan statis <b style=\"color:" + LV[lvi(st)][1] + '">' + pct(st) + " (" + LV[lvi(st)][0] + ")</b>";
+    if (S) h += '<div style="display:flex;gap:3px;margin-top:6px;align-items:flex-end">' + S.map((x, d) => { const m = x.mx; return '<div style="flex:1;text-align:center;font-size:9px"><i style="display:block;margin:0 auto 2px;width:70%;height:' + Math.round(4 + 28 * m) + "px;background:" + LV[lvi(m)][1] + ';border-radius:3px 3px 0 0"></i>' + (d === 0 ? "Ini" : dayName(d).split(" ")[0].replace(",", "")) + "<br><b>" + Math.round(m * 100) + "</b></div>"; }).join("") + "</div><small>Potensi maks tiap hari di dalam wilayah (rata-rata hari ini " + Math.round(S[0].sum / S[0].n * 100) + "%)</small>"; else h += "<br><small>Analisis potensi sedang dimuat / wilayah di luar area analisis…</small>";
+    return h + "</div>";
+  }
+  async function wilDyn() {
+    if (!KAB || WR.busy) return; WR.busy = true; const st = $("pqkWs"), N50 = 50, dy = new Array(KAB.length);
+    try {
+      for (let a = 0; a < KAB.length; a += N50) {
+        const part = KAB.slice(a, a + N50); if (st) st.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Cuaca wilayah ' + Math.min(a + N50, KAB.length) + "/" + KAB.length + "…";
+        const J = await cached("wr" + a + ":" + part.length, 18e5, async () => { const j = await jget("https://api.open-meteo.com/v1/forecast?latitude=" + part.map(K => K.c[0].toFixed(3)) + "&longitude=" + part.map(K => K.c[1].toFixed(3)) + "&daily=temperature_2m_max,relative_humidity_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,precipitation_sum,et0_fao_evapotranspiration&past_days=" + PAST + "&forecast_days=" + FUT + "&timezone=auto", 40000); return (Array.isArray(j) ? j : [j]).map(o => o.daily || {}); });
+        part.forEach((K, k) => { const m = pointModel(J[k] || {}), pe = peatAt(K.c[0], K.c[1]), sf = .45 + .75 * wst(K); dy[a + k] = m.dang.map(v => clamp(v * sf * (1 + .25 * pe))); });
+        if (a + N50 < KAB.length) await new Promise(r => setTimeout(r, 400));
+      }
+      WR.dyn = dy; say("Potensi 7 hari semua wilayah siap"); rgDraw(); if (tab === "wil") body();
+    } catch (e) { console.warn(e); if (st) st.innerHTML = '<span style="color:#f87171">Gagal memuat cuaca wilayah (' + esc(e.message || e) + "). Coba lagi nanti (batas gratis Open-Meteo).</span>"; }
+    WR.busy = false;
   }
 
   async function run() {
@@ -325,8 +388,8 @@
     busy = false;
   }
   function fxStart() { fxInit(); if (!raf) raf = requestAnimationFrame(loop); }
-  function open() { if (typeof map === "undefined") return; if (!Pn) build(); Pn.style.display = "flex"; tabs(); fxStart(); if (!F) run(); else { paint(); markers(F.X = exposure()); } }
-  function close() { stopPlay(); if (Pn) Pn.style.display = "none"; if (IMG) { map.removeLayer(IMG); IMG = null; } if (MK) { map.removeLayer(MK); MK = null; } if (CTX) CTX.clearRect(0, 0, FX.width, FX.height); if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+  function open() { if (typeof map === "undefined") return; if (!Pn) build(); Pn.style.display = "flex"; tabs(); if (tab === "wil") wilEnsure(); fxStart(); if (!F) run(); else { paint(); markers(F.X = exposure()); } }
+  function close() { stopPlay(); rgClear(); if (Pn) Pn.style.display = "none"; if (IMG) { map.removeLayer(IMG); IMG = null; } if (MK) { map.removeLayer(MK); MK = null; } if (CTX) CTX.clearRect(0, 0, FX.width, FX.height); if (raf) { cancelAnimationFrame(raf); raf = 0; } }
 
   function init() {
     const b = document.createElement("button"); b.innerHTML = '<i class="fa-solid fa-fire"></i>'; b.title = "Rawan & potensi kebakaran hutan/lahan (animasi)"; b.onclick = open;
