@@ -280,7 +280,7 @@
       '<textarea id="icSt2" placeholder="…atau tempel data di sini: ruas, STA, lat, lng, IRI (satu baris per titik, pemisah koma/tab/titik koma)"></textarea>' +
       '<label class="hint"><input type="checkbox" id="icSj" checked> Ikut cocokkan ke Jalan Nasional bawaan (selain ruas yang sudah di peta)</label>' +
       '<div class="bar" id="icSb" style="display:none"><i></i></div><div class="sum" id="icSsum"></div><div class="tw" id="icStw" style="display:none"></div>' +
-      '<div class="r"><button class="b" id="icSr">Mulai Scan</button><button class="b o" id="icSm" disabled>Lihat di Peta</button><button class="b o" id="icSx" disabled>Unduh Excel</button><button class="b g" id="icSa" disabled>Terapkan ke Peta</button></div></div><div class="pn" id="icI"><div class="hint"><b>Scan IRI per STA (cerdas):</b> baca Excel/CSV <b>tanpa koordinat</b> (cukup ruas + STA + IRI) maupun <b>dengan koordinat</b>. Header dikenali otomatis (di baris mana pun), satuan STA (m / km / 12+345) ditebak sendiri, nama ruas dicocokkan ke peta; bila tak ada ruas di peta, jalur dibuat dari koordinat file. Kolom <b>STA Awal/Akhir</b> juga didukung.</div><div class="r"><div><label class="s">Sumber data</label><select id="icIs"><option value="file">File Excel / CSV</option><option value="roads">Data ruas di peta</option><option value="scan">Hasil Scan terakhir</option></select></div><div><label class="s">File</label><input type="file" id="icIf" accept=".csv,.txt,.xlsx,.xls,.tsv"></div></div><div class="r"><div><label class="s">Ruas peta (paksa / filter)</label><select id="icIo"></select></div><div><label class="s">Interval STA</label><select id="icIb"><option value="auto" selected>Otomatis (dari jarak antar STA)</option><option value="100">100 m</option><option value="250">250 m</option><option value="500">500 m</option><option value="1000">1 km</option></select></div><div><label class="s">Nilai IRI berlaku pada</label><select id="icIa"><option value="center" selected>Tengah (± setengah interval)</option><option value="start">Awal (STA → STA+interval)</option><option value="end">Akhir (STA-interval → STA)</option></select></div><div><label class="s">Warna kelas</label><select id="icIk"><option value="std" selected>Standar PETAQU (dari nilai IRI)</option><option value="file">Ikuti kolom Kondisi di file</option></select></div></div><label class="hint"><input type="checkbox" id="icIg" checked> Tampilkan interval tanpa data (abu-abu putus-putus)</label> <label class="hint"><input type="checkbox" id="icIfl"> Balik arah STA (jika ruas di peta tak punya STA &amp; arahnya terbalik)</label><div class="sum" id="icIdx"></div><div class="sum" id="icIsum"></div><div class="tw" id="icIst" style="display:none"></div><div class="tw" id="icItw" style="display:none"></div><div class="r"><button class="b" id="icIr">Scan &amp; Petakan IRI</button><button class="b g" id="icIa2" disabled>Terapkan ke Peta/Ruas</button><button class="b o" id="icIx" disabled>Unduh Excel</button></div></div></div>';
+      '<div class="r"><button class="b" id="icSr">Mulai Scan</button><button class="b o" id="icSm" disabled>Lihat di Peta</button><button class="b o" id="icSx" disabled>Unduh Excel</button><button class="b g" id="icSa" disabled>Terapkan ke Peta</button></div></div><div class="pn" id="icI"><div class="hint"><b>Scan IRI per STA (cerdas):</b> baca Excel/CSV <b>tanpa koordinat</b> (cukup ruas + STA + IRI) maupun <b>dengan koordinat</b>. Header dikenali otomatis (di baris mana pun), satuan STA (m / km / 12+345) ditebak sendiri, nama ruas dicocokkan ke peta; bila tak ada ruas di peta, jalur dibuat dari koordinat file. Kolom <b>STA Awal/Akhir</b> juga didukung.</div><div class="r"><div><label class="s">Sumber data</label><select id="icIs"><option value="file">File Excel / CSV</option><option value="roads">Data ruas di peta</option><option value="scan">Hasil Scan terakhir</option></select></div><div><label class="s">File</label><input type="file" id="icIf" accept=".csv,.txt,.xlsx,.xls,.tsv"></div></div><div class="r"><div><label class="s">Ruas peta (paksa / filter)</label><select id="icIo"></select></div><div><label class="s">Interval STA</label><select id="icIb"><option value="auto" selected>Otomatis (dari jarak antar STA)</option><option value="100">100 m</option><option value="250">250 m</option><option value="500">500 m</option><option value="1000">1 km</option></select></div><div><label class="s">Nilai IRI berlaku pada</label><select id="icIa"><option value="center" selected>Tengah (± setengah interval)</option><option value="start">Awal (STA → STA+interval)</option><option value="end">Akhir (STA-interval → STA)</option></select></div><div><label class="s">Warna kelas</label><select id="icIk"><option value="std" selected>Standar PETAQU (dari nilai IRI)</option><option value="file">Ikuti kolom Kondisi di file</option></select></div></div><label class="hint"><input type="checkbox" id="icIg" checked> Tampilkan interval tanpa data (abu-abu putus-putus)</label> <label class="hint"><input type="checkbox" id="icIfl"> Balik arah STA (jika ruas di peta tak punya STA &amp; arahnya terbalik)</label><label class="hint"><input type="checkbox" id="icIl" checked> Tampilkan label di peta:</label> <select id="icIlf"><option value="sta" selected>STA (2+500)</option><option value="km">KM (2.5)</option></select><label class="hint"><input type="checkbox" id="icIau" checked> Otomatis masukkan IRI ke data ruas (ikut tampil di Dashboard &amp; Warna IRI)</label><div class="sum" id="icIdx"></div><div class="sum" id="icIsum"></div><div class="tw" id="icIst" style="display:none"></div><div class="tw" id="icItw" style="display:none"></div><div class="r"><button class="b" id="icIr">Scan &amp; Petakan IRI</button><button class="b g" id="icIa2" disabled>Terapkan ke Peta/Ruas</button><button class="b o" id="icIx" disabled>Unduh Excel</button></div></div></div>';
     document.body.appendChild(d);
     d.addEventListener("click", function (e) { if (e.target === d) close(); });
     $("icX").onclick = close;
@@ -302,7 +302,7 @@
   }
   function close() { $("pqIc").classList.remove("show"); }
 
-  function clearLayer() { if (S.layer) { try { map.removeLayer(S.layer); } catch (e) { } S.layer = null; } }
+  function clearLayer() { clearLabels(); if (S.layer) { try { map.removeLayer(S.layer); } catch (e) { } S.layer = null; } }
 
   /* ---- Koordinat ---- */
   function checkCoords() {
@@ -510,6 +510,22 @@
       g.samples = S; g.note = note.join("; "); return g;
     });
   }
+  function clearLabels() { if (S.lab) { try { map.off("zoomend moveend", S.lab.fn); if (S.lab.g) map.removeLayer(S.lab.g); } catch (e) { } S.lab = null; } }
+  function drawLabels() {
+    var lb = S.lab; if (!lb) return; if (lb.g) map.removeLayer(lb.g);
+    var g = L.layerGroup(), shown = [], bd = map.getBounds().pad(.1);
+    lb.c.forEach(function (c) {
+      if (!bd.contains(c.ll)) return; var p = map.latLngToLayerPoint(c.ll);
+      for (var i = 0; i < shown.length; i++) if (Math.abs(shown[i].x - p.x) < 58 && Math.abs(shown[i].y - p.y) < 22) return;
+      shown.push(p);
+      g.addLayer(L.marker(c.ll, { interactive: false, keyboard: false, icon: L.divIcon({ className: "", iconSize: null, html: '<div style="position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font:700 11px/1.2 system-ui,sans-serif;color:#fff;background:#0b1220e6;border:1.5px solid ' + c.col + ';border-radius:9px;padding:1px 6px;box-shadow:0 1px 4px #000a">' + c.t + "</div>" }) }));
+    });
+    lb.g = g.addTo(map);
+  }
+  function setLabels(c) {
+    clearLabels(); if (!c.length || !$("icIl").checked) return;
+    c.sort(function (a, b) { return b.pri - a.pri; }); S.lab = { c: c, g: null, fn: drawLabels }; map.on("zoomend moveend", drawLabels); drawLabels();
+  }
   function modeOf(a) { var c = {}, b = null; a.forEach(function (x) { c[x] = (c[x] || 0) + 1; if (!b || c[x] > c[b]) b = x; }); return b; }
   function iriIntervals(g, opt) {
     var smp = g.samples, ints = [], ex = smp.filter(function (x) { return x.from != null && x.to != null; });
@@ -585,7 +601,7 @@
   function scanIri() {
     var G = iriGroups(); if (!G) return;
     var opt = { bin: $("icIb").value, align: $("icIa").value }, fileCls = $("icIk").value === "file", gaps = $("icIg").checked;
-    var lines = [], bnd = [], tot = 0, mapped = 0, cls = {}, clsC = {}, strips = [];
+    var lines = [], bnd = [], tot = 0, mapped = 0, cls = {}, clsC = {}, strips = [], labs = [], lf = $("icIlf").value, lt = function (l) { l = Math.max(0, l); return lf === "km" ? "KM " + (l / 1000).toFixed(2).replace(/\.?0+$/, "") : fmtSta(l); }, lastL = null;
     clearLayer(); IRI_OUT = []; IRI_G = [];
     G.forEach(function (g) {
       if (!g.samples.length) return;
@@ -601,18 +617,22 @@
         cells.push({ l0: l0, l1: l1, c: color, t: "STA " + rg + " · IRI " + avg.toFixed(2) + " · " + label });
         if (pts.length >= 2) {
           mapped++; pts.forEach(function (q) { bnd.push(q); });
+          var pa = atSta(g.cand, Math.max(0, l0)); if (pa.inRange) labs.push({ ll: L.latLng(pa.lat, pa.lng), t: lt(l0), col: color, pri: lastL === null ? 2 : 0 }); lastL = { l: l1, col: color };
           lines.push(L.polyline(pts, { color: color, weight: 7, opacity: .95, lineCap: "butt" }).bindPopup("<b>" + esc(g.name) + "</b><br>STA " + rg + "<br>IRI rata-rata <b>" + avg.toFixed(2) + "</b> · maks " + mx.toFixed(2) + "<br>" + esc(label) + (km && km !== label ? " (file: " + esc(km) + ")" : "") + " · " + a.length + " titik"));
         }
       });
+      if (lastL) { var pe = atSta(g.cand, Math.max(0, lastL.l)); if (pe.inRange) labs.push({ ll: L.latLng(pe.lat, pe.lng), t: lt(lastL.l), col: lastL.col, pri: 2 }); lastL = null; }
       if (cells.length) strips.push({ name: g.name, mode: g.mode, note: g.note, cells: cells, min: Math.max(0, cells[0].l0), max: Math.max(0, cells[cells.length - 1].l1) });
     });
     if (!tot) return say("Tidak ada nilai IRI yang bisa diproses", true);
     if (lines.length) { S.layer = L.layerGroup(lines).addTo(map); try { map.fitBounds(L.latLngBounds(bnd), { padding: [60, 60] }); } catch (e) { } }
+    setLabels(labs);
     $("icIsum").innerHTML = '<span class="chip">' + strips.length + ' ruas</span><span class="chip">' + tot + ' interval ber-IRI</span><span class="chip ' + (mapped ? "ok" : "far") + '">' + mapped + " dipetakan</span>" + Object.keys(cls).map(function (k) { return '<span class="chip" style="border-color:' + clsC[k] + '">' + esc(k) + ": " + cls[k] + "</span>"; }).join("");
     var sb = $("icIst"); sb.style.display = "block"; sb.innerHTML = strips.map(stripHtml).join("");
     var tw = $("icItw"); tw.style.display = "block";
     tw.innerHTML = "<table><tr><th>Ruas</th><th>STA</th><th>IRI rata²</th><th>Maks</th><th>n</th><th>Kelas</th><th>Kondisi file</th></tr>" + IRI_OUT.slice(0, 400).map(function (r) { return "<tr><td>" + esc(r[0]) + "</td><td>" + r[1] + "</td><td>" + r[2] + "</td><td>" + r[3] + "</td><td>" + r[4] + '</td><td style="color:' + r[7] + '">' + esc(r[5]) + "</td><td>" + esc(r[6]) + "</td></tr>"; }).join("") + "</table>";
     $("icIx").disabled = false; $("icIa2").disabled = !IRI_G.some(function (g) { return g.cand; });
+    if ($("icIs").value !== "roads" && $("icIau").checked && IRI_G.some(function (g) { return g.cand; })) { var lyr = S.layer, lb = S.lab; try { applyIri(true); } catch (e) { console.error(e); } S.layer = lyr; S.lab = lb; }
     if (mapped) { $("pqIc").classList.remove("show"); say("IRI per STA dipetakan (" + mapped + " interval) · klik garis untuk detail · buka lagi Impor ▸ Scan IRI untuk tabel & terapkan"); }
     else say("Tidak ada jalur untuk dipetakan — hasil tampil sebagai bagan & tabel (pilih 'Ruas peta' atau sertakan koordinat)", true);
   }
@@ -622,7 +642,7 @@
     IRI_G.forEach(function (g) { g.samples.slice().sort(function (x, y) { return x.sta - y.sta; }).forEach(function (x, i) { b.push([g.name, MODE_TXT[g.mode] || "", Math.round(x.sta), fmtSta(x.sta), x.iri, x.kond || "", x.lat != null ? x.lat : "", x.lng != null ? x.lng : "", i ? "" : g.note || ""]); }); });
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), "IRI per STA"); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(b), "Data Terbaca"); XLSX.writeFile(wb, "scan-iri-per-sta.xlsx");
   }
-  function applyIri() {
+  function applyIri(silent) {
     var n = 0, nr = 0;
     IRI_G.forEach(function (g) {
       if (!g.cand || !g.ints) return;
@@ -634,6 +654,7 @@
     });
     try { renderRoadList(); updateStats(); } catch (e) { }
     if (!nr) return say("Tidak ada ruas yang bisa diterapkan", true);
+    if (silent === true) { say(n + " titik STA di " + nr + " ruas masuk ke data & Dashboard"); return; }
     clearLayer(); close(); try { if (!iriMode) toggleIriMode(true); } catch (e) { }
     say(n + " titik STA di " + nr + " ruas diberi nilai IRI · peta diwarnai menurut IRI");
   }
