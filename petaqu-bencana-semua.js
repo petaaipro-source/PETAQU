@@ -1,0 +1,351 @@
+/* PETAQU Bencana Indonesia — gempa, tsunami, gunung api, banjir, longsor, karhutla & cuaca ekstrem
+   untuk seluruh provinsi dan kabupaten/kota, lengkap dengan RIWAYAT kejadian & analisis cerdas.
+   Sumber data: USGS (katalog gempa sejak 1900), BMKG (gempa terkini & dirasakan), NASA EONET (banjir, longsor,
+   gunung api, karhutla, badai), + basis data kejadian besar bersejarah (kurasi BNPB/PVMBG/BMKG/USGS).
+   Skor & peluang bersifat INDIKATIF (statistik historis), bukan peta bahaya resmi → rujuk InaRISK BNPB & BMKG.
+   Terdaftar di menu Folder lewat window.PQ_FOLDER_EXTRA. */
+(function () {
+  "use strict";
+  if (window.PETAQU_BENCANA_SEMUA) return;
+  const $ = id => document.getElementById(id), DEG = Math.PI / 180, NOW = () => Date.now();
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const say = m => { try { toast(m, 3200); } catch (e) { } };
+  const hav = (a, b, c, d) => { const x = Math.sin((c - a) * DEG / 2) ** 2 + Math.cos(a * DEG) * Math.cos(c * DEG) * Math.sin((d - b) * DEG / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); };
+  const fD = t => { try { return new Date(t).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }); } catch (e) { return ""; } };
+  const fDT = t => { try { return new Date(t).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).replace(/\./g, ":"); } catch (e) { return ""; } };
+  const nf = n => Math.round(n).toLocaleString("id-ID");
+  const ago = t => { const d = (NOW() - t) / 864e5; return d < 1 ? Math.max(1, Math.round(d * 24)) + " jam lalu" : d < 60 ? Math.round(d) + " hari lalu" : d < 730 ? Math.round(d / 30) + " bln lalu" : Math.round(d / 365) + " th lalu"; };
+
+  /* ---------- jenis bencana ---------- */
+  const HZ = {
+    gempa: { n: "Gempa bumi", e: "\u{1F30D}", c: "#f43f5e" },
+    gunung: { n: "Gunung api", e: "\u{1F30B}", c: "#fb923c" },
+    banjir: { n: "Banjir", e: "\u{1F4A7}", c: "#38bdf8" },
+    longsor: { n: "Tanah longsor", e: "\u26F0\uFE0F", c: "#a16207" },
+    karhutla: { n: "Kebakaran hutan & lahan", e: "\u{1F525}", c: "#f97316" },
+    badai: { n: "Badai & cuaca ekstrem", e: "\u{1F300}", c: "#a78bfa" }
+  };
+  const EON = { floods: "banjir", landslides: "longsor", volcanoes: "gunung", wildfires: "karhutla", severeStorms: "badai" };
+  const TIPS = {
+    gempa: "Kenali jalur evakuasi & titik kumpul; saat guncangan lakukan Merunduk-Berlindung-Berpegangan; siapkan tas siaga bencana; pastikan bangunan tahan gempa.",
+    tsunami: "Bila gempa kuat/lama terasa di pesisir, segera ke tempat tinggi tanpa menunggu sirine; hafal rute evakuasi vertikal/horizontal.",
+    gunung: "Patuhi status & radius rekomendasi PVMBG/Badan Geologi; siapkan masker, kacamata; waspada lahar dingin saat hujan di hulu.",
+    banjir: "Pantau peringatan dini cuaca BMKG; amankan dokumen & listrik; kenali titik kumpul; jangan menerobos arus deras.",
+    longsor: "Waspadai lereng curam, retakan tanah, mata air keruh & hujan lebat berhari-hari; hindari hunian di bawah tebing.",
+    karhutla: "Jangan membakar lahan; pantau titik panas; gunakan masker saat kabut asap; lapor ke BPBD/Manggala Agni.",
+    badai: "Pangkas pohon rapuh, amankan atap & baliho; ikuti peringatan dini BMKG; hindari area terbuka saat petir."
+  };
+
+  /* ---------- basis data kejadian besar bersejarah (kurasi; angka korban = perkiraan, sumber berbeda dapat berbeda) ---------- */
+  /* [jenis, tanggal, nama, lat, lng, korban jiwa, magnitudo, catatan, tsunami] */
+  const CUR_RAW = [
+    ["gunung", "1815-04-10", "Letusan Gunung Tambora (VEI 7)", -8.25, 118.0, 71000, null, "Letusan terbesar dalam sejarah tercatat; korban termasuk dampak kelaparan & penyakit. Memicu 'tahun tanpa musim panas' 1816.", 0],
+    ["gunung", "1883-08-27", "Letusan Krakatau 1883", -6.10, 105.42, 36000, null, "Tsunami raksasa menyapu pesisir Selat Sunda; suara terdengar ribuan km.", 1],
+    ["gunung", "1919-05-19", "Letusan Gunung Kelud 1919", -7.93, 112.31, 5100, null, "Lahar besar menerjang Blitar; mendorong dibangunnya terowongan pengendali air kawah.", 0],
+    ["gunung", "1930-12-13", "Letusan Gunung Merapi 1930", -7.54, 110.45, 1369, null, "Awan panas melanda puluhan desa di lereng Merapi.", 0],
+    ["gunung", "1963-03-17", "Letusan Gunung Agung 1963", -8.34, 115.51, 1600, null, "Aliran piroklastik & lahar; letusan terbesar Bali abad ke-20.", 0],
+    ["gunung", "1979-02-20", "Gas beracun kawah Sinila, Dieng", -7.21, 109.92, 149, null, "Semburan gas CO\u2082 saat evakuasi warga akibat gempa & letusan freatik.", 0],
+    ["gunung", "1982-05-05", "Letusan Gunung Galunggung 1982-83", -7.25, 108.06, null, null, "Abu vulkanik membuat pesawat British Airways 9 kehilangan semua mesin.", 0],
+    ["gempa", "2000-06-04", "Gempa Enggano, Bengkulu", -4.72, 102.09, 103, 7.9, "Guncangan kuat di Bengkulu & Sumatera Selatan.", 0],
+    ["gempa", "1992-12-12", "Gempa & tsunami Flores", -8.48, 121.9, 2500, 7.8, "Tsunami setinggi >20 m di Pulau Babi; Maumere paling parah.", 1],
+    ["gempa", "1994-06-03", "Tsunami Banyuwangi", -10.48, 112.84, 250, 7.8, "Gempa 'tsunami earthquake' di selatan Jawa Timur.", 1],
+    ["gempa", "2004-12-26", "Gempa & tsunami Aceh (Samudra Hindia)", 3.30, 95.78, 167000, 9.1, "Salah satu bencana alam paling mematikan; total >230.000 jiwa di 14 negara.", 1],
+    ["gempa", "2005-03-28", "Gempa Nias", 2.09, 97.11, 1300, 8.6, "Menyusul gempa Aceh; pengangkatan daratan & kerusakan luas di Nias-Simeulue.", 0],
+    ["gempa", "2006-05-27", "Gempa Yogyakarta", -7.96, 110.46, 5700, 6.4, "Sesar darat dangkal; kerusakan berat di Bantul & Klaten.", 0],
+    ["gempa", "2006-07-17", "Tsunami Pangandaran", -9.33, 107.32, 650, 7.7, "Gempa tsunami di selatan Jawa Barat-Jawa Tengah (Cilacap).", 1],
+    ["gempa", "2009-09-30", "Gempa Padang", -0.72, 99.87, 1100, 7.6, "Gempa intraslab dalam; ribuan bangunan runtuh di Padang & Pariaman.", 0],
+    ["gempa", "2010-10-25", "Gempa & tsunami Mentawai", -3.49, 100.08, 500, 7.8, "Tsunami setinggi hingga 10 m di Pagai Selatan.", 1],
+    ["gempa", "2012-04-11", "Gempa Aceh strike-slip M8.6", 2.33, 93.06, 2, 8.6, "Gempa mendatar raksasa di lepas pantai; korban sangat minim.", 0],
+    ["gempa", "2018-08-05", "Gempa Lombok", -8.29, 116.45, 560, 6.9, "Rangkaian gempa Juli-Agustus 2018 di Lombok Utara.", 0],
+    ["gempa", "2018-09-28", "Gempa, tsunami & likuefaksi Palu-Donggala", -0.18, 119.84, 4300, 7.5, "Likuefaksi masif di Petobo & Balaroa; tsunami di Teluk Palu.", 1],
+    ["gempa", "2019-09-26", "Gempa Ambon", -3.60, 128.40, 41, 6.5, "Kerusakan luas di Ambon & Maluku Tengah.", 0],
+    ["gempa", "2021-01-15", "Gempa Majene-Mamuju", -2.98, 118.89, 105, 6.2, "Merobohkan bangunan di Mamuju & Majene, Sulawesi Barat.", 0],
+    ["gempa", "2022-11-21", "Gempa Cianjur", -6.84, 107.05, 600, 5.6, "Sesar darat dangkal (Cugenang); ribuan rumah rusak.", 0],
+    ["gunung", "2010-10-26", "Letusan Gunung Merapi 2010", -7.54, 110.45, 350, null, "Letusan eksplosif terbesar sejak 1870; ratusan ribu mengungsi.", 0],
+    ["gunung", "2014-02-01", "Erupsi Gunung Sinabung 2014", 3.17, 98.39, 16, null, "Awan panas menewaskan 16 orang (2014) & 7 orang (2016).", 0],
+    ["gunung", "2018-12-22", "Tsunami Selat Sunda (Anak Krakatau)", -6.10, 105.42, 437, null, "Longsoran tubuh Anak Krakatau memicu tsunami tanpa peringatan gempa.", 1],
+    ["gunung", "2021-12-04", "Erupsi & awan panas Gunung Semeru", -8.11, 112.92, 50, null, "Awan panas guguran melanda Curah Kobokan & Sumberwuluh, Lumajang.", 0],
+    ["gunung", "2023-12-03", "Erupsi Gunung Marapi", -0.38, 100.47, 23, null, "Erupsi mendadak saat puluhan pendaki berada di jalur pendakian.", 0],
+    ["gunung", "2024-11-03", "Erupsi Lewotobi Laki-laki", -8.54, 122.78, 9, null, "Erupsi besar menghantam desa-desa di Flores Timur.", 0],
+    ["longsor", "2014-12-12", "Longsor Jemblung, Banjarnegara", -7.28, 109.67, 95, null, "Longsor besar menimbun dusun di Karangkobar, Jawa Tengah.", 0],
+    ["banjir", "2007-02-02", "Banjir besar Jakarta 2007", -6.20, 106.85, 80, null, "Sekitar 60% wilayah Jakarta tergenang.", 0],
+    ["banjir", "2016-09-20", "Banjir bandang Garut", -7.22, 107.90, 26, null, "Sungai Cimanuk meluap; puluhan hilang.", 0],
+    ["banjir", "2019-03-16", "Banjir bandang Sentani", -2.57, 140.50, 112, null, "Banjir & longsor setelah hujan ekstrem di Jayapura.", 0],
+    ["banjir", "2020-01-01", "Banjir Jabodetabek Tahun Baru 2020", -6.25, 106.85, 66, null, "Curah hujan tertinggi dalam puluhan tahun terakhir.", 0],
+    ["banjir", "2021-01-14", "Banjir Kalimantan Selatan", -3.32, 114.59, 21, null, "Puluhan ribu rumah terendam di Banjar, HST, Tanah Laut.", 0],
+    ["banjir", "2024-05-11", "Banjir lahar & bandang Sumatera Barat", -0.45, 100.45, 67, null, "Lahar dingin Marapi & hujan deras di Agam, Tanah Datar, Padang Panjang.", 0],
+    ["karhutla", "2015-09-15", "Karhutla & asap lintas negara 2015", -2.2, 113.9, null, null, "\u00B12,6 juta ha terbakar (Sumatera & Kalimantan); salah satu krisis asap terburuk.", 0],
+    ["karhutla", "2019-09-15", "Karhutla 2019", -2.3, 114.0, null, null, "\u00B11,6 juta ha terbakar; ISPU berbahaya di Riau, Jambi, Kalimantan.", 0]
+  ];
+  const CUR = CUR_RAW.map(a => ({ id: "c" + a[1] + a[3], type: a[0], t: Date.parse(a[1] + "T00:00:00Z"), title: a[2], lat: a[3], lng: a[4], deaths: a[5], m: a[6], note: a[7], tsu: !!a[8], cur: 1, src: "Kurasi BNPB/PVMBG/BMKG/USGS" }));
+  /* gunung api aktif: [nama, lat, lng, tinggi mdpl, kelas(1=sangat aktif), riwayat] */
+  const VOL = [
+    ["Merapi", -7.542, 110.446, 2910, 1, "Letusan 1930 (\u22481.369 jiwa), 2010 (\u2248350 jiwa). Aktif hampir kontinu."],
+    ["Semeru", -8.108, 112.922, 3676, 1, "Erupsi hampir tiap hari; awan panas 4 Des 2021 (\u224850 jiwa)."],
+    ["Bromo", -7.942, 112.95, 2329, 1, "Kaldera Tengger; erupsi 2010-2011 & 2016."],
+    ["Kelud", -7.93, 112.308, 1731, 1, "Letusan 1919 (\u22485.100 jiwa), 1990, 2007, 2014 (abu hingga Jabar)."],
+    ["Anak Krakatau", -6.102, 105.423, 110, 1, "Runtuh 22 Des 2018 \u2192 tsunami Selat Sunda (437 jiwa). Induknya meletus 1883."],
+    ["Sinabung", 3.17, 98.392, 2460, 1, "Aktif kembali 2010; awan panas mematikan 2014 (16) & 2016 (7)."],
+    ["Agung", -8.342, 115.508, 3031, 1, "Letusan 1963 (\u22481.100-1.600 jiwa); erupsi 2017-2019."],
+    ["Slamet", -7.242, 109.208, 3428, 1, "Gunung api tertinggi di Jawa Tengah; erupsi strombolian berkala."],
+    ["Marapi", -0.38, 100.473, 2891, 1, "Erupsi 3 Des 2023 menewaskan 23 pendaki."],
+    ["Lewotobi Laki-laki", -8.542, 122.775, 1584, 1, "Erupsi besar 3 Nov 2024 (9 jiwa)."],
+    ["Ibu", 1.488, 127.63, 1325, 1, "Erupsi hampir harian sejak 2008."],
+    ["Dukono", 1.693, 127.894, 1229, 1, "Erupsi kontinu sejak 1933."],
+    ["Karangetang", 2.78, 125.407, 1797, 1, "Salah satu gunung api paling aktif di Sulawesi Utara."],
+    ["Ruang", 2.3, 125.37, 725, 1, "Erupsi April 2024 memicu evakuasi ribuan warga & peringatan tsunami."],
+    ["Lokon", 1.358, 124.792, 1580, 1, "Erupsi eksplosif berulang di dekat Tomohon-Manado."],
+    ["Soputan", 1.108, 124.725, 1784, 1, "Erupsi eksplosif berulang (2011, 2016, 2018)."],
+    ["Ijen", -8.058, 114.242, 2799, 2, "Danau kawah asam terbesar; gas beracun berbahaya bagi penambang."],
+    ["Raung", -8.125, 114.042, 3332, 2, "Erupsi 2015 mengganggu penerbangan Bali-Jawa."],
+    ["Tambora", -8.25, 118.0, 2850, 2, "Letusan 1815 (VEI 7), terbesar dalam sejarah tercatat."],
+    ["Rinjani", -8.411, 116.457, 3726, 2, "Samalas 1257 (VEI 7); erupsi Barujari 2015-2016."],
+    ["Galunggung", -7.25, 108.058, 2168, 2, "Letusan 1822 (ribuan jiwa) & 1982-83."],
+    ["Dieng", -7.2, 109.92, 2565, 2, "Gas CO\u2082 Sinila 1979 (149 jiwa); letusan freatik Sileri 2017."],
+    ["Tangkuban Parahu", -6.77, 107.6, 2084, 2, "Erupsi freatik berkala (2013, 2019); obyek wisata kawah."],
+    ["Gede-Pangrango", -6.78, 106.98, 2958, 2, "Gunung api di Jawa Barat; pernah erupsi 1957."],
+    ["Kerinci", -1.697, 101.264, 3805, 2, "Gunung api tertinggi di Sumatera; erupsi kecil berkala."]
+  ].map(v => ({ id: "v" + v[0], type: "gunung", vol: 1, title: "Gunung " + v[0], lat: v[1], lng: v[2], elev: v[3], k: v[4], note: v[5] }));
+
+  /* ---------- wilayah (batas kab/kota BIG) ---------- */
+  let KAB = null;
+  function dec(s) { let i = 0, la = 0, lo = 0, o = []; while (i < s.length) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); la += r & 1 ? ~(r >> 1) : r >> 1; sh = 0; r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); lo += r & 1 ? ~(r >> 1) : r >> 1; o.push([la / 1e5, lo / 1e5]); } return o; }
+  function kabs() {
+    if (KAB) return KAB; KAB = []; const D = window.PQ_KABBATAS || {};
+    for (const p in D) D[p].forEach(k => { const rings = k[1].map(dec); let s = 90, w = 180, n = -90, e = -180; rings.forEach(r => r.forEach(q => { if (q[0] < s) s = q[0]; if (q[0] > n) n = q[0]; if (q[1] < w) w = q[1]; if (q[1] > e) e = q[1]; })); KAB.push({ p, n: k[0], rings, bb: [s, w, n, e], c: [(s + n) / 2, (w + e) / 2] }); });
+    return KAB;
+  }
+  const pip = (r, la, lo) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const a = r[i], b = r[j]; if ((a[1] > lo) !== (b[1] > lo) && la < (b[0] - a[0]) * (lo - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+  function locate(e) {
+    const K = kabs(); let best = null, bd = 1e9;
+    for (const k of K) {
+      const b = k.bb; if (e.lat >= b[0] && e.lat <= b[2] && e.lng >= b[1] && e.lng <= b[3]) { let c = false; k.rings.forEach(r => { if (pip(r, e.lat, e.lng)) c = !c; }); if (c) { e.prov = k.p; e.reg = k.n; e.off = false; return e; } }
+      const d = hav(e.lat, e.lng, k.c[0], k.c[1]); if (d < bd) { bd = d; best = k; }
+    }
+    if (best) { e.prov = best.p; e.reg = best.n; } e.off = true; return e;
+  }
+  const provs = () => { const s = new Set(); kabs().forEach(k => s.add(k.p)); return [...s].sort(); };
+  const kabOf = p => kabs().filter(k => k.p === p).map(k => k.n).sort();
+  function regionObj() {
+    if (!S.prov) return null; const L = kabs().filter(k => k.p === S.prov && (!S.kab || k.n === S.kab)); if (!L.length) return null;
+    let s = 90, w = 180, n = -90, e = -180; L.forEach(k => { s = Math.min(s, k.bb[0]); w = Math.min(w, k.bb[1]); n = Math.max(n, k.bb[2]); e = Math.max(e, k.bb[3]); });
+    return { list: L, bb: [s, w, n, e], c: [(s + n) / 2, (w + e) / 2], name: S.kab || S.prov };
+  }
+  const inReg = e => !S.prov || (e.prov === S.prov && (!S.kab || e.reg === S.kab));
+  const distToReg = (R, lat, lng) => { let b = 1e9; R.list.forEach(k => k.rings.forEach(r => { for (let i = 0; i < r.length; i += 2) { const d = hav(lat, lng, r[i][0], r[i][1]); if (d < b) b = d; } })); return b; };
+
+  /* ---------- state ---------- */
+  const S = { t: {}, days: 30, mag: 4.5, prov: "", kab: "", tab: "now", panel: false, loading: 0 };
+  let LIVE = [], EON_ALL = [], HIST = {}, LG = null, HG = null, OL = null, MK = {}, LST = [], P = null, started = false, loaded = false, histMarkers = false;
+  CUR.forEach(locate); VOL.forEach(locate);
+  const anyOn = () => Object.keys(S.t).some(k => S.t[k]);
+
+  /* ---------- pengambilan data ---------- */
+  const tmo = (u, ms) => { const c = new AbortController(); const id = setTimeout(() => c.abort(), ms || 25000); return fetch(u, { signal: c.signal }).then(r => { clearTimeout(id); if (!r.ok) throw 0; return r.json(); }); };
+  function addEq(list, e) { if ([e.t, e.lat, e.lng, e.m].some(isNaN)) return; if (list.some(x => Math.abs(x.t - e.t) < 12e4 && hav(x.lat, x.lng, e.lat, e.lng) < 150)) return; list.push(e); }
+  const usgsUrl = (bb, mm, start) => "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minlatitude=" + bb[0] + "&maxlatitude=" + bb[2] + "&minlongitude=" + bb[1] + "&maxlongitude=" + bb[3] + "&minmagnitude=" + mm + "&orderby=time&limit=20000&starttime=" + start;
+  const eonUrl = (bb, extra) => "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&bbox=" + bb[1] + "," + bb[2] + "," + bb[3] + "," + bb[0] + "&category=floods,landslides,volcanoes,wildfires,severeStorms&limit=1000" + (extra || "");
+  function usgsList(j, out) { (j.features || []).forEach(f => { const c = f.geometry.coordinates, p = f.properties; addEq(out, { id: "u" + f.id, type: "gempa", t: p.time, lat: c[1], lng: c[0], m: +p.mag, d: Math.max(1, c[2] || 10), src: "USGS", title: "Gempa M" + (+p.mag).toFixed(1), place: p.place || "", url: p.url, tsu: p.tsunami === 1 }); }); }
+  function eonList(j, out) {
+    (j.events || []).forEach(ev => {
+      const cat = EON[(ev.categories[0] || {}).id]; if (!cat || !ev.geometry || !ev.geometry.length) return;
+      const g = ev.geometry[ev.geometry.length - 1]; let co = g.coordinates; while (Array.isArray(co[0])) co = co[0]; if (!co || co.length < 2) return;
+      const src = (ev.sources && ev.sources[0]) ? ev.sources[0].url : ev.link;
+      out.push({ id: "e" + ev.id, type: cat, t: Date.parse(ev.geometry[0].date), t2: Date.parse(g.date), lat: co[1], lng: co[0], title: ev.title, src: "NASA EONET", url: src, closed: ev.closed, mag: g.magnitudeValue ? g.magnitudeValue + " " + (g.magnitudeUnit || "") : "" });
+    });
+  }
+  async function load(force) {
+    if (loaded && !force) return; loaded = true; S.loading++; render();
+    const iso = new Date(NOW() - 365 * 864e5).toISOString().slice(0, 19), nat = [-12.5, 94, 7.5, 142], out = [], ev = [];
+    const B = ["gempaterkini", "gempadirasakan"].map(n => tmo("https://data.bmkg.go.id/DataMKG/TEWS/" + n + ".json", 15000));
+    const [u, e, ...b] = await Promise.allSettled([tmo(usgsUrl(nat, 4.5, iso)), tmo(eonUrl(nat, "&days=730")), ...B]);
+    b.forEach(r => { if (r.status === "fulfilled") ((r.value.Infogempa || {}).gempa || []).forEach(g => { const c = String(g.Coordinates || "").split(",").map(Number); addEq(out, { id: "b" + g.DateTime, type: "gempa", t: Date.parse(g.DateTime), lat: c[0], lng: c[1], m: +g.Magnitude, d: parseFloat(g.Kedalaman) || 10, src: "BMKG", title: "Gempa M" + (+g.Magnitude).toFixed(1), place: g.Wilayah || "", felt: g.Dirasakan || "", tsu: /berpotensi tsunami/i.test(g.Potensi || "") && !/tidak/i.test(g.Potensi || "") }); }); });
+    if (u.status === "fulfilled") usgsList(u.value, out);
+    if (e.status === "fulfilled") eonList(e.value, ev);
+    if (out.length) { out.forEach(locate); out.sort((a, b) => b.t - a.t); LIVE = out; try { localStorage.setItem("pq_bnc_eq", JSON.stringify(out.slice(0, 1500))); } catch (x) { } }
+    else { try { LIVE = JSON.parse(localStorage.getItem("pq_bnc_eq") || "[]"); } catch (x) { LIVE = []; } say(LIVE.length ? "Offline: data gempa tersimpan dipakai" : "Gagal memuat data gempa (USGS/BMKG)"); }
+    if (ev.length) { ev.forEach(locate); ev.sort((a, b) => b.t2 - a.t2); EON_ALL = ev; try { localStorage.setItem("pq_bnc_eon", JSON.stringify(ev.slice(0, 600))); } catch (x) { } }
+    else { try { EON_ALL = JSON.parse(localStorage.getItem("pq_bnc_eon") || "[]"); } catch (x) { EON_ALL = []; } }
+    S.loading--; draw(); render();
+  }
+  async function loadHist() {
+    const R = regionObj(); if (!R) return; const key = S.prov + "|" + S.kab; if (HIST[key]) return;
+    S.loading++; render(); const pad = .3, bb = [R.bb[0] - pad, R.bb[1] - pad, R.bb[2] + pad, R.bb[3] + pad], eq = [], ev = [];
+    const [u, e] = await Promise.allSettled([tmo(usgsUrl(bb, S.kab ? 4 : 4.5, "1900-01-01"), 40000), tmo(eonUrl(bb), 25000)]);
+    if (u.status === "fulfilled") usgsList(u.value, eq); if (e.status === "fulfilled") eonList(e.value, ev);
+    eq.forEach(locate); ev.forEach(locate); const f = x => x.prov === S.prov && (!S.kab || x.reg === S.kab);
+    HIST[key] = { eq: eq.filter(f).sort((a, b) => b.t - a.t), ev: ev.filter(f), ok: u.status === "fulfilled", t: NOW() };
+    S.loading--; draw(); render();
+  }
+
+  /* ---------- statistik & analisis cerdas ---------- */
+  function volNear(R, km) { return VOL.map(v => ({ v, d: distToReg(R, v.lat, v.lng), inside: v.prov === S.prov && (!S.kab || v.reg === S.kab) && !v.off })).filter(x => x.inside || x.d <= km).sort((a, b) => a.d - b.d); }
+  function analyze() {
+    const R = regionObj(); if (!R) return null; const H = HIST[S.prov + "|" + S.kab]; if (!H) return null;
+    const Y0 = 1973, yrs = new Date().getUTCFullYear() - Y0 + 1, eq = H.eq.filter(e => e.t >= Date.UTC(Y0, 0, 1)), cnt = m => eq.filter(e => e.m >= m).length;
+    const rate = m => cnt(m) / yrs, p10 = m => 1 - Math.exp(-rate(m) * 10);
+    const e45 = eq.filter(e => e.m >= 4.5); let b = null;
+    if (e45.length >= 30) { const mean = e45.reduce((s, e) => s + e.m, 0) / e45.length; b = Math.LOG10E / (mean - 4.45); }
+    const last5 = e45.filter(e => e.t >= NOW() - 5 * 365.25 * 864e5).length / 5, longRate = e45.length / yrs, trend = longRate ? last5 / longRate : 0;
+    const curR = CUR.filter(inReg), allEv = H.ev.concat(EON_ALL.filter(inReg).filter(x => !H.ev.some(y => y.id === x.id)));
+    const ec = c => allEv.filter(x => x.type === c).length, cc = c => curR.filter(x => x.type === c).length;
+    const vn = volNear(R, 45), tsuC = curR.filter(x => x.tsu).length, offM7 = eq.filter(e => e.off && e.m >= 6.8 && e.d <= 70).length;
+    const sx = rate(5) + 4 * rate(6) + 20 * rate(7), sc = {
+      gempa: Math.round(100 * (1 - Math.exp(-sx / 1.5))),
+      tsunami: Math.min(100, tsuC * 35 + offM7 * 12 + (curR.some(x => x.tsu) ? 10 : 0)),
+      gunung: Math.min(100, vn.reduce((s, x) => s + (x.v.k === 1 ? (x.inside ? 50 : x.d < 25 ? 38 : 20) : (x.inside ? 28 : 12)), 0)),
+      banjir: Math.min(100, ec("banjir") * 14 + cc("banjir") * 30), longsor: Math.min(100, ec("longsor") * 16 + cc("longsor") * 30),
+      karhutla: Math.min(100, ec("karhutla") * 10 + cc("karhutla") * 25), badai: Math.min(100, ec("badai") * 18)
+    };
+    const ks = Object.keys(sc).sort((a, b) => sc[b] - sc[a]), overall = Math.min(100, Math.round(sc[ks[0]] * .6 + (sc[ks[1]] + sc[ks[2]]) / 2 * .4));
+    const top = eq.slice().sort((a, b) => b.m - a.m).slice(0, 6), deadly = curR.filter(x => x.deaths).sort((a, b) => b.deaths - a.deaths);
+    return { R, H, eq, e45, yrs, Y0, rate, p10, b, last5, longRate, trend, allEv, ec, cc, vn, sc, ks, overall, top, deadly, curR, n: { 5: cnt(5), 6: cnt(6), 7: cnt(7) } };
+  }
+  const LVL = v => v < 20 ? ["Rendah", "#34d399"] : v < 45 ? ["Sedang", "#facc15"] : v < 70 ? ["Tinggi", "#fb923c"] : ["Sangat tinggi", "#f43f5e"];
+  const NM = { gempa: "Gempa bumi", tsunami: "Tsunami", gunung: "Gunung api", banjir: "Banjir", longsor: "Longsor", karhutla: "Karhutla", badai: "Badai/cuaca ekstrem" };
+  function narrative(A) {
+    const nm = A.R.name, o = [], lv = LVL(A.overall)[0].toLowerCase();
+    o.push("Profil kebencanaan " + nm + (S.kab ? ", " + S.prov : "") + " tergolong <b>" + lv + "</b> (skor " + A.overall + "/100), dengan bahaya dominan <b>" + NM[A.ks[0]].toLowerCase() + "</b>" + (A.sc[A.ks[1]] >= 20 ? " dan " + NM[A.ks[1]].toLowerCase() : "") + ".");
+    if (A.H.ok && A.eq.length) {
+      const t = A.top[0]; o.push("Sejak " + A.Y0 + " tercatat <b>" + nf(A.e45.length) + "</b> gempa M\u22654,5 (\u2248" + A.longRate.toFixed(1) + "/tahun); terkuat <b>M" + t.m.toFixed(1) + "</b> pada " + fD(t.t) + " (kedalaman " + Math.round(t.d) + " km).");
+      if (A.rate(6) > 0) o.push("Peluang \u22651 gempa M\u22656 dalam 10 tahun ke depan \u2248 <b>" + Math.round(A.p10(6) * 100) + "%</b>" + (A.rate(7) > 0 ? ", M\u22657 \u2248 " + Math.round(A.p10(7) * 100) + "%" : "") + " (model Poisson dari frekuensi historis, indikatif).");
+      if (A.longRate > 0 && A.e45.length > 20) o.push("Aktivitas 5 tahun terakhir <b>" + A.trend.toFixed(1) + "\u00D7</b> rata-rata jangka panjang" + (A.trend > 1.5 ? " \u2014 lebih aktif dari biasanya." : A.trend < .6 ? " \u2014 relatif tenang (bukan jaminan aman)." : " \u2014 mendekati normal."));
+      if (A.b) o.push("Nilai-b Gutenberg-Richter \u2248 " + A.b.toFixed(2) + (A.b < .85 ? " (proporsi gempa besar relatif tinggi)." : A.b > 1.15 ? " (didominasi gempa kecil/swarm)." : " (normal)."));
+    } else if (!A.H.ok) o.push("Katalog gempa USGS belum bisa dimuat (periksa koneksi); analisis memakai data lain.");
+    if (A.vn.length) o.push("Gunung api terdekat: " + A.vn.slice(0, 3).map(x => "<b>" + esc(x.v.title.replace("Gunung ", "")) + "</b> (" + (x.inside ? "di wilayah ini" : Math.round(x.d) + " km") + ")").join(", ") + ".");
+    if (A.deadly.length) { const d = A.deadly[0]; o.push("Kejadian paling mematikan tercatat: <b>" + esc(d.title) + "</b> (" + new Date(d.t).getUTCFullYear() + ", \u2248" + nf(d.deaths) + " jiwa)."); }
+    const hy = A.ec("banjir") + A.ec("longsor"); if (hy) o.push("NASA EONET mencatat " + A.ec("banjir") + " kejadian banjir & " + A.ec("longsor") + " longsor besar di wilayah ini (belum termasuk kejadian kecil lokal \u2014 lihat DIBI/InaRISK BNPB).");
+    return o;
+  }
+  function plainText(A) { const d = document.createElement("div"); d.innerHTML = narrative(A).join("\n"); return "RIWAYAT & RISIKO BENCANA \u2014 " + A.R.name + (S.kab ? ", " + S.prov : "") + "\n" + d.textContent + "\nSumber: USGS, BMKG, NASA EONET, kurasi PETAQU. Indikatif; rujuk BNPB (inarisk.bnpb.go.id) & BMKG."; }
+
+  /* ---------- peta ---------- */
+  function popup(e) {
+    const h = HZ[e.type]; let s = '<div style="font:12.5px/1.5 system-ui;color:#0b1a24;min-width:210px"><b style="font-size:14px">' + h.e + " " + esc(e.title) + "</b>";
+    if (e.type === "gempa" && e.m != null) s += '<br><b style="font-size:17px">M' + e.m.toFixed(1) + "</b>" + (e.tsu ? ' <span style="background:#fb923c;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700">tsunami</span>' : "");
+    if (e.vol) s += "<br>\u26F0 " + nf(e.elev) + " mdpl \u00B7 " + (e.k === 1 ? "sangat aktif" : "aktif") + '<br>' + esc(e.note) + '<br><a href="https://magma.esdm.go.id/" target="_blank" rel="noopener">Status resmi: MAGMA Indonesia</a>';
+    else { if (e.t) s += "<br>\u{1F550} " + (e.cur ? fD(e.t) : fDT(e.t)) + (e.cur ? "" : " \u00B7 " + ago(e.t)); if (e.t2 && e.t2 - e.t > 36e5) s += "<br>\u21BB Pembaruan: " + fD(e.t2) + (e.closed ? " (selesai)" : " (berlangsung)"); }
+    if (e.d != null) s += "<br>\u2B07 Kedalaman " + Math.round(e.d) + " km";
+    if (e.reg || e.prov) s += "<br>\u{1F4CD} " + esc((e.off ? "Dekat " : "") + (e.reg ? e.reg + ", " : "") + (e.prov || ""));
+    if (e.place) s += "<br>" + esc(e.place); if (e.felt) s += "<br>\u{1F4E3} " + esc(e.felt); if (e.mag) s += "<br>Ukuran: " + esc(e.mag);
+    if (e.deaths) s += "<br>\u{1F480} \u2248" + nf(e.deaths) + " jiwa"; if (e.note && !e.vol) s += "<br>" + esc(e.note);
+    s += '<br><span style="color:#567">Sumber: ' + esc(e.src || "") + "</span>"; if (e.url) s += ' \u00B7 <a href="' + esc(e.url) + '" target="_blank" rel="noopener">detail</a>'; return s + "</div>";
+  }
+  function mk(e) {
+    let m;
+    if (e.vol) m = L.marker([e.lat, e.lng], { icon: L.divIcon({ className: "", html: '<div style="font-size:' + (e.k === 1 ? 20 : 16) + 'px;filter:drop-shadow(0 1px 3px #000)">\u{1F30B}</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 400 });
+    else if (e.cur) m = L.marker([e.lat, e.lng], { icon: L.divIcon({ className: "", html: '<div style="width:26px;height:26px;border-radius:50%;background:' + HZ[e.type].c + ';border:2px solid #fff;box-shadow:0 0 0 3px ' + HZ[e.type].c + '66,0 2px 8px #000a;display:flex;align-items:center;justify-content:center;font-size:13px">' + (e.tsu ? "\u{1F30A}" : HZ[e.type].e) + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] }), zIndexOffset: 800 });
+    else if (e.type === "gempa") { const r = Math.max(3, 2.6 * (e.m - 3.2)); m = L.circleMarker([e.lat, e.lng], { radius: r, color: "#fff", weight: .8, fillColor: e.m >= 6 ? "#f43f5e" : e.m >= 5 ? "#fb923c" : "#facc15", fillOpacity: .78 }); }
+    else m = L.circleMarker([e.lat, e.lng], { radius: 7, color: "#fff", weight: 1.2, fillColor: HZ[e.type].c, fillOpacity: .85 });
+    return m.bindPopup(popup(e), { maxWidth: 300 });
+  }
+  const vis = () => { const lim = NOW() - S.days * 864e5; return LIVE.filter(e => S.t.gempa && e.t >= lim && e.m >= S.mag && inReg(e)).concat(EON_ALL.filter(e => S.t[e.type] && (e.t2 || e.t) >= lim && inReg(e))).sort((a, b) => (b.t2 || b.t) - (a.t2 || a.t)); };
+  function draw() {
+    if (typeof map === "undefined" || !map || !map.getPane) return;
+    if (!LG) { LG = L.layerGroup().addTo(map); HG = L.layerGroup().addTo(map); OL = L.layerGroup().addTo(map); }
+    LG.clearLayers(); HG.clearLayers(); OL.clearLayers(); MK = {}; LST = [];
+    const R = regionObj(); if (R && anyOn()) R.list.forEach(k => OL.addLayer(L.polygon(k.rings, { color: "#22d3ee", weight: 2, fill: false, dashArray: "6 5", interactive: false })));
+    if (!anyOn()) return;
+    LST = vis(); LST.slice(0, 1500).forEach(e => { const m = mk(e); MK[e.id] = m; LG.addLayer(m); });
+    if (S.t.hist) CUR.filter(inReg).forEach(e => { const m = mk(e); MK[e.id] = m; LG.addLayer(m); });
+    if (S.t.vol) VOL.filter(v => !S.prov || inReg(v) || (R && distToReg(R, v.lat, v.lng) < 45)).forEach(v => { const m = mk(v); MK[v.id] = m; LG.addLayer(m); });
+    const H = HIST[S.prov + "|" + S.kab]; if (H && S.tab === "his" && histMarkers) H.eq.filter(e => e.m >= 5).slice(0, 1200).forEach(e => HG.addLayer(mk(e)));
+  }
+  function fit() { const R = regionObj(); if (R && typeof map !== "undefined") map.fitBounds([[R.bb[0], R.bb[1]], [R.bb[2], R.bb[3]]], { padding: [30, 30], maxZoom: 11 }); else if (typeof map !== "undefined") map.fitBounds([[-11.5, 95], [6.5, 141]]); }
+  function fly(id) { const m = MK[id]; if (!m) return; const ll = m.getLatLng(); map.setView(ll, Math.max(map.getZoom(), 8)); m.openPopup(); }
+
+  /* ---------- panel ---------- */
+  const CSS = "#pqbsPanel{position:fixed;z-index:2950;top:70px;right:12px;width:368px;max-width:calc(100vw - 20px);max-height:calc(100% - 90px);display:none;flex-direction:column;background:#071a26f5;color:#e6f1f7;border:1px solid #fb923c66;border-radius:12px;font:12.5px system-ui;box-shadow:0 8px 30px #000a}#pqbsPanel.on{display:flex}" +
+    "#pqbsPanel .h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #ffffff18;font-weight:800;font-size:13.5px}#pqbsPanel .h b{flex:1}#pqbsPanel .x{cursor:pointer;opacity:.7;font-size:16px;background:none;border:0;color:inherit}" +
+    "#pqbsPanel .rg{display:flex;gap:6px;padding:8px 12px 0}#pqbsPanel select{flex:1;min-width:0;background:#0b2a3b;color:#e6f1f7;border:1px solid #ffffff2a;border-radius:7px;padding:5px;font:12px system-ui}" +
+    "#pqbsPanel .tb{display:flex;gap:4px;padding:8px 12px 0}#pqbsPanel .tb button{flex:1;padding:6px 2px;border-radius:7px;border:1px solid #ffffff22;background:#0b2a3b;color:#cfe;font:700 11.5px system-ui;cursor:pointer}#pqbsPanel .tb button.a{background:#fb923c;color:#1a0b00;border-color:#fb923c}" +
+    "#pqbsPanel .bd{overflow:auto;padding:8px 12px 12px;flex:1}#pqbsPanel .ch{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}#pqbsPanel .c{padding:4px 8px;border-radius:14px;border:1px solid #ffffff2a;cursor:pointer;font-size:11.5px;background:#0b2a3b;opacity:.55}#pqbsPanel .c.a{opacity:1;border-color:var(--c);background:#ffffff14;font-weight:700}" +
+    "#pqbsPanel .it{display:flex;gap:8px;padding:6px 4px;border-bottom:1px solid #ffffff12;cursor:pointer;align-items:flex-start}#pqbsPanel .it:hover{background:#ffffff0d}#pqbsPanel .it .e{font-size:16px;width:22px;text-align:center}#pqbsPanel .it small{display:block;color:#8fb0c2;font-size:11px}" +
+    "#pqbsPanel .bx{background:#ffffff0c;border:1px solid #ffffff14;border-radius:9px;padding:8px 10px;margin-bottom:8px}#pqbsPanel h4{margin:10px 0 5px;font-size:12px;color:#fdba74;letter-spacing:.3px}#pqbsPanel .bar{height:7px;border-radius:5px;background:#ffffff18;overflow:hidden;margin:2px 0 6px}#pqbsPanel .bar i{display:block;height:100%}" +
+    "#pqbsPanel .rw{display:flex;justify-content:space-between;gap:8px}#pqbsPanel .mut{color:#8fb0c2;font-size:11px}#pqbsPanel .btn{padding:6px 10px;border-radius:7px;border:1px solid #fb923c88;background:#fb923c22;color:#ffd7b0;cursor:pointer;font:700 11.5px system-ui;margin:2px 4px 2px 0}#pqbsPanel a{color:#7dd3fc}#pqbsPanel p{margin:5px 0;line-height:1.5}";
+  function build() {
+    if (P) return; const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
+    P = document.createElement("div"); P.id = "pqbsPanel";
+    P.innerHTML = '<div class="h"><span>\u{1F30B}</span><b>Bencana Indonesia</b><button class="x" data-a="close">\u2715</button></div><div class="rg"><select id="pqbP"></select><select id="pqbK"></select></div><div class="tb"><button data-t="now">Terkini</button><button data-t="his">Riwayat & Risiko</button><button data-t="rank">Peringkat</button></div><div class="bd" id="pqbB"></div>';
+    document.body.appendChild(P); P.addEventListener("click", onClick); $("pqbP").onchange = e => { S.prov = e.target.value; S.kab = ""; regionChanged(); }; $("pqbK").onchange = e => { S.kab = e.target.value; regionChanged(); };
+    const sp = $("pqbP"); sp.innerHTML = '<option value="">\u{1F1EE}\u{1F1E9} Seluruh Indonesia</option>' + provs().map(p => '<option>' + esc(p) + "</option>").join("");
+  }
+  function regionChanged() { fillKab(); draw(); if (S.prov) { fit(); loadHist(); } else fit(); render(); }
+  function fillKab() { const k = $("pqbK"); k.style.display = S.prov ? "" : "none"; k.innerHTML = '<option value="">Semua kab/kota</option>' + (S.prov ? kabOf(S.prov).map(n => '<option' + (n === S.kab ? " selected" : "") + ">" + esc(n) + "</option>").join("") : ""); $("pqbP").value = S.prov; }
+  function onClick(ev) {
+    const t = ev.target.closest("[data-a],[data-t],[data-k],[data-i],[data-d],[data-m],[data-r]"); if (!t) return;
+    if (t.dataset.t) { S.tab = t.dataset.t; if (S.tab === "his" && S.prov) loadHist(); draw(); render(); return; }
+    if (t.dataset.a === "close") { setPanel(false); return; }
+    if (t.dataset.k) { toggle(t.dataset.k); return; }
+    if (t.dataset.d) { S.days = +t.dataset.d; draw(); render(); return; }
+    if (t.dataset.m) { S.mag = +t.dataset.m; draw(); render(); return; }
+    if (t.dataset.i != null) { fly(t.dataset.i); return; }
+    if (t.dataset.r) { const [p, k] = t.dataset.r.split("|"); S.prov = p; S.kab = k || ""; fillKab(); regionChanged(); S.tab = "his"; render(); return; }
+    const a = t.dataset.a;
+    if (a === "hm") { histMarkers = !histMarkers; draw(); render(); } else if (a === "copy") { const A = analyze(); if (A) { try { navigator.clipboard.writeText(plainText(A)); say("Ringkasan disalin"); } catch (e) { say("Gagal menyalin", 1); } } }
+    else if (a === "reload") { loaded = false; HIST = {}; load(true); if (S.prov) loadHist(); }
+    else if (a === "all") { S.prov = ""; S.kab = ""; fillKab(); draw(); fit(); render(); }
+  }
+  function chips() { return '<div class="ch">' + Object.keys(HZ).map(k => '<span class="c' + (S.t[k] ? " a" : "") + '" data-k="' + k + '" style="--c:' + HZ[k].c + '">' + HZ[k].e + " " + HZ[k].n + "</span>").join("") + '<span class="c' + (S.t.hist ? " a" : "") + '" data-k="hist" style="--c:#facc15">\u2B50 Kejadian besar</span><span class="c' + (S.t.vol ? " a" : "") + '" data-k="vol" style="--c:#fb923c">\u25B2 Gunung api</span></div>'; }
+  function bars(arr, color, h) { const mx = Math.max(1, ...arr.map(a => a[1])), w = 100 / arr.length; return '<svg viewBox="0 0 100 ' + h + '" preserveAspectRatio="none" style="width:100%;height:' + h + 'px;display:block">' + arr.map((a, i) => '<rect x="' + (i * w + .2).toFixed(2) + '" y="' + (h - a[1] / mx * (h - 2)).toFixed(1) + '" width="' + (w - .4).toFixed(2) + '" height="' + (a[1] / mx * (h - 2)).toFixed(1) + '" fill="' + color + '"><title>' + a[0] + ": " + a[1] + "</title></rect>").join("") + "</svg>"; }
+  function tabNow() {
+    const L2 = LST, n = L2.length, eqN = L2.filter(e => e.type === "gempa").length, mx = L2.filter(e => e.type === "gempa").reduce((m, e) => Math.max(m, e.m), 0);
+    let h = chips() + '<div class="ch">' + [7, 30, 90, 365].map(d => '<span class="c' + (S.days === d ? " a" : "") + '" data-d="' + d + '" style="--c:#22d3ee">' + (d === 365 ? "1 th" : d + " hr") + "</span>").join("") + [4.5, 5, 6].map(m => '<span class="c' + (S.mag === m ? " a" : "") + '" data-m="' + m + '" style="--c:#f43f5e">M\u2265' + m + "</span>").join("") + "</div>";
+    if (S.loading) h += '<p class="mut">\u23F3 Memuat data USGS / BMKG / NASA\u2026</p>';
+    h += '<div class="bx"><b>' + nf(n) + "</b> kejadian dalam " + (S.days === 365 ? "1 tahun" : S.days + " hari") + (S.prov ? " di <b>" + esc(S.kab || S.prov) + "</b>" : " di Indonesia") + (eqN ? "<br>Gempa: " + eqN + " \u00B7 terkuat <b>M" + mx.toFixed(1) + "</b>" : "") + '<div class="mut">Gempa M\u22654,5 (USGS/BMKG) \u00B7 banjir, longsor, karhutla, badai, gunung api (NASA EONET: kejadian besar)</div></div>';
+    if (!anyOn()) h += '<p class="mut">Aktifkan minimal satu jenis bencana di atas untuk menampilkannya di peta.</p>';
+    h += L2.slice(0, 80).map(e => '<div class="it" data-i="' + esc(e.id) + '"><span class="e">' + HZ[e.type].e + '</span><span><b>' + esc(e.type === "gempa" ? "M" + e.m.toFixed(1) + " \u00B7 " + (e.place || e.reg || e.title) : e.title) + "</b><small>" + esc((e.reg ? e.reg + ", " : "") + (e.prov || "") + " \u00B7 " + ago(e.t2 || e.t) + (e.d ? " \u00B7 " + Math.round(e.d) + " km" : "") + " \u00B7 " + e.src) + "</small></span></div>").join("");
+    if (n > 80) h += '<p class="mut">+' + (n - 80) + " lainnya di peta\u2026</p>"; if (!n && !S.loading) h += '<p class="mut">Tidak ada kejadian sesuai filter.</p>';
+    return h + '<p><button class="btn" data-a="reload">\u21BB Muat ulang</button></p>';
+  }
+  function tabHis() {
+    if (!S.prov) {
+      const top = CUR.slice().sort((a, b) => (b.deaths || 0) - (a.deaths || 0)).slice(0, 12);
+      return '<div class="bx"><b>Pilih provinsi atau kabupaten/kota</b> di atas untuk melihat <b>riwayat lengkap</b>, skor risiko, peluang gempa 10 tahun, gunung api terdekat & ringkasan cerdas.</div><h4>Kejadian paling mematikan di Indonesia</h4>' +
+        top.map(e => '<div class="it" data-i="' + e.id + '"><span class="e">' + (e.tsu ? "\u{1F30A}" : HZ[e.type].e) + '</span><span><b>' + esc(e.title) + "</b><small>" + new Date(e.t).getUTCFullYear() + " \u00B7 " + (e.deaths ? "\u2248" + nf(e.deaths) + " jiwa \u00B7 " : "") + esc(e.prov || "") + "</small></span></div>").join("") +
+        '<p class="mut">Basis data kurasi (BNPB/PVMBG/BMKG/USGS); angka korban perkiraan.</p>';
+    }
+    const A = analyze(); if (!A) return '<p class="mut">\u23F3 Memuat riwayat ' + esc(S.kab || S.prov) + " (katalog gempa USGS sejak 1900, NASA EONET)\u2026</p>";
+    let h = '<div class="bx"><div class="rw"><b style="font-size:14px">' + esc(A.R.name) + '</b><b style="color:' + LVL(A.overall)[1] + '">' + LVL(A.overall)[0] + " \u00B7 " + A.overall + '/100</b></div><div class="bar"><i style="width:' + A.overall + "%;background:" + LVL(A.overall)[1] + '"></i></div>' + narrative(A).map(s => "<p>" + s + "</p>").join("") + "</div>";
+    h += "<h4>Skor risiko per jenis bahaya</h4>" + A.ks.map(k => '<div class="rw"><span>' + NM[k] + '</span><span style="color:' + LVL(A.sc[k])[1] + '">' + LVL(A.sc[k])[0] + " " + A.sc[k] + '</span></div><div class="bar"><i style="width:' + A.sc[k] + "%;background:" + LVL(A.sc[k])[1] + '"></i></div>').join("");
+    if (A.H.ok) {
+      const cy = new Date().getUTCFullYear(), yr = []; for (let y = Math.max(A.Y0, cy - 39); y <= cy; y++) yr.push([y, A.eq.filter(e => e.m >= 5 && new Date(e.t).getUTCFullYear() === y).length]);
+      h += "<h4>Gempa M\u22655 per tahun (" + yr[0][0] + "\u2013" + cy + ")</h4>" + bars(yr, "#fb923c", 46) + '<div class="mut">M\u22655: ' + A.n[5] + " \u00B7 M\u22656: " + A.n[6] + " \u00B7 M\u22657: " + A.n[7] + " sejak " + A.Y0 + "</div>";
+      h += '<h4>Gempa terkuat sejak 1900 (katalog USGS)</h4>' + A.H.eq.slice().sort((a, b) => b.m - a.m).slice(0, 6).map(e => '<div class="it" data-i="' + e.id + '"><span class="e">\u{1F30D}</span><span><b>M' + e.m.toFixed(1) + " \u00B7 " + fD(e.t) + "</b><small>" + esc(e.place) + " \u00B7 " + Math.round(e.d) + " km</small></span></div>").join("");
+      h += '<p><button class="btn" data-a="hm">' + (histMarkers ? "Sembunyikan" : "Tampilkan") + " riwayat gempa M\u22655 di peta (" + A.H.eq.filter(e => e.m >= 5).length + ")</button></p>";
+    }
+    if (A.curR.length) h += "<h4>Kejadian besar bersejarah</h4>" + A.curR.slice().sort((a, b) => b.t - a.t).map(e => '<div class="it" data-i="' + e.id + '"><span class="e">' + (e.tsu ? "\u{1F30A}" : HZ[e.type].e) + '</span><span><b>' + new Date(e.t).getUTCFullYear() + " \u00B7 " + esc(e.title) + "</b><small>" + (e.deaths ? "\u2248" + nf(e.deaths) + " jiwa \u00B7 " : "") + esc(e.note) + "</small></span></div>").join("");
+    if (A.allEv.length) h += "<h4>Banjir/longsor/gunung api/karhutla/badai tercatat (NASA EONET)</h4>" + A.allEv.slice(0, 15).map(e => '<div class="it" data-i="' + e.id + '"><span class="e">' + HZ[e.type].e + '</span><span><b>' + esc(e.title) + "</b><small>" + fD(e.t) + "</small></span></div>").join("");
+    if (A.vn.length) h += "<h4>Gunung api terdekat</h4>" + A.vn.slice(0, 5).map(x => '<div class="it" data-i="' + x.v.id + '"><span class="e">\u{1F30B}</span><span><b>' + esc(x.v.title) + "</b><small>" + (x.inside ? "Di wilayah ini" : Math.round(x.d) + " km") + " \u00B7 " + nf(x.v.elev) + " mdpl \u00B7 " + esc(x.v.note) + "</small></span></div>").join("");
+    const tp = A.ks.filter(k => A.sc[k] >= 20).slice(0, 3).map(k => "<p><b>" + NM[k] + ":</b> " + TIPS[k.replace("tsunami", "tsunami")] + "</p>").join("");
+    h += "<h4>Kesiapsiagaan</h4>" + (tp || "<p>Tetap siapkan tas siaga bencana & kenali jalur evakuasi.</p>");
+    h += '<p><button class="btn" data-a="copy">\u{1F4CB} Salin ringkasan</button><a class="btn" style="text-decoration:none;display:inline-block" href="https://inarisk.bnpb.go.id/" target="_blank" rel="noopener">InaRISK BNPB</a><a class="btn" style="text-decoration:none;display:inline-block" href="https://dibi.bnpb.go.id/" target="_blank" rel="noopener">DIBI</a></p><p class="mut">Skor & peluang = statistik historis indikatif, bukan prakiraan resmi. Peringatan resmi: BMKG &amp; PVMBG (MAGMA). Cakupan USGS M\u22654 (kab/kota) / M\u22654,5 (provinsi).</p>';
+    return h;
+  }
+  function tabRank() {
+    const g = {}; const lvl = S.prov ? "kab" : "prov";
+    const lim = NOW() - S.days * 864e5, pool = LIVE.filter(e => e.t >= lim && e.m >= S.mag).concat(EON_ALL.filter(e => (e.t2 || e.t) >= lim));
+    pool.filter(e => !S.prov || e.prov === S.prov).forEach(e => { const k = lvl === "prov" ? e.prov : e.reg; if (!k) return; const o = g[k] = g[k] || { n: 0, mx: 0, by: {} }; o.n++; o.by[e.type] = (o.by[e.type] || 0) + 1; if (e.m) o.mx = Math.max(o.mx, e.m); });
+    const rows = Object.keys(g).map(k => [k, g[k]]).sort((a, b) => b[1].n - a[1].n).slice(0, 40), mx = rows.length ? rows[0][1].n : 1;
+    return '<div class="ch">' + [7, 30, 90, 365].map(d => '<span class="c' + (S.days === d ? " a" : "") + '" data-d="' + d + '" style="--c:#22d3ee">' + (d === 365 ? "1 th" : d + " hr") + "</span>").join("") + '</div><p class="mut">Wilayah paling aktif (gempa M\u2265' + S.mag + " + kejadian EONET) " + (S.prov ? "di " + esc(S.prov) + " per kab/kota" : "per provinsi") + ". Klik untuk riwayat lengkap.</p>" +
+      rows.map(r => '<div class="it" data-r="' + esc(lvl === "prov" ? r[0] + "|" : S.prov + "|" + r[0]) + '"><span style="flex:1"><div class="rw"><b>' + esc(r[0]) + "</b><span>" + r[1].n + " kejadian" + (r[1].mx ? " \u00B7 M" + r[1].mx.toFixed(1) : "") + '</span></div><div class="bar"><i style="width:' + (r[1].n / mx * 100) + '%;background:#fb923c"></i></div><small>' + Object.keys(r[1].by).map(t => HZ[t].e + r[1].by[t]).join("  ") + "</small></span></div>").join("") + (rows.length ? "" : '<p class="mut">Belum ada data' + (S.loading ? " (memuat\u2026)" : "") + ".</p>") + (S.prov ? '<p><button class="btn" data-a="all">\u2190 Semua provinsi</button></p>' : "");
+  }
+  function render() {
+    if (!P) return; P.classList.toggle("on", S.panel); if (!S.panel) return;
+    P.querySelectorAll(".tb button").forEach(b => b.classList.toggle("a", b.dataset.t === S.tab));
+    const b = $("pqbB"), sc = b.scrollTop, tab = S.tab === "his" ? tabHis : S.tab === "rank" ? tabRank : tabNow; b.innerHTML = tab(); b.scrollTop = sc;
+  }
+
+  /* ---------- kontrol ---------- */
+  function setPanel(v) { build(); S.panel = v; if (v) { try { if (window.PETAQU_GEMPA) PETAQU_GEMPA.close(); } catch (e) { } if (!anyOn()) { Object.keys(HZ).forEach(k => S.t[k] = true); S.t.hist = true; S.t.vol = true; } fillKab(); load(); draw(); } render(); }
+  function toggle(k) { if (!S.t[k] && !loaded) load(); S.t[k] = !S.t[k]; draw(); render(); }
+  function init() { if (started) return true; if (typeof map === "undefined" || !map || !map.getPane || !document.body || typeof L === "undefined") return false; started = true; build(); fillKab(); return true; }
+  window.PETAQU_BENCANA_SEMUA = { open: () => setPanel(true), close: () => setPanel(false), toggle: k => { build(); toggle(k); }, select: (p, k) => { build(); S.prov = p || ""; S.kab = k || ""; fillKab(); regionChanged(); }, _t: { analyze, locate, CUR, VOL, HZ, S } };
+  window.PQ_FOLDER_EXTRA = window.PQ_FOLDER_EXTRA || [];
+  window.PQ_FOLDER_EXTRA.push({
+    title: "Bencana Indonesia",
+    rows: () => [{ id: "panel", name: "Panel bencana, riwayat & risiko", ic: "\u{1F9E0}", c: "#fb923c", on: S.panel }].concat(Object.keys(HZ).map(k => ({ id: k, name: HZ[k].n, ic: HZ[k].e, c: HZ[k].c, on: !!S.t[k] }))).concat([{ id: "hist", name: "Kejadian besar bersejarah", ic: "\u2B50", c: "#facc15", on: !!S.t.hist }, { id: "vol", name: "Titik gunung api aktif", ic: "\u25B2", c: "#fb923c", on: !!S.t.vol }]),
+    act: id => { const go = () => { build(); if (id === "panel") setPanel(!S.panel); else { toggle(id); } }; if (init()) go(); else say("Peta belum siap"); }
+  });
+  let tries = 0; const iv = setInterval(() => { if (init() || ++tries > 120) clearInterval(iv); }, 500);
+})();

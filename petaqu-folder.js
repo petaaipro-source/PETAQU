@@ -108,6 +108,7 @@
     });
 
     var cnt = L.filter(function (x) { return x.on; }).length;
+    try { (window.PQ_FOLDER_EXTRA || []).forEach(function (sec) { sec.rows().forEach(function (x) { if (x.on && x.id !== "panel") cnt++; }); }); } catch (e) { }
     var badge = btn.querySelector("b");
     var txt = cnt ? String(cnt) : "";
     if (badge.textContent !== txt) badge.textContent = txt;
@@ -119,7 +120,9 @@
     try { if (window.PETAQU_GEMPA && PETAQU_GEMPA.rows) Z = Z.concat(PETAQU_GEMPA.rows()); } catch (e) { }
     try { if (window.PETAQU_FLIGHT && PETAQU_FLIGHT.rows) Z = Z.concat(PETAQU_FLIGHT.rows()); } catch (e) { }
     var N = []; try { if (window.PETAQU_DRAINASE && PETAQU_DRAINASE.rows) N = PETAQU_DRAINASE.rows(); } catch (e) { }
-    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, N, D.map(function (d) { return d.t; })]);
+    var X = [];
+    try { (window.PQ_FOLDER_EXTRA || []).forEach(function (sec, si) { X.push({ si: si, t: sec.title, r: sec.rows() }); }); } catch (e) { X = []; }
+    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, N, X, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
     sig = s;
 
@@ -175,6 +178,15 @@
           (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
       });
     }
+    X.forEach(function (sec) {
+      if (!sec.r.length) return;
+      h += '<div class="pqf-h">' + esc(sec.t) + "</div>";
+      sec.r.forEach(function (x) {
+        h += '<button type="button" class="pqf-row" data-k="X:' + sec.si + ":" + x.id + '" style="--c:' + x.c + '">' +
+          '<span class="pqf-ic">' + x.ic + '</span><span class="pqf-t">' + esc(x.name) + "</span>" +
+          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
+      });
+    });
     if (D.length) {
       h += '<div class="pqf-h">Alat PETAQU</div>';
       D.forEach(function (d, i) {
@@ -214,6 +226,11 @@
       closePanels();
       closeJt();
       try { PETAQU_DRAINASE.act(k.slice(2)); } catch (e) { }
+    } else if (k.charAt(0) === "X") {
+      var pr = k.split(":"), sx = (window.PQ_FOLDER_EXTRA || [])[+pr[1]];
+      closePanels();
+      closeJt();
+      try { if (sx) sx.act(pr.slice(2).join(":")); } catch (e) { }
     } else if (k === "B") {
       closePanels();
       try { PETAQU_BLOK.open(); } catch (e) { }
