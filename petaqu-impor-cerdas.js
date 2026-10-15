@@ -510,15 +510,21 @@
       g.samples = S; g.note = note.join("; "); return g;
     });
   }
+  function openSvAt(g, ll) {
+    var road = (g.cand && g.cand.id ? roads.filter(function (r) { return r.id === g.cand.id; })[0] : null) || roads.filter(function (r) { return r.name === g.name; })[0];
+    if (!road || !road.points || !road.points.length) return false;
+    var bi = 0, bd = 1e18; road.points.forEach(function (q, i) { if (!isFinite(q.lat) || !isFinite(q.lng)) return; var d = distM([q.lat, q.lng], [ll.lat, ll.lng]); if (d < bd) { bd = d; bi = i; } });
+    try { openStreetView(road.id, bi); return true; } catch (e) { return false; }
+  }
   function clearLabels() { if (S.lab) { try { map.off("zoomend moveend", S.lab.fn); if (S.lab.g) map.removeLayer(S.lab.g); } catch (e) { } S.lab = null; } }
   function drawLabels() {
     var lb = S.lab; if (!lb) return; if (lb.g) map.removeLayer(lb.g);
     var g = L.layerGroup(), shown = [], bd = map.getBounds().pad(.1);
     lb.c.forEach(function (c) {
       if (!bd.contains(c.ll)) return; var p = map.latLngToLayerPoint(c.ll);
-      for (var i = 0; i < shown.length; i++) if (Math.abs(shown[i].x - p.x) < 58 && Math.abs(shown[i].y - p.y) < 22) return;
+      for (var i = 0; i < shown.length; i++) if (Math.abs(shown[i].x - p.x) < 84 && Math.abs(shown[i].y - p.y) < 22) return;
       shown.push(p);
-      g.addLayer(L.marker(c.ll, { interactive: false, keyboard: false, icon: L.divIcon({ className: "", iconSize: null, html: '<div style="position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font:700 11px/1.2 system-ui,sans-serif;color:#fff;background:#0b1220e6;border:1.5px solid ' + c.col + ';border-radius:9px;padding:1px 6px;box-shadow:0 1px 4px #000a">' + c.t + "</div>" }) }));
+      var mk = L.marker(c.ll, { interactive: true, keyboard: false, icon: L.divIcon({ className: "", iconSize: null, html: '<div style="position:absolute;transform:translate(-50%,-50%);white-space:nowrap;cursor:pointer;font:700 11px/1.2 system-ui,sans-serif;color:#fff;background:#0b1220e6;border:1.5px solid ' + c.col + ';border-radius:9px;padding:1px 6px;box-shadow:0 1px 4px #000a">' + c.t + "</div>" }) }); mk.on("click", function () { if (typeof rulerState !== "undefined" && (rulerState || drawState || sketchMode)) return; if (!openSvAt(c.g, c.ll)) say("Street View butuh ruas di peta — aktifkan opsi Otomatis masukkan IRI", true); }); g.addLayer(mk);
     });
     lb.g = g.addTo(map);
   }
@@ -545,7 +551,7 @@
         if (al === "start") { l0 = k; l1 = nx != null && nr(nx - k) ? nx : k + med; }
         else if (al === "end") { l1 = k; l0 = pv != null && nr(k - pv) ? pv : k - med; }
         else { l0 = pv != null && nr(k - pv) ? (k + pv) / 2 : k - med / 2; l1 = nx != null && nr(nx - k) ? (k + nx) / 2 : k + med / 2; }
-        ints.push({ l0: l0, l1: l1, a: gg[k].a, k: gg[k].k });
+        ints.push({ l0: l0, l1: l1, a: gg[k].a, k: gg[k].k, c: k });
         if (nx != null && !nr(nx - k)) { var gs = al === "start" ? k + med : al === "end" ? k : k + med / 2, ge = al === "start" ? nx : al === "end" ? nx - med : nx - med / 2; if (ge > gs) ints.push({ l0: gs, l1: ge, a: null, k: [] }); }
       });
     } else {
@@ -601,7 +607,7 @@
   function scanIri() {
     var G = iriGroups(); if (!G) return;
     var opt = { bin: $("icIb").value, align: $("icIa").value }, fileCls = $("icIk").value === "file", gaps = $("icIg").checked;
-    var lines = [], bnd = [], tot = 0, mapped = 0, cls = {}, clsC = {}, strips = [], labs = [], lf = $("icIlf").value, lt = function (l) { l = Math.max(0, l); return lf === "km" ? "KM " + (l / 1000).toFixed(2).replace(/\.?0+$/, "") : fmtSta(l); }, lastL = null;
+    var lines = [], bnd = [], tot = 0, mapped = 0, cls = {}, clsC = {}, strips = [], labs = [], lf = $("icIlf").value, lt = function (l) { l = Math.max(0, l); return lf === "km" ? "KM " + (l / 1000).toFixed(2).replace(/\.?0+$/, "") : fmtSta(l); };
     clearLayer(); IRI_OUT = []; IRI_G = [];
     G.forEach(function (g) {
       if (!g.samples.length) return;
@@ -617,11 +623,12 @@
         cells.push({ l0: l0, l1: l1, c: color, t: "STA " + rg + " · IRI " + avg.toFixed(2) + " · " + label });
         if (pts.length >= 2) {
           mapped++; pts.forEach(function (q) { bnd.push(q); });
-          var pa = atSta(g.cand, Math.max(0, l0)); if (pa.inRange) labs.push({ ll: L.latLng(pa.lat, pa.lng), t: lt(l0), col: color, pri: lastL === null ? 2 : 0 }); lastL = { l: l1, col: color };
-          lines.push(L.polyline(pts, { color: color, weight: 7, opacity: .95, lineCap: "butt" }).bindPopup("<b>" + esc(g.name) + "</b><br>STA " + rg + "<br>IRI rata-rata <b>" + avg.toFixed(2) + "</b> · maks " + mx.toFixed(2) + "<br>" + esc(label) + (km && km !== label ? " (file: " + esc(km) + ")" : "") + " · " + a.length + " titik"));
+          var cs = it.c != null ? it.c : (l0 + l1) / 2, pa = atSta(g.cand, Math.max(0, cs)); if (pa.inRange) labs.push({ ll: L.latLng(pa.lat, pa.lng), t: lt(cs) + " • " + avg.toFixed(1), col: color, pri: avg, g: g });
+          var pl = L.polyline(pts, { color: color, weight: 7, opacity: .95, lineCap: "butt" }).bindTooltip("<b>" + esc(g.name) + "</b><br>STA " + rg + " · IRI <b>" + avg.toFixed(2) + "</b> (maks " + mx.toFixed(2) + ")<br>" + esc(label) + (km && km !== label ? " (file: " + esc(km) + ")" : "") + " · " + a.length + " titik<br><i>klik = Street View</i>", { sticky: true, className: "sta-label" });
+          pl.on("click", function (ev) { if (rulerState || drawState || sketchMode) return; if (!openSvAt(g, ev.latlng)) say("Street View butuh ruas di peta — aktifkan opsi Otomatis masukkan IRI", true); });
+          lines.push(pl);
         }
       });
-      if (lastL) { var pe = atSta(g.cand, Math.max(0, lastL.l)); if (pe.inRange) labs.push({ ll: L.latLng(pe.lat, pe.lng), t: lt(lastL.l), col: lastL.col, pri: 2 }); lastL = null; }
       if (cells.length) strips.push({ name: g.name, mode: g.mode, note: g.note, cells: cells, min: Math.max(0, cells[0].l0), max: Math.max(0, cells[cells.length - 1].l1) });
     });
     if (!tot) return say("Tidak ada nilai IRI yang bisa diproses", true);
