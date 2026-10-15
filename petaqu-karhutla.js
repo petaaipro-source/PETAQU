@@ -88,7 +88,7 @@
 
   /* ---------- state ---------- */
   let Pn, IMG, MK, FX, CTX, F = null, tab = "potensi", day = 0, op = .72, busy = false, minim = false, play = null, raf = 0, fxOn = true;
-  let KAB = null, RG = null, HL = null, REG = null, WR = { prov: "", q: "", dyn: null, busy: false }, PT = [], EM = [], HS = [], SIM = null, simArm = false, simSpeed = 2, lastT = 0, pxs = null;
+  let KAB = null, RG = null, HL = null, REG = null, WR = { isl: "", prov: "", q: "", dyn: null, busy: false }, PT = [], EM = [], HS = [], SIM = null, simArm = false, simSpeed = 2, lastT = 0, pxs = null;
   try { const p = JSON.parse(localStorage.getItem(PREF) || "{}"); if (TAB[p.tab]) tab = p.tab; if (p.op >= .2 && p.op <= 1) op = p.op; if (p.fx === false) fxOn = false; } catch (e) { }
   const savePref = () => { try { localStorage.setItem(PREF, JSON.stringify({ tab, op, fx: fxOn })); } catch (e) { } };
   const fld = () => !F ? null : tab === "rawan" ? F.rawan : F.danger[Math.min(day, F.days - 1)];
@@ -316,23 +316,43 @@
   }
   const wst = K => (K.h && K.h.karhutla != null ? K.h.karhutla : 0) / 100;
   const wval = (K, i) => WR.dyn && WR.dyn[i] ? WR.dyn[i][Math.min(day, FUT - 1)] : wst(K);
-  function wrows() { if (!KAB) return []; const q = WR.q.trim().toLowerCase(); return KAB.map((K, i) => ({ K, i, v: wval(K, i) })).filter(r => (!WR.prov || r.K.p === WR.prov) && (!q || (r.K.n + " " + r.K.p).toLowerCase().includes(q))); }
+  /* kelompok PULAU -> provinsi */
+  const ISL = [["Sumatera", "#f97316", ["Aceh", "Sumatera Utara", "Sumatera Barat", "Riau", "Kepulauan Riau", "Jambi", "Sumatera Selatan", "Kepulauan Bangka Belitung", "Bengkulu", "Lampung"]],
+    ["Jawa", "#eab308", ["Banten", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "DI Yogyakarta", "Jawa Timur"]],
+    ["Bali & Nusa Tenggara", "#84cc16", ["Bali", "Nusa Tenggara Barat", "Nusa Tenggara Timur"]],
+    ["Kalimantan", "#ef4444", ["Kalimantan Barat", "Kalimantan Tengah", "Kalimantan Selatan", "Kalimantan Timur", "Kalimantan Utara"]],
+    ["Sulawesi", "#22d3ee", ["Sulawesi Utara", "Gorontalo", "Sulawesi Tengah", "Sulawesi Barat", "Sulawesi Selatan", "Sulawesi Tenggara"]],
+    ["Maluku", "#a78bfa", ["Maluku", "Maluku Utara"]],
+    ["Papua", "#fb7185", ["Papua", "Papua Barat", "Papua Barat Daya", "Papua Pegunungan", "Papua Selatan", "Papua Tengah"]]];
+  const ISL_OF = {}; ISL.forEach(g => g[2].forEach(p => { ISL_OF[p] = g[0]; }));
+  const islOf = p => ISL_OF[p] || "Lainnya";
+  function wrows() { if (!KAB) return []; const q = WR.q.trim().toLowerCase(); return KAB.map((K, i) => ({ K, i, v: wval(K, i) })).filter(r => (!WR.isl || islOf(r.K.p) === WR.isl) && (!WR.prov || r.K.p === WR.prov) && (!q || (r.K.n + " " + r.K.p).toLowerCase().includes(q))); }
+  const agg = rs => { let sm = 0, mx = 0, hi = 0; rs.forEach(r => { sm += r.v; if (r.v > mx) mx = r.v; if (r.v >= .55) hi++; }); return { n: rs.length, avg: rs.length ? sm / rs.length : 0, mx, hi }; };
+  const provOpts = () => { const P = KAB ? Object.keys(KAB.PM || {}).filter(x => !WR.isl || islOf(x) === WR.isl).sort() : []; return '<option value="">' + (WR.isl ? "Semua provinsi " + esc(WR.isl) : "Semua provinsi") + "</option>" + P.map(x => '<option value="' + esc(x) + '"' + (x === WR.prov ? " selected" : "") + ">" + esc(x) + "</option>").join(""); };
   function wilHtml() {
-    const P = KAB ? Object.keys(KAB.PM || {}).sort() : [];
-    return '<div id="pqkWil"><div class="pqk-cards" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><select class="pqk-b" id="pqkPv" style="grid-column:1/3"><option value="">Semua Indonesia (' + (KAB ? KAB.length : "…") + ' kab/kota)</option>' + P.map(x => '<option value="' + esc(x) + '"' + (x === WR.prov ? " selected" : "") + ">" + esc(x) + "</option>").join("") + '</select><input class="pqk-b" id="pqkQ" placeholder="Cari kab/kota…" value="' + esc(WR.q) + '" style="font-weight:400"><button class="pqk-b pri" id="pqkDy" title="Ambil cuaca 7 hari tiap wilayah (±' + (KAB ? Math.ceil(KAB.length / 50) : 11) + ' permintaan)">' + (WR.dyn ? "Perbarui potensi" : "Hitung potensi 7 hari") + '</button></div><div id="pqkWs" class="pqk-note" style="margin:0 0 6px">' + (WR.dyn ? "Warna & urutan = <b>potensi " + esc(dayName(day)) + "</b> (pilih hari di atas)." : "Warna & urutan = <b>kerawanan statis</b> (skor wilayah). Tekan <b>Hitung potensi 7 hari</b> untuk potensi dinamis semua wilayah.") + '</div>' + (REG ? regCard() : "") + '<div id="pqkWl"></div></div>';
+    return '<div id="pqkWil"><div class="pqk-h" style="margin-top:2px">Kelompok pulau</div><div id="pqkIs"></div><div class="pqk-cards" style="grid-template-columns:1fr 1fr;margin:6px 0"><select class="pqk-b" id="pqkPv" style="grid-column:1/3">' + provOpts() + '</select><input class="pqk-b" id="pqkQ" placeholder="Cari kab/kota…" value="' + esc(WR.q) + '" style="font-weight:400"><button class="pqk-b pri" id="pqkDy" title="Ambil cuaca 7 hari tiap wilayah (±' + (KAB ? Math.ceil(KAB.length / 50) : 11) + ' permintaan)">' + (WR.dyn ? "Perbarui potensi" : "Hitung potensi 7 hari") + '</button></div><div id="pqkWs" class="pqk-note" style="margin:0 0 6px">' + (WR.dyn ? "Warna & urutan = <b>potensi " + esc(dayName(day)) + "</b> (pilih hari di atas)." : "Warna & urutan = <b>kerawanan statis</b> (skor wilayah). Tekan <b>Hitung potensi 7 hari</b> untuk potensi dinamis semua wilayah.") + '</div>' + (REG ? regCard() : "") + '<div id="pqkWl"></div></div>';
   }
   function wilBind() {
-    const pv = $("pqkPv"), q = $("pqkQ"), dy = $("pqkDy"), wl = $("pqkWl");
+    const pv = $("pqkPv"), q = $("pqkQ"), dy = $("pqkDy"), wl = $("pqkWl"), is = $("pqkIs");
     if (pv) pv.onchange = () => { WR.prov = pv.value; rgDraw(true); wilList(); };
     if (q) q.oninput = () => { WR.q = q.value; wilList(); };
     if (dy) dy.onclick = wilDyn;
-    if (wl) wl.onclick = e => { const it = e.target.closest("[data-k]"); if (it) wilFocus(+it.dataset.k); };
+    if (is) is.onclick = e => { const c = e.target.closest("[data-i]"); if (!c) return; WR.isl = WR.isl === c.dataset.i ? "" : c.dataset.i; WR.prov = ""; if (pv) pv.innerHTML = provOpts(); rgDraw(true); wilList(); };
+    if (wl) wl.onclick = e => { const pr = e.target.closest("[data-p]"); if (pr) { WR.prov = pr.dataset.p; if (pv) { pv.innerHTML = provOpts(); } rgDraw(true); wilList(); return; } const it = e.target.closest("[data-k]"); if (it) wilFocus(+it.dataset.k); };
     wilList();
   }
   function wilList() {
     const wl = $("pqkWl"); if (!wl) return; if (!KAB) { wl.innerHTML = '<div class="pqk-note">Memuat batas wilayah…</div>'; return; }
+    /* ringkasan per pulau (semua wilayah, tidak terpengaruh filter) */
+    const all = KAB.map((K, i) => ({ K, i, v: wval(K, i) })), is = $("pqkIs");
+    if (is) is.innerHTML = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">' + ISL.map(g => { const a = agg(all.filter(r => islOf(r.K.p) === g[0])), l = lvi(a.mx), on = WR.isl === g[0]; return '<button class="pqk-b" data-i="' + esc(g[0]) + '" style="text-align:left;padding:7px 9px;' + (on ? "border-color:" + g[1] + ";box-shadow:0 0 10px " + g[1] + '55;color:#fff"' : '"') + '><span style="display:flex;justify-content:space-between;gap:6px"><b style="color:' + g[1] + '">' + esc(g[0]) + '</b><span style="color:' + LV[l][1] + '">' + pct(a.mx) + '</span></span><small style="font-weight:400;color:#b59486;display:block">' + g[2].length + " prov · " + a.n + " kab/kota · " + a.hi + ' tinggi · rata² ' + pct(a.avg) + "</small></button>"; }).join("") + "</div>";
+    let h = "";
+    if (WR.isl && !WR.prov) { /* rincian provinsi dalam pulau terpilih */
+      const ps = ISL.find(g => g[0] === WR.isl)[2].map(p => ({ p, a: agg(all.filter(r => r.K.p === p)) })).filter(x => x.a.n).sort((a, b) => b.a.mx - a.a.mx);
+      h += '<div class="pqk-h">Provinsi di ' + esc(WR.isl) + " (" + ps.length + ")</div>" + ps.map(x => { const l = lvi(x.a.mx); return '<div class="pqk-it" data-p="' + esc(x.p) + '"><i style="background:' + LV[l][1] + '"></i><div><b>' + esc(x.p) + "</b><small>" + x.a.n + " kab/kota · " + x.a.hi + " tinggi · rata² " + pct(x.a.avg) + '</small></div><em style="color:' + LV[l][1] + '">' + pct(x.a.mx) + "</em></div>"; }).join("");
+    }
     const R = wrows().sort((a, b) => b.v - a.v);
-    wl.innerHTML = '<div class="pqk-h">' + R.length + " wilayah · urut tertinggi</div>" + R.slice(0, 80).map(r => { const l = lvi(r.v); return '<div class="pqk-it" data-k="' + r.i + '"><i style="background:' + LV[l][1] + '"></i><div><b>' + esc(r.K.n) + "</b><small>" + esc(r.K.p) + '</small></div><em style="color:' + LV[l][1] + '">' + pct(r.v) + "</em></div>"; }).join("") + (R.length > 80 ? '<div class="pqk-note">Menampilkan 80 teratas — persempit dengan provinsi/pencarian.</div>' : "");
+    wl.innerHTML = h + '<div class="pqk-h">' + R.length + " kab/kota" + (WR.prov ? " · " + esc(WR.prov) : WR.isl ? " · " + esc(WR.isl) : "") + " · urut tertinggi</div>" + R.slice(0, 80).map(r => { const l = lvi(r.v); return '<div class="pqk-it" data-k="' + r.i + '"><i style="background:' + LV[l][1] + '"></i><div><b>' + esc(r.K.n) + "</b><small>" + esc(r.K.p) + '</small></div><em style="color:' + LV[l][1] + '">' + pct(r.v) + "</em></div>"; }).join("") + (R.length > 80 ? '<div class="pqk-note">Menampilkan 80 teratas — persempit dengan pulau/provinsi/pencarian.</div>' : "");
   }
   function rgClear() { if (RG) { map.removeLayer(RG); RG = null; } if (HL) { map.removeLayer(HL); HL = null; } }
   function rgDraw(fit) {
