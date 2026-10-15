@@ -117,6 +117,7 @@
     try { if (window.PETAQU_KLIMAT && PETAQU_KLIMAT.rows) W = W.concat(PETAQU_KLIMAT.rows()); } catch (e) { }
     var Z = []; try { if (window.PETAQU_RAWAN && PETAQU_RAWAN.rows) Z = PETAQU_RAWAN.rows(); } catch (e) { Z = []; }
     try { if (window.PETAQU_GEMPA && PETAQU_GEMPA.rows) Z = Z.concat(PETAQU_GEMPA.rows()); } catch (e) { }
+    try { if (window.PETAQU_FLIGHT && PETAQU_FLIGHT.rows) Z = Z.concat(PETAQU_FLIGHT.rows()); } catch (e) { }
     var N = []; try { if (window.PETAQU_DRAINASE && PETAQU_DRAINASE.rows) N = PETAQU_DRAINASE.rows(); } catch (e) { }
     var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, N, D.map(function (d) { return d.t; })]);
     if (s === sig && !force) return;
@@ -208,7 +209,7 @@
       closePanels();
       closeJt();
       var zid = k.slice(2);
-      try { if (zid === "gempatsunami") PETAQU_GEMPA.act(); else PETAQU_RAWAN.act(zid); } catch (e) { }
+      try { if (zid === "penerbangan") PETAQU_FLIGHT.act(); else if (zid === "gempatsunami") PETAQU_GEMPA.act(); else PETAQU_RAWAN.act(zid); } catch (e) { }
     } else if (k.charAt(0) === "N") {
       closePanels();
       closeJt();
