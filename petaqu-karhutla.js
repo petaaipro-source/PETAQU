@@ -117,6 +117,7 @@
 
   /* ---------- paparan ruas & jembatan ---------- */
   function exposure() {
+    return { roads: [], br: [], pts: [] }; /* tanpa titik ruas/jembatan: cukup provinsi & kabupaten/kota */
     const b = F.b, thr = .55, out = { roads: [], br: [], pts: [] }, f = fld(), inb = (la, lo) => la >= b.s && la <= b.n && lo >= b.w && lo <= b.e;
     (typeof roads !== "undefined" ? roads : []).forEach(rd => {
       let mx = -1, mp = null, hi = 0, n = 0;
@@ -225,8 +226,7 @@
   function simInfo() {
     const S = SIM, el = $("pqkSim"); if (!el) return; if (!S) { el.innerHTML = '<div class="pqk-note">Tekan <b>Nyalakan api</b>, lalu ketuk titik di daratan. Api merambat 8 arah mengikuti <b>angin</b> (searah angin jauh lebih cepat), <b>kekeringan bahan bakar</b>, <b>lereng</b> (naik lereng lebih cepat) dan <b>gambut</b> (membara lama). Cuaca berganti mengikuti prakiraan harian.</div>'; return; }
     const ha = S.cnt * S.kmX * S.kmY * 100, hh = S.t, dd = Math.floor(hh / 24);
-    el.innerHTML = '<div class="pqk-cards"><div class="pqk-card"><b>' + (dd ? dd + "hr " : "") + Math.floor(hh % 24) + 'j</b><small>Waktu</small></div><div class="pqk-card"><b style="color:#fb7185">' + (ha >= 100 ? Math.round(ha).toLocaleString("id-ID") : ha.toFixed(1)) + '</b><small>Terbakar (ha)</small></div><div class="pqk-card"><b>' + (S.burning || 0) + '</b><small>Sel menyala</small></div></div>' +
-      '<div class="pqk-h">Aset terjangkau api' + (S.run ? " (berjalan…)" : " (selesai)") + "</div>" + (S.hitL.length ? S.hitL.slice(-8).reverse().map(h => '<div class="pqk-it"><i style="background:#ef4444"></i><div><b>' + esc(h[0]) + "</b><small>T+" + Math.floor(h[1]) + " jam sejak penyalaan</small></div></div>").join("") : '<div class="pqk-note">Belum ada ruas/jembatan terjangkau.</div>');
+    el.innerHTML = '<div class="pqk-cards"><div class="pqk-card"><b>' + (dd ? dd + "hr " : "") + Math.floor(hh % 24) + 'j</b><small>Waktu</small></div><div class="pqk-card"><b style="color:#fb7185">' + (ha >= 100 ? Math.round(ha).toLocaleString("id-ID") : ha.toFixed(1)) + '</b><small>Terbakar (ha)</small></div><div class="pqk-card"><b>' + (S.burning || 0) + '</b><small>Sel menyala</small></div></div>';
   }
 
   /* ---------- loop ---------- */
@@ -294,7 +294,7 @@
     if (tab === "sim") {
       h += '<div class="pqk-cards" style="grid-template-columns:repeat(3,1fr)"><button class="pqk-b pri" id="pqkIg"><i class="fa-solid fa-fire"></i> Nyalakan api</button><button class="pqk-b" id="pqkSp">Kecepatan ×' + simSpeed + '</button><button class="pqk-b" id="pqkRs"><i class="fa-solid fa-rotate-left"></i> Reset</button></div><div id="pqkSim"></div>';
     } else {
-      h += '<div class="pqk-cards"><div class="pqk-card"><b style="color:' + LV[top][1] + '">' + pct(mxv) + "</b><small>" + (tab === "rawan" ? "Kerawanan maks" : "Potensi maks") + '</small></div><div class="pqk-card"><b>' + pct(hi) + '</b><small>Area tinggi</small></div><div class="pqk-card"><b>' + hiRoads + "</b><small>Ruas terpapar</small></div></div>";
+      h += '<div class="pqk-cards"><div class="pqk-card"><b style="color:' + LV[top][1] + '">' + pct(mxv) + "</b><small>" + (tab === "rawan" ? "Kerawanan maks" : "Potensi maks") + '</small></div><div class="pqk-card"><b>' + pct(hi) + '</b><small>Area tinggi</small></div><div class="pqk-card"><b>' + (F.days || 7) + "</b><small>Hari prakiraan</small></div></div>";
     }
     h += '<div class="pqk-leg"></div><div class="pqk-legl"><span>Rendah</span><span>Sedang</span><span>Tinggi</span><span>Sangat tinggi</span></div>';
     if (F.wx) {
@@ -304,10 +304,6 @@
     if (tab !== "sim") {
       h += '<div class="pqk-h">Rekomendasi tindakan</div><ul class="pqk-adv">' + (ADV[top] || []).map(a => "<li>" + esc(a) + "</li>").join("") + "</ul>";
     }
-    h += '<div class="pqk-h">Ruas paling terpapar (' + X.roads.length + " di area)</div>";
-    h += X.roads.slice(0, 8).map(r => { const l = lvi(r.mx), g = r.mp ? r.mp.lat + "," + r.mp.lng : ""; return '<div class="pqk-it" data-go="' + g + '"><i style="background:' + LV[l][1] + '"></i><div><b>' + esc(r.rd.name) + "</b><small>maks " + pct(r.mx) + " · " + pct(r.share) + ' titik tinggi</small></div><em style="color:' + LV[l][1] + '">' + LV[l][0] + "</em></div>"; }).join("") || '<div class="pqk-note">Tidak ada ruas PETAQU di area ini.</div>';
-    h += '<div class="pqk-h">Jembatan paling terpapar (' + X.br.length + ")</div>";
-    h += X.br.slice(0, 6).map(x => { const l = lvi(x.v); return '<div class="pqk-it" data-go="' + x.la + "," + x.lo + '"><i style="background:' + LV[l][1] + '"></i><div><b>' + esc(x.j.nama || "Jembatan") + "</b><small>" + esc(x.j.ruas || "") + '</small></div><em style="color:' + LV[l][1] + '">' + pct(x.v) + "</em></div>"; }).join("") || '<div class="pqk-note">Tidak ada jembatan di area ini.</div>';
     h += '<div class="pqk-note"><b>Metode:</b> kekeringan bahan bakar = neraca air (hujan &minus; 0,85&times;evapotranspirasi, 30 hari + prakiraan) &rarr; &times; cuaca api (kelembapan min, suhu, angin) &times; bahan bakar (gambut +, dataran rendah +, pegunungan &minus;), hujan &ge;10 mm memadamkan. Zona gambut berupa poligon <b>kasar</b>. Ini <b>indikatif</b> untuk prioritas patroli/inspeksi, bukan pengganti <a href="https://sipongi.menlhk.go.id" target="_blank" rel="noopener">SiPongi KLHK</a>, <a href="https://firms.modaps.eosdis.nasa.gov/map/" target="_blank" rel="noopener">NASA FIRMS</a> (titik panas satelit nyata) &amp; peringatan BMKG. Sumber: Open-Meteo.</div>';
     $("pqkBody").innerHTML = h; if (tab === "sim") simInfo(); if (tab === "wil") wilBind();
   }
@@ -388,14 +384,9 @@
     busy = false;
   }
   function fxStart() { fxInit(); if (!raf) raf = requestAnimationFrame(loop); }
-  function open() { if (typeof map === "undefined") return; if (!Pn) build(); Pn.style.display = "flex"; tabs(); if (tab === "wil") wilEnsure(); fxStart(); if (!F) run(); else { paint(); markers(F.X = exposure()); } }
+  function open(t) { if (typeof map === "undefined") return; if (t && TAB[t]) { tab = t; savePref(); } if (!Pn) build(); Pn.style.display = "flex"; tabs(); if (tab === "wil") wilEnsure(); fxStart(); if (!F) run(); else { paint(); markers(F.X = exposure()); } }
   function close() { stopPlay(); rgClear(); if (Pn) Pn.style.display = "none"; if (IMG) { map.removeLayer(IMG); IMG = null; } if (MK) { map.removeLayer(MK); MK = null; } if (CTX) CTX.clearRect(0, 0, FX.width, FX.height); if (raf) { cancelAnimationFrame(raf); raf = 0; } }
 
-  function init() {
-    const b = document.createElement("button"); b.innerHTML = '<i class="fa-solid fa-fire"></i>'; b.title = "Rawan & potensi kebakaran hutan/lahan (animasi)"; b.onclick = open;
-    const put = () => { try { PQ_DOCK.adopt(b, "Karhutla"); } catch (e) { b.style.cssText = "position:fixed;left:10px;bottom:320px;z-index:900"; document.body.append(b); } };
-    typeof PQ_DOCK !== "undefined" ? put() : setTimeout(put, 900);
-  }
-  window.PETAQU_KARHUTLA = { open, close, run, _analyze: analyze, _pointModel: pointModel, _bil: bil, _peat: peatAt };
-  if (typeof document !== "undefined" && document.readyState !== undefined) document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init();
+  /* tombol dock tidak dipasang: modul diakses dari folder 'Rawan bencana & lalu lintas' (petaqu-rawan.js) */
+  window.PETAQU_KARHUTLA = { open, close, isOn: () => !!Pn && Pn.style.display !== "none", run, _analyze: analyze, _pointModel: pointModel, _bil: bil, _peat: peatAt };
 })();

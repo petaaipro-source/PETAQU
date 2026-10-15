@@ -332,8 +332,8 @@
 
   /* ============================ MENU FOLDER ============================ */
   const ROWS = [["bencana", "Rawan bencana (semua prov & kab/kota)"], ["macet", "Rawan macet (semua prov & kab/kota)"], ["laka", "Rawan kecelakaan / lakalantas"], ["gempa", "Rawan gempa (sesar & subduksi)"]];
-  const rows = () => ROWS.map(r => ({ id: r[0], name: r[1], ic: MODES[r[0]].ic, c: MODES[r[0]].c, on: S.on && pref.mode === r[0] }));
-  const act = id => { if (S.on && pref.mode === id) close(); else open(id); };
+  const rows = () => ROWS.map(r => ({ id: r[0], name: r[1], ic: MODES[r[0]].ic, c: MODES[r[0]].c, on: S.on && pref.mode === r[0] })).concat([{ id: "karhutla", name: "Karhutla (rawan, potensi 7 hari & animasi)", ic: "\uf06d", c: "#f97316", on: !!(window.PETAQU_KARHUTLA && window.PETAQU_KARHUTLA.isOn()) }]);
+  const act = id => { if (id === "karhutla") { const K = window.PETAQU_KARHUTLA; if (!K) { say("Modul Karhutla belum dimuat"); return; } if (K.isOn()) K.close(); else { if (S.on) close(); K.open("wil"); } return; } if (S.on && pref.mode === id) close(); else open(id); };
   window.PETAQU_RAWAN = { open, close, rows, act, isOn: () => S.on, _t: { calcTH, build, score, cls, val, KAB: () => KAB, PROVS: () => PROVS, pref, nrm, dec } };
   let tries = 0; const iv = setInterval(() => {
     if (++tries > 120) clearInterval(iv);
