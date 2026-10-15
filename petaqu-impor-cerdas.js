@@ -280,7 +280,7 @@
       '<textarea id="icSt2" placeholder="…atau tempel data di sini: ruas, STA, lat, lng, IRI (satu baris per titik, pemisah koma/tab/titik koma)"></textarea>' +
       '<label class="hint"><input type="checkbox" id="icSj" checked> Ikut cocokkan ke Jalan Nasional bawaan (selain ruas yang sudah di peta)</label>' +
       '<div class="bar" id="icSb" style="display:none"><i></i></div><div class="sum" id="icSsum"></div><div class="tw" id="icStw" style="display:none"></div>' +
-      '<div class="r"><button class="b" id="icSr">Mulai Scan</button><button class="b o" id="icSm" disabled>Lihat di Peta</button><button class="b o" id="icSx" disabled>Unduh Excel</button><button class="b g" id="icSa" disabled>Terapkan ke Peta</button></div></div><div class="pn" id="icI"><div class="hint"><b>Scan IRI per STA:</b> nilai IRI dikumpulkan per interval STA di tiap ruas, lalu dipetakan sebagai garis berwarna menurut kelas IRI (baik → rusak berat). Sumber: data ruas yang sudah di peta, atau hasil Scan Ruas &amp; STA terakhir (kolom IRI ikut terbaca).</div><div class="r"><div><label class="s">Sumber</label><select id="icIs"><option value="roads">Data ruas di peta</option><option value="scan">Hasil Scan terakhir</option></select></div><div><label class="s">Ruas</label><select id="icIo"></select></div><div><label class="s">Interval STA</label><select id="icIb"><option value="auto" selected>Otomatis (dari jarak antar STA)</option><option value="100">100 m</option><option value="250">250 m</option><option value="500">500 m</option><option value="1000">1 km</option></select></div></div><label class="hint"><input type="checkbox" id="icIg" checked> Tampilkan interval tanpa data (abu-abu putus-putus)</label><div class="sum" id="icIsum"></div><div class="tw" id="icItw" style="display:none"></div><div class="r"><button class="b" id="icIr">Scan &amp; Petakan IRI</button><button class="b o" id="icIx" disabled>Unduh Excel</button></div></div></div>';
+      '<div class="r"><button class="b" id="icSr">Mulai Scan</button><button class="b o" id="icSm" disabled>Lihat di Peta</button><button class="b o" id="icSx" disabled>Unduh Excel</button><button class="b g" id="icSa" disabled>Terapkan ke Peta</button></div></div><div class="pn" id="icI"><div class="hint"><b>Scan IRI per STA (cerdas):</b> baca Excel/CSV <b>tanpa koordinat</b> (cukup ruas + STA + IRI) maupun <b>dengan koordinat</b>. Header dikenali otomatis (di baris mana pun), satuan STA (m / km / 12+345) ditebak sendiri, nama ruas dicocokkan ke peta; bila tak ada ruas di peta, jalur dibuat dari koordinat file. Kolom <b>STA Awal/Akhir</b> juga didukung.</div><div class="r"><div><label class="s">Sumber data</label><select id="icIs"><option value="file">File Excel / CSV</option><option value="roads">Data ruas di peta</option><option value="scan">Hasil Scan terakhir</option></select></div><div><label class="s">File</label><input type="file" id="icIf" accept=".csv,.txt,.xlsx,.xls,.tsv"></div></div><div class="r"><div><label class="s">Ruas peta (paksa / filter)</label><select id="icIo"></select></div><div><label class="s">Interval STA</label><select id="icIb"><option value="auto" selected>Otomatis (dari jarak antar STA)</option><option value="100">100 m</option><option value="250">250 m</option><option value="500">500 m</option><option value="1000">1 km</option></select></div><div><label class="s">Nilai IRI berlaku pada</label><select id="icIa"><option value="center" selected>Tengah (± setengah interval)</option><option value="start">Awal (STA → STA+interval)</option><option value="end">Akhir (STA-interval → STA)</option></select></div><div><label class="s">Warna kelas</label><select id="icIk"><option value="std" selected>Standar PETAQU (dari nilai IRI)</option><option value="file">Ikuti kolom Kondisi di file</option></select></div></div><label class="hint"><input type="checkbox" id="icIg" checked> Tampilkan interval tanpa data (abu-abu putus-putus)</label> <label class="hint"><input type="checkbox" id="icIfl"> Balik arah STA (jika ruas di peta tak punya STA &amp; arahnya terbalik)</label><div class="sum" id="icIdx"></div><div class="sum" id="icIsum"></div><div class="tw" id="icIst" style="display:none"></div><div class="tw" id="icItw" style="display:none"></div><div class="r"><button class="b" id="icIr">Scan &amp; Petakan IRI</button><button class="b g" id="icIa2" disabled>Terapkan ke Peta/Ruas</button><button class="b o" id="icIx" disabled>Unduh Excel</button></div></div></div>';
     document.body.appendChild(d);
     d.addEventListener("click", function (e) { if (e.target === d) close(); });
     $("icX").onclick = close;
@@ -289,7 +289,7 @@
     $("icKf").onchange = function (e) { var f = e.target.files[0]; if (!f) return; readFileRows(f, function (rows) { $("icKt").value = rows.map(function (r) { return r.join("\t"); }).join("\n"); if (!$("icKn").value) $("icKn").value = (typeof guessRoadName === "function" ? guessRoadName(f.name) : f.name); checkCoords(); }); };
     $("icSf").onchange = function (e) { var f = e.target.files[0]; if (!f) return; readFileRows(f, function (rows) { S.scan.rows = rows; say(rows.length + " baris dibaca dari " + f.name); runScan(); }); };
     $("icSr").onclick = function () { var t = $("icSt2").value.trim(); if (t) S.scan.rows = splitRows(t); if (!S.scan.rows || !S.scan.rows.length) return say("Pilih file atau tempel data dulu", true); runScan(); };
-    $("icIr").onclick = scanIri; $("icIx").onclick = exportIri; $("icSm").onclick = showScanMap; $("icSx").onclick = exportScan; $("icSa").onclick = applyScan;
+    $("icIr").onclick = scanIri; $("icIx").onclick = exportIri; $("icIa2").onclick = applyIri; $("icIf").onchange = function (e) { var f = e.target.files[0]; if (f) loadIriFile(f); }; $("icSm").onclick = showScanMap; $("icSx").onclick = exportScan; $("icSa").onclick = applyScan;
   }
   function open(tab) {
     build();
@@ -360,7 +360,7 @@
   }
 
 
-  /* ---- Scan IRI per STA ---- */
+  /* ---- Scan IRI per STA (cerdas: Excel tanpa / dengan koordinat) ---- */
   function subLine(c, lo, hi) {
     var S = c.s, P = c.pts, out = [];
     for (var i = 0; i < P.length - 1; i++) {
@@ -373,65 +373,269 @@
     }
     return out;
   }
-  function iriSamples() {
-    var src = $("icIs").value, only = $("icIo").value, map_ = {};
+  var KC = function (i) { var s = ""; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  function num(v) {
+    if (v == null || v === "") return null; if (typeof v === "number") return isFinite(v) ? v : null;
+    var t = String(v).trim().replace(/\s/g, ""); if (!t) return null;
+    if (/^[-+]?\d{1,3}(\.\d{3})+,\d+$/.test(t)) t = t.replace(/\./g, "").replace(",", "."); else t = t.replace(",", ".");
+    return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t) ? parseFloat(t) : null;
+  }
+  function hdrKey(h) {
+    h = String(h == null ? "" : h).trim().toLowerCase(); if (!h || /^[-+\d.,\s]+$/.test(h)) return null;
+    if (/(sta|km|patok|chainage|stasiun)\s*\.?\s*(awal|dari|from|start|mulai)|^(dari|from|start)\b/.test(h)) return "sFrom";
+    if (/(sta|km|patok|chainage|stasiun)\s*\.?\s*(akhir|sampai|s\.?d|to|end)|^(sampai|s\/d|to|end)\b/.test(h)) return "sTo";
+    if (/iri|roughness|kekasaran/.test(h)) return "iri";
+    if (/^(lat|latitude|lintang)\b|\blat\b/.test(h) || h === "y") return "lat";
+    if (/^(lon|lng|long|longitude|bujur)\b|\b(lng|lon)\b/.test(h) || h === "x") return "lng";
+    if (/koordinat|coord/.test(h)) return "coord";
+    if (/easting/.test(h) || h === "e") return "e";
+    if (/northing/.test(h) || h === "n") return "n";
+    if (/^(sta|station|stasiun|patok|chainage)\b/.test(h)) return "sta";
+    if (/^(km|kilometer)\b/.test(h)) return "km";
+    if (/kondisi|condition|kategori|klasifikasi/.test(h)) return "kondisi";
+    if (/ruas|jalan|jln|segmen|link|road|nama/.test(h)) return "ruas";
+    return null;
+  }
+  function staCell(v) {
+    if (v == null || v === "") return null; var t = String(v).trim(), m = /^(\d{1,4})\s*\+\s*(\d{1,3})(?:[.,]\d+)?$/.exec(t);
+    if (m) return { v: +m[1] * 1000 + +m[2], abs: true };
+    var n = num(v); return n == null ? null : { v: n, abs: false };
+  }
+  function staUnit(v) { // 1 = meter, 1000 = kilometer
+    v = v.filter(function (x) { return x != null; }); if (!v.length) return 1;
+    var mx = Math.max.apply(0, v); if (mx >= 1000) return 1;
+    if (v.some(function (x) { return Math.abs(x - Math.round(x)) > 1e-9; })) return 1000;
+    var u = Array.from(new Set(v)).sort(function (a, b) { return a - b; }), g = []; for (var i = 1; i < u.length; i++) g.push(u[i] - u[i - 1]); g.sort(function (a, b) { return a - b; });
+    var med = g.length ? g[Math.floor(g.length / 2)] : 0;
+    return med >= 10 ? 1 : (mx <= 200 ? 1000 : 1);
+  }
+  function medianOf(a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : 0; }
+  function guessCols(rows) { // tanpa header: tebak dari isi kolom
+    var nc = 0; rows.forEach(function (r) { nc = Math.max(nc, r.length); });
+    var st = []; for (var c = 0; c < nc; c++) { (function (c) { var n = 0, t = 0, mn = 1e18, mx = -1e18, fr = 0; rows.slice(0, 200).forEach(function (r) { var v = r[c]; if (v == null || v === "") return; var x = num(v); if (x == null) t++; else { n++; mn = Math.min(mn, x); mx = Math.max(mx, x); if (Math.abs(x - Math.round(x)) > 1e-9) fr++; } }); st.push({ c: c, n: n, t: t, mn: mn, mx: mx, fr: n ? fr / n : 0 }); })(c); }
+    var m = {}, used = {};
+    st.forEach(function (x) { if (x.n >= 2 && x.fr > .5) { if (m.lat === undefined && x.mn >= -11.5 && x.mx <= 6.5) { m.lat = x.c; used[x.c] = 1; } else if (m.lng === undefined && x.mn >= 94 && x.mx <= 141.5) { m.lng = x.c; used[x.c] = 1; } } });
+    st.forEach(function (x) { if (!used[x.c] && m.ruas === undefined && x.t > x.n && x.t > 1) { m.ruas = x.c; used[x.c] = 1; } });
+    var nums = st.filter(function (x) { return !used[x.c] && x.n >= 2; });
+    var iri = nums.filter(function (x) { return x.mn >= 0 && x.mx <= 40 && x.fr >= .3; })[0] || (nums.length > 1 ? nums[nums.length - 1] : null);
+    if (iri) { m.iri = iri.c; used[iri.c] = 1; }
+    var sta = nums.filter(function (x) { return !used[x.c]; })[0]; if (sta) m.sta = sta.c;
+    return m;
+  }
+  /* sheets: [{name, rows:[[...]]}] -> {rows:[{ruas,sta,from,to,iri,kond,lat,lng,line}], diag:[...], skipped} */
+  function iriParse(sheets) {
+    var out = [], diag = [], skipped = 0;
+    sheets.forEach(function (sh) {
+      var rows = sh.rows.filter(function (r) { return r.some(function (c) { return String(c == null ? "" : c).trim() !== ""; }); });
+      if (!rows.length) return;
+      var hi = -1, hb = 0, hm = null, i;
+      for (i = 0; i < Math.min(20, rows.length); i++) {
+        var m = {}, cnt = 0; rows[i].forEach(function (c, j) { if (typeof c === "number") return; var k = hdrKey(c); if (k && m[k] === undefined) { m[k] = j; cnt++; } });
+        var sc = cnt + (m.iri !== undefined ? 2 : 0) + (m.sta !== undefined || m.sFrom !== undefined ? 1 : 0);
+        if (cnt >= 2 && sc > hb) { hb = sc; hi = i; hm = m; }
+      }
+      var headerless = hi < 0; if (headerless) hm = guessCols(rows);
+      if (hm.sta === undefined && hm.km !== undefined && hm.sFrom === undefined) { hm.sta = hm.km; delete hm.km; }
+      if (hm.iri === undefined) { diag.push({ sheet: sh.name, err: "kolom IRI tidak ditemukan" }); return; }
+      var raw = [], last = "", allv = [];
+      for (i = hi + 1; i < rows.length; i++) {
+        var r = rows[i], g = function (k) { return hm[k] !== undefined ? r[hm[k]] : ""; }, o = { line: i + 1, sheet: sh.name };
+        var rn = String(g("ruas") == null ? "" : g("ruas")).trim();
+        if (hm.ruas !== undefined) { if (rn) last = rn; else rn = last; } else rn = sheets.length > 1 ? sh.name : "";
+        if (/^(rata|total|jumlah|average|avg|min|max)/i.test(rn) && g("sta") === "") { skipped++; continue; }
+        o.ruas = rn; o.iri = num(g("iri")); o.kond = String(g("kondisi") == null ? "" : g("kondisi")).trim();
+        o.sc = staCell(g("sta")); o.kc = staCell(g("km")); o.fc = staCell(g("sFrom")); o.tc = staCell(g("sTo"));
+        [o.sc, o.fc, o.tc].forEach(function (c) { if (c && !c.abs) allv.push(c.v); });
+        var ll = null, la = num(g("lat")), lo = num(g("lng"));
+        if (la != null && lo != null) ll = parseCoordText(la + " " + lo, "dec", 49);
+        if (!ll && hm.e !== undefined && hm.n !== undefined) ll = parseCoordText(g("e") + " " + g("n"), "utm", 49);
+        if (!ll && hm.coord !== undefined) ll = parseCoordText(String(g("coord")), "auto", 49);
+        if (ll) { o.lat = ll.lat; o.lng = ll.lng; }
+        raw.push(o);
+      }
+      var uni = staUnit(allv), kept = 0, nc = 0, toM = function (c) { return c == null ? null : (c.abs ? c.v : c.v * uni); };
+      raw.forEach(function (o) {
+        var s = toM(o.sc), f = toM(o.fc), t = toM(o.tc), k = null;
+        if (o.kc) k = o.kc.abs ? o.kc.v : (o.kc.v < 1000 ? o.kc.v * 1000 : o.kc.v);
+        if (k != null && s != null && !o.sc.abs && s < 1000 && Math.abs(k % 1000) < 1e-6) s = k + s; else if (k != null && s == null && f == null) s = k;
+        o.from = f; o.to = t; o.sta = (f != null && t != null) ? (f + t) / 2 : (s != null ? s : (f != null ? f : t));
+        if (o.iri == null || (o.sta == null && o.lat == null)) { skipped++; return; }
+        delete o.sc; delete o.kc; delete o.fc; delete o.tc; out.push(o); kept++; if (o.lat != null) nc++;
+      });
+      var cols = Object.keys(hm).map(function (k) { return ({ ruas: "Ruas", iri: "IRI", sta: "STA", km: "KM", sFrom: "STA awal", sTo: "STA akhir", lat: "Lat", lng: "Lng", coord: "Koordinat", e: "E", n: "N", kondisi: "Kondisi" })[k] + "=" + KC(hm[k]); });
+      diag.push({ sheet: sh.name, header: headerless ? "tanpa header (ditebak dari isi)" : "baris " + (hi + 1), cols: cols, unit: uni === 1 ? "meter" : "kilometer", n: kept, coords: nc });
+    });
+    return { rows: out, diag: diag, skipped: skipped };
+  }
+  /* rows -> groups [{name,cand,mode,samples:[{sta,iri,kond,lat,lng,from,to}],note}] */
+  function iriResolve(rows, opt) {
+    opt = opt || {}; var cands = buildCands(false), groups = {}, order = [], th = 80;
+    rows.forEach(function (r) { var k = r.ruas || "(tanpa nama)"; if (!groups[k]) { groups[k] = { name: k, rows: [] }; order.push(k); } groups[k].rows.push(r); });
+    var forced = opt.only ? cands.filter(function (c) { return c.id === opt.only; })[0] : null;
+    return order.map(function (k) {
+      var g = groups[k], rs = g.rows, cr = rs.filter(function (r) { return r.lat != null; }), hasC = cr.length >= Math.max(2, rs.length * .6), cand = null, best = 0, tk = tokens(k), S = [], note = [];
+      cands.forEach(function (c) { var sc = nameScore(tk, c.tok); if (c.code && k.indexOf(c.code) > -1) sc = Math.max(sc, .9); if (sc > best) { best = sc; cand = c; } });
+      if (best < .4) cand = null;
+      var smp = cr.length > 25 ? cr.filter(function (r, i) { return i % Math.ceil(cr.length / 25) === 0; }) : cr;
+      var near = function (c) { return smp.map(function (r) { return snap(c, r.lat, r.lng).d; }); };
+      if (!cand && hasC) {
+        var bv = 0; cands.forEach(function (c) { var hit = 0; smp.forEach(function (r) { var bb = c.bb, p = .002; if (r.lat < bb[0] - p || r.lat > bb[2] + p || r.lng < bb[1] - p || r.lng > bb[3] + p) return; if (snap(c, r.lat, r.lng).d <= th) hit++; }); if (hit > bv) { bv = hit; if (hit >= smp.length * .6) cand = c; } });
+        if (cand) note.push("ruas dikenali dari koordinat");
+      }
+      if (cand && hasC && medianOf(near(cand)) > 150) { note.push("koordinat file tak berimpit dengan ruas di peta → jalur dari koordinat file"); cand = null; }
+      if (!cand && forced && (!hasC || medianOf(near(forced)) <= 150)) { cand = forced; note.push("dipaksa ke ruas pilihan"); }
+      g.cand = cand; g.mode = "none";
+      if (cand && hasC) {
+        g.mode = "road+coord"; var df = [];
+        rs.forEach(function (r) { if (r.lat != null) { r._sn = snap(cand, r.lat, r.lng); if (r.sta != null) df.push(Math.abs(r._sn.staM - r.sta)); } });
+        var trust = !df.length || medianOf(df) <= 300; if (!trust) note.push("STA file ≠ STA ruas → STA diambil dari posisi koordinat");
+        rs.forEach(function (r) { var st = r.lat != null ? (trust && r.sta != null ? r.sta : r._sn.staM) : r.sta; if (st == null) return; S.push({ sta: st, iri: r.iri, kond: r.kond, lat: r.lat, lng: r.lng, from: trust ? r.from : null, to: trust ? r.to : null }); });
+      } else if (cand) {
+        g.mode = "road"; var fl = opt.flip && !cand.staReal, fx = function (x) { return x == null ? null : (fl ? cand.len - x : x); };
+        rs.forEach(function (r) { if (r.sta != null) S.push({ sta: fx(r.sta), iri: r.iri, kond: r.kond, from: fx(r.from), to: fx(r.to) }); });
+        var mn = Math.min.apply(0, cand.s), mx = Math.max.apply(0, cand.s), ds = S.map(function (x) { return x.sta; });
+        if (ds.length && (Math.max.apply(0, ds) < mn - 50 || Math.min.apply(0, ds) > mx + 50)) note.push("rentang STA file di luar rentang ruas (" + fmtSta(mn) + "–" + fmtSta(mx) + ")");
+        else if (!cand.staReal) note.push("ruas di peta tak punya STA → STA dihitung dari jarak ujung awal (centang 'Balik arah' bila terbalik)");
+      } else if (hasC) {
+        var useSta = cr.filter(function (r) { return r.sta != null; }).length >= cr.length * .8, arr = cr.slice();
+        if (useSta) arr = arr.filter(function (r) { return r.sta != null; }).sort(function (a, b) { return a.sta - b.sta; });
+        arr = arr.filter(function (r, i) { return !i || r.lat !== arr[i - 1].lat || r.lng !== arr[i - 1].lng; });
+        if (arr.length >= 2) {
+          g.mode = "coords"; cand = mkCand(k, "", arr.map(function (r) { return [r.lat, r.lng]; }), useSta ? arr.map(function (r) { return r.sta; }) : null, "xls", null); g.cand = cand;
+          arr.forEach(function (r, i) { S.push({ sta: useSta ? r.sta : cand.s[i], iri: r.iri, kond: r.kond, lat: r.lat, lng: r.lng, from: r.from, to: r.to }); });
+          note.push("tak ada ruas cocok di peta → jalur dibuat dari koordinat file" + (useSta ? "" : " (STA dari jarak)"));
+        }
+      }
+      if (g.mode === "none") { rs.forEach(function (r) { if (r.sta != null) S.push({ sta: r.sta, iri: r.iri, kond: r.kond, from: r.from, to: r.to }); }); note.push("tak ada ruas cocok & tanpa koordinat → hanya bagan/tabel (pilih 'Ruas peta' untuk memaksa ke ruas)"); }
+      g.samples = S; g.note = note.join("; "); return g;
+    });
+  }
+  function modeOf(a) { var c = {}, b = null; a.forEach(function (x) { c[x] = (c[x] || 0) + 1; if (!b || c[x] > c[b]) b = x; }); return b; }
+  function iriIntervals(g, opt) {
+    var smp = g.samples, ints = [], ex = smp.filter(function (x) { return x.from != null && x.to != null; });
+    if (ex.length && ex.length >= smp.length * .5) {
+      var M = {}; ex.forEach(function (x) { var l0 = Math.min(x.from, x.to), l1 = Math.max(x.from, x.to), key = Math.round(l0) + "|" + Math.round(l1); M[key] = M[key] || { l0: l0, l1: l1, a: [], k: [] }; M[key].a.push(x.iri); if (x.kond) M[key].k.push(x.kond); });
+      return Object.keys(M).map(function (k) { return M[k]; }).sort(function (a, b) { return a.l0 - b.l0; });
+    }
+    var auto = !opt.bin || opt.bin === "auto", bin = +opt.bin, al = opt.align || "center";
+    if (auto) {
+      var gg = {}; smp.forEach(function (x) { var k = Math.round(x.sta); gg[k] = gg[k] || { a: [], k: [] }; gg[k].a.push(x.iri); if (x.kond) gg[k].k.push(x.kond); });
+      var st = Object.keys(gg).map(Number).sort(function (a, b) { return a - b; }), gp = [];
+      for (var i = 1; i < st.length; i++) gp.push(st[i] - st[i - 1]);
+      var med = Math.max(10, medianOf(gp) || 100); g.step = med;
+      var nr = function (d) { return d != null && d <= med * 3; };
+      st.forEach(function (k, i) {
+        var pv = i ? st[i - 1] : null, nx = i < st.length - 1 ? st[i + 1] : null, l0, l1;
+        if (al === "start") { l0 = k; l1 = nx != null && nr(nx - k) ? nx : k + med; }
+        else if (al === "end") { l1 = k; l0 = pv != null && nr(k - pv) ? pv : k - med; }
+        else { l0 = pv != null && nr(k - pv) ? (k + pv) / 2 : k - med / 2; l1 = nx != null && nr(nx - k) ? (k + nx) / 2 : k + med / 2; }
+        ints.push({ l0: l0, l1: l1, a: gg[k].a, k: gg[k].k });
+        if (nx != null && !nr(nx - k)) { var gs = al === "start" ? k + med : al === "end" ? k : k + med / 2, ge = al === "start" ? nx : al === "end" ? nx - med : nx - med / 2; if (ge > gs) ints.push({ l0: gs, l1: ge, a: null, k: [] }); }
+      });
+    } else {
+      var bins = {}; smp.forEach(function (x) { var k = al === "end" ? Math.ceil(x.sta / bin) - 1 : Math.floor(x.sta / bin); bins[k] = bins[k] || { a: [], k: [] }; bins[k].a.push(x.iri); if (x.kond) bins[k].k.push(x.kond); });
+      var ks = Object.keys(bins).map(Number), k0 = Math.min.apply(0, ks), k1 = Math.max.apply(0, ks);
+      for (var q = k0; q <= k1; q++) ints.push({ l0: q * bin, l1: q * bin + bin, a: bins[q] ? bins[q].a : null, k: bins[q] ? bins[q].k : [] });
+    }
+    return ints;
+  }
+  function kondColor(t) { t = String(t || "").toLowerCase(); return /berat|buruk|parah/.test(t) ? "#f43f5e" : /ringan/.test(t) ? "#f59e0b" : /sedang|fair/.test(t) ? "#facc15" : /baik|good|mantap/.test(t) ? "#34d399" : "#7c8aa0"; }
+  var MODE_TXT = { "road+coord": "ruas di peta + koordinat", road: "ruas di peta (via STA)", coords: "jalur dari koordinat file", none: "tanpa jalur — bagan/tabel saja" };
+  var IRI_OUT = [], IRI_G = [];
+
+  function iriGroups() {
+    var src = $("icIs").value, only = $("icIo").value, out = [];
+    if (src === "file") {
+      if (!S.iri || !S.iri.rows) { say("Pilih file Excel/CSV dulu", true); return null; }
+      return iriResolve(S.iri.rows, { only: only, flip: $("icIfl").checked });
+    }
     if (src === "scan") {
       if (!S.scan.res) { say("Jalankan Scan Ruas & STA dulu", true); return null; }
-      S.scan.res.forEach(function (r) { var v = parseFloat(String(r.src.iri || "").replace(",", ".")); if (r.status === "none" || !r.cand || isNaN(v) || r.staM == null) return; if (only && r.cand.id !== only) return; var k = r.cand.name; (map_[k] = map_[k] || { c: r.cand, s: [] }).s.push([r.staM, v]); });
-    } else {
-      buildCands(false).forEach(function (c) { if (only && c.id !== only) return; var arr = []; c.iri.forEach(function (v, i) { if (v != null) arr.push([c.s[i], v]); }); if (arr.length) map_[c.name] = { c: c, s: arr }; });
+      var m = {}; S.scan.res.forEach(function (r) { var v = num(r.src.iri); if (r.status === "none" || !r.cand || v == null || r.staM == null) return; if (only && r.cand.id !== only) return; var k = r.cand.name; (m[k] = m[k] || { name: k, cand: r.cand, mode: "road", samples: [], note: "" }).samples.push({ sta: r.staM, iri: v, kond: r.src.kondisi || "" }); });
+      return Object.keys(m).map(function (k) { return m[k]; });
     }
-    return map_;
+    buildCands(false).forEach(function (c) { if (only && c.id !== only) return; var sm = []; c.iri.forEach(function (v, i) { if (v != null) sm.push({ sta: c.s[i], iri: v, kond: "" }); }); if (sm.length) out.push({ name: c.name, cand: c, mode: "road", samples: sm, note: "" }); });
+    return out;
   }
-  var IRI_OUT = [];
+  function stripHtml(x) {
+    var h = '<div style="margin:8px 0 2px;font-weight:600">' + esc(x.name) + ' <span style="font-weight:400;opacity:.7">· ' + esc(MODE_TXT[x.mode] || "") + "</span></div>" + (x.note ? '<div class="hint" style="padding:0 0 4px">⚠ ' + esc(x.note) + "</div>" : "") + '<div style="display:flex;height:22px;border-radius:5px;overflow:hidden;border:1px solid #2a384c">';
+    x.cells.forEach(function (c) { h += '<div title="' + esc(c.t) + '" style="flex:' + Math.max(1, Math.round(c.l1 - c.l0)) + ' 1 0;min-width:3px;background:' + c.c + (c.gap ? ";opacity:.4" : "") + '"></div>'; });
+    return h + '</div><div style="display:flex;justify-content:space-between;font-size:10px;opacity:.7"><span>' + fmtSta(x.min) + "</span><span>" + fmtSta(x.max) + "</span></div>";
+  }
+  function showIriDiag(P, name) {
+    var h = '<span class="chip ok">✔ ' + esc(name) + " · " + P.rows.length + " baris IRI</span>";
+    P.diag.forEach(function (d) { h += d.err ? '<span class="chip none">' + esc(d.sheet) + ": " + esc(d.err) + "</span>" : '<span class="chip">' + esc(d.sheet) + " · header " + esc(d.header) + " · " + esc(d.cols.join(" ")) + " · STA " + d.unit + (d.coords ? " · " + d.coords + " koordinat" : " · tanpa koordinat") + "</span>"; });
+    if (P.skipped) h += '<span class="chip far">' + P.skipped + " baris dilewati</span>";
+    $("icIdx").innerHTML = h;
+  }
+  function loadIriFile(f) {
+    var rd = new FileReader(), isX = /\.(xlsx|xls|xlsm)$/i.test(f.name);
+    rd.onload = function (e) {
+      try {
+        var sheets = [];
+        if (isX) { var wb = XLSX.read(e.target.result, { type: "array" }); wb.SheetNames.forEach(function (n) { sheets.push({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: "", raw: true }) }); }); }
+        else sheets = [{ name: f.name.replace(/\.[^.]+$/, ""), rows: splitRows(e.target.result) }];
+        var P = iriParse(sheets);
+        if (!P.rows.length) { S.iri = null; showIriDiag({ rows: [], diag: P.diag, skipped: P.skipped }, f.name); return say("Tidak ada baris IRI yang terbaca (butuh kolom IRI + STA atau koordinat)", true); }
+        S.iri = P; $("icIs").value = "file"; showIriDiag(P, f.name); say(P.rows.length + " baris IRI dibaca dari " + f.name); scanIri();
+      } catch (er) { say("Gagal membaca file: " + er.message, true); }
+    };
+    if (isX) rd.readAsArrayBuffer(f); else rd.readAsText(f);
+  }
   function scanIri() {
-    var m = iriSamples(); if (!m) return; var names = Object.keys(m);
-    if (!names.length) return say("Tidak ada nilai IRI yang ditemukan (kolom IRI kosong)", true);
-    var auto = $("icIb").value === "auto", autoInfo = [], bin = +$("icIb").value, gaps = $("icIg").checked, lines = [], bnd = [], tot = 0, cls = {}, rows = [];
-    clearLayer(); IRI_OUT = [];
-    names.forEach(function (n) {
-      var c = m[n].c, smp = m[n].s, ints = [];
-      if (auto) {
-        var g = {}; smp.forEach(function (x) { var k = Math.round(x[0]); (g[k] = g[k] || []).push(x[1]); });
-        var st = Object.keys(g).map(Number).sort(function (a, b) { return a - b; }), gp = [];
-        for (var i = 1; i < st.length; i++) gp.push(st[i] - st[i - 1]);
-        gp.sort(function (a, b) { return a - b; });
-        var med = gp.length ? gp[Math.floor(gp.length / 2)] : 100; med = Math.max(10, med);
-        autoInfo.push(n + ": ±" + med + " m");
-        st.forEach(function (k, i) {
-          var pv = i ? st[i - 1] : null, nx = i < st.length - 1 ? st[i + 1] : null;
-          var l0 = pv != null && k - pv <= med * 3 ? (k + pv) / 2 : k - med / 2, l1 = nx != null && nx - k <= med * 3 ? (k + nx) / 2 : k + med / 2;
-          ints.push({ l0: l0, l1: l1, a: g[k] });
-          if (nx != null && nx - k > med * 3) ints.push({ l0: k + med / 2, l1: nx - med / 2, a: null });
-        });
-      } else {
-        var bins = {}; smp.forEach(function (x) { var k = Math.floor(x[0] / bin); (bins[k] = bins[k] || []).push(x[1]); });
-        var ks = Object.keys(bins).map(Number), kmin = Math.min.apply(0, ks), kmax = Math.max.apply(0, ks);
-        for (var k2 = kmin; k2 <= kmax; k2++) ints.push({ l0: k2 * bin, l1: k2 * bin + bin, a: bins[k2] || null });
-      }
+    var G = iriGroups(); if (!G) return;
+    var opt = { bin: $("icIb").value, align: $("icIa").value }, fileCls = $("icIk").value === "file", gaps = $("icIg").checked;
+    var lines = [], bnd = [], tot = 0, mapped = 0, cls = {}, clsC = {}, strips = [];
+    clearLayer(); IRI_OUT = []; IRI_G = [];
+    G.forEach(function (g) {
+      if (!g.samples.length) return;
+      var ints = iriIntervals(g, opt), cells = []; g.ints = ints; IRI_G.push(g);
       ints.forEach(function (it) {
-        var a = it.a, l0 = it.l0, l1 = it.l1, pts = subLine(c, Math.min(l0, l1), Math.max(l0, l1));
-        if (pts.length < 2) return;
-        if (!a) { if (gaps) lines.push(L.polyline(pts, { color: "#7c8aa0", weight: 3, opacity: .7, dashArray: "4 6" })); return; }
-        var avg = a.reduce(function (x, y) { return x + y; }, 0) / a.length, mx = Math.max.apply(0, a), inf = getIriInfo(avg);
-        cls[inf.label] = (cls[inf.label] || 0) + 1; tot++;
-        IRI_OUT.push([n, fmtSta(l0) + " – " + fmtSta(l1), +avg.toFixed(2), +mx.toFixed(2), a.length, inf.label]);
-        var pl = L.polyline(pts, { color: inf.color, weight: 7, opacity: .95, lineCap: "butt" }).bindPopup("<b>" + esc(n) + "</b><br>STA " + fmtSta(l0) + " – " + fmtSta(l1) + "<br>IRI rata-rata <b>" + avg.toFixed(2) + "</b> · maks " + mx.toFixed(2) + "<br>" + inf.label + " · " + a.length + " titik");
-        lines.push(pl); pts.forEach(function (q) { bnd.push(q); });
+        var a = it.a, l0 = it.l0, l1 = it.l1, pts = g.cand ? subLine(g.cand, Math.min(l0, l1), Math.max(l0, l1)) : [], rg = fmtSta(Math.max(0, l0)) + " – " + fmtSta(Math.max(0, l1));
+        if (!a || !a.length) { cells.push({ l0: l0, l1: l1, c: "#7c8aa0", gap: 1, t: "STA " + rg + " · tanpa data" }); if (gaps && pts.length >= 2) lines.push(L.polyline(pts, { color: "#7c8aa0", weight: 3, opacity: .7, dashArray: "4 6" })); return; }
+        var avg = a.reduce(function (x, y) { return x + y; }, 0) / a.length, mx = Math.max.apply(0, a), inf = getIriInfo(avg), km = it.k && it.k.length ? modeOf(it.k) : "", label = inf.label, color = inf.color;
+        if (fileCls && km) { label = km; color = kondColor(km); }
+        it.avg = avg; cls[label] = (cls[label] || 0) + 1; clsC[label] = color; tot++;
+        var mid = pts.length >= 2 ? pts[Math.floor(pts.length / 2)] : null;
+        IRI_OUT.push([g.name, rg, +avg.toFixed(2), +mx.toFixed(2), a.length, label, km, color, mid ? +mid[0].toFixed(6) : "", mid ? +mid[1].toFixed(6) : ""]);
+        cells.push({ l0: l0, l1: l1, c: color, t: "STA " + rg + " · IRI " + avg.toFixed(2) + " · " + label });
+        if (pts.length >= 2) {
+          mapped++; pts.forEach(function (q) { bnd.push(q); });
+          lines.push(L.polyline(pts, { color: color, weight: 7, opacity: .95, lineCap: "butt" }).bindPopup("<b>" + esc(g.name) + "</b><br>STA " + rg + "<br>IRI rata-rata <b>" + avg.toFixed(2) + "</b> · maks " + mx.toFixed(2) + "<br>" + esc(label) + (km && km !== label ? " (file: " + esc(km) + ")" : "") + " · " + a.length + " titik"));
+        }
       });
+      if (cells.length) strips.push({ name: g.name, mode: g.mode, note: g.note, cells: cells, min: Math.max(0, cells[0].l0), max: Math.max(0, cells[cells.length - 1].l1) });
     });
-    if (!lines.length) return say("Interval STA tidak bisa dipetakan (cek STA ruas)", true);
-    S.layer = L.layerGroup(lines).addTo(map);
-    try { map.fitBounds(L.latLngBounds(bnd), { padding: [60, 60] }); } catch (e) { }
-    $("icIsum").innerHTML = '<span class="chip">' + names.length + ' ruas</span>' + (auto ? '<span class="chip">Interval otomatis: ' + esc(autoInfo.slice(0, 3).join("; ")) + (autoInfo.length > 3 ? " …" : "") + "</span>" : "") + '<span class="chip">' + tot + ' interval ber-IRI</span>' + Object.keys(cls).map(function (k) { var inf = IRI_LEVELS.filter(function (x) { return x.label === k; })[0]; return '<span class="chip" style="border-color:' + (inf ? inf.color : "#7c8aa0") + '">' + esc(k) + ": " + cls[k] + "</span>"; }).join("");
+    if (!tot) return say("Tidak ada nilai IRI yang bisa diproses", true);
+    if (lines.length) { S.layer = L.layerGroup(lines).addTo(map); try { map.fitBounds(L.latLngBounds(bnd), { padding: [60, 60] }); } catch (e) { } }
+    $("icIsum").innerHTML = '<span class="chip">' + strips.length + ' ruas</span><span class="chip">' + tot + ' interval ber-IRI</span><span class="chip ' + (mapped ? "ok" : "far") + '">' + mapped + " dipetakan</span>" + Object.keys(cls).map(function (k) { return '<span class="chip" style="border-color:' + clsC[k] + '">' + esc(k) + ": " + cls[k] + "</span>"; }).join("");
+    var sb = $("icIst"); sb.style.display = "block"; sb.innerHTML = strips.map(stripHtml).join("");
     var tw = $("icItw"); tw.style.display = "block";
-    tw.innerHTML = "<table><tr><th>Ruas</th><th>STA</th><th>IRI rata²</th><th>Maks</th><th>n</th><th>Kelas</th></tr>" + IRI_OUT.slice(0, 300).map(function (r) { var inf = getIriInfo(r[2]); return "<tr><td>" + esc(r[0]) + "</td><td>" + r[1] + "</td><td>" + r[2] + "</td><td>" + r[3] + "</td><td>" + r[4] + '</td><td style="color:' + inf.color + '">' + esc(r[5]) + "</td></tr>"; }).join("") + "</table>";
-    $("icIx").disabled = false;
-    $("pqIc").classList.remove("show"); say("IRI per STA dipetakan (" + tot + " interval) · klik garis untuk detail");
+    tw.innerHTML = "<table><tr><th>Ruas</th><th>STA</th><th>IRI rata²</th><th>Maks</th><th>n</th><th>Kelas</th><th>Kondisi file</th></tr>" + IRI_OUT.slice(0, 400).map(function (r) { return "<tr><td>" + esc(r[0]) + "</td><td>" + r[1] + "</td><td>" + r[2] + "</td><td>" + r[3] + "</td><td>" + r[4] + '</td><td style="color:' + r[7] + '">' + esc(r[5]) + "</td><td>" + esc(r[6]) + "</td></tr>"; }).join("") + "</table>";
+    $("icIx").disabled = false; $("icIa2").disabled = !IRI_G.some(function (g) { return g.cand; });
+    if (mapped) { $("pqIc").classList.remove("show"); say("IRI per STA dipetakan (" + mapped + " interval) · klik garis untuk detail · buka lagi Impor ▸ Scan IRI untuk tabel & terapkan"); }
+    else say("Tidak ada jalur untuk dipetakan — hasil tampil sebagai bagan & tabel (pilih 'Ruas peta' atau sertakan koordinat)", true);
   }
   function exportIri() {
-    var a = [["Ruas", "Interval STA", "IRI rata-rata", "IRI maks", "Jumlah titik", "Kelas"]].concat(IRI_OUT);
-    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), "IRI per STA"); XLSX.writeFile(wb, "scan-iri-per-sta.xlsx");
+    var a = [["Ruas", "Interval STA", "IRI rata-rata", "IRI maks", "Jumlah titik", "Kelas", "Kondisi (file)", "Lat tengah", "Lng tengah"]].concat(IRI_OUT.map(function (r) { return [r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[8], r[9]]; }));
+    var b = [["Ruas", "Mode", "STA (m)", "STA", "IRI", "Kondisi", "Lat", "Lng", "Catatan"]];
+    IRI_G.forEach(function (g) { g.samples.slice().sort(function (x, y) { return x.sta - y.sta; }).forEach(function (x, i) { b.push([g.name, MODE_TXT[g.mode] || "", Math.round(x.sta), fmtSta(x.sta), x.iri, x.kond || "", x.lat != null ? x.lat : "", x.lng != null ? x.lng : "", i ? "" : g.note || ""]); }); });
+    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), "IRI per STA"); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(b), "Data Terbaca"); XLSX.writeFile(wb, "scan-iri-per-sta.xlsx");
+  }
+  function applyIri() {
+    var n = 0, nr = 0;
+    IRI_G.forEach(function (g) {
+      if (!g.cand || !g.ints) return;
+      if (g.cand.src === "xls") { var pts = g.samples.filter(function (s) { return s.lat != null; }).map(function (s) { return mkPoint(fmtSta(s.sta), s.lat, s.lng, { iri: s.iri, kondisi: s.kond }); }); if (pts.length) { n += pushToRoad(g.name, pts, null); nr++; } return; }
+      var road = roads.filter(function (r) { return r.id === g.cand.id; })[0]; if (!road) return;
+      var pick = function (sta) { for (var i = 0; i < g.ints.length; i++) { var it = g.ints[i]; if (it.a && it.a.length && sta >= it.l0 - .5 && sta <= it.l1 + .5) return it; } return null; };
+      road.points.filter(function (q) { return isFinite(q.lat) && isFinite(q.lng); }).forEach(function (q, i) { var it = pick(g.cand.s[i]); if (it) { q.iri = +it.avg.toFixed(2); n++; } });
+      persist(); try { renderRoadLayer(road); } catch (e) { } nr++;
+    });
+    try { renderRoadList(); updateStats(); } catch (e) { }
+    if (!nr) return say("Tidak ada ruas yang bisa diterapkan", true);
+    clearLayer(); close(); try { if (!iriMode) toggleIriMode(true); } catch (e) { }
+    say(n + " titik STA di " + nr + " ruas diberi nilai IRI · peta diwarnai menurut IRI");
   }
 
   /* ---- sisip tombol ke dialog Impor lama ---- */
@@ -442,7 +646,7 @@
     grid.appendChild(mk("fa-gauge-high", "Scan IRI per STA", "Petakan nilai IRI tiap interval STA ruas", "i"));
     grid.appendChild(mk("fa-wand-magic-sparkles", "Scan Ruas &amp; STA (Cerdas)", "Cocokkan data ke ruas jalan + STA otomatis", "s"));
   }
-  window.PQ_ImporCerdas = { scan: scan, open: open, parseCoordText: parseCoordText, normalizeRows: normalizeRows, utmToLL: utmToLL };
+  window.PQ_ImporCerdas = { iriParse: iriParse, iriResolve: iriResolve, iriIntervals: iriIntervals, scan: scan, open: open, parseCoordText: parseCoordText, normalizeRows: normalizeRows, utmToLL: utmToLL };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", inject); else inject();
   setTimeout(inject, 1500);
 })();
