@@ -12,11 +12,11 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const gmap = () => { try { return typeof map !== "undefined" ? map : window.map; } catch (e) { return window.map; } };
   const rad = x => x * Math.PI / 180, RF = 1.18, TRANSFER_MIN = 25, DWELL = 2;
-  let S = { tab: "jaringan", prov: "", q: "", jalur: true, stasiun: true, cross: true, osm: false, min: false, from: "", to: "", kerja: [], custom: [], ref: { vt: 100, trains: 0, aadt: 0, veh: "truk", tracks: 1, ctrl: "unknown", sight: 0, jenis: "eko" } };
+  let S = { tab: "jaringan", on: true, auto: true, prov: "", q: "", jalur: true, stasiun: true, cross: true, osm: false, min: false, from: "", to: "", kerja: [], custom: [], ref: { vt: 100, trains: 0, aadt: 0, veh: "truk", tracks: 1, ctrl: "unknown", sight: 0, jenis: "eko" } };
   try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || "null") || {}); } catch (e) { }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, prov: S.prov, jalur: S.jalur, stasiun: S.stasiun, cross: S.cross, min: S.min, from: S.from, to: S.to, custom: S.custom, ref: S.ref })); } catch (e) { } };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, auto: S.auto, tab: S.tab, prov: S.prov, jalur: S.jalur, stasiun: S.stasiun, cross: S.cross, min: S.min, from: S.from, to: S.to, custom: S.custom, ref: S.ref })); } catch (e) { } };
   S.ref = Object.assign({ vt: 100, trains: 0, aadt: 0, veh: "truk", tracks: 1, ctrl: "unknown", sight: 0, jenis: "eko" }, S.ref || {});
-  let P, G, GL, GS, GC, GR, GA, ST = {}, JL = [], ADJ = {}, OSMW = [], OSMC = [], XS = [], XSel = null, PLAN = null, anim = 0, osmBusy = false, clickMode = 0, TT = 0;
+  let P, G, GL, GS, GC, GR, GA, ST = {}, JL = [], ADJ = {}, OSMW = [], OSMC = [], XS = [], XSel = null, PLAN = null, anim = 0, osmBusy = false, clickMode = 0, TT = 0, TL = {}, TQ = [], LD = new Set(), FAIL = {}, tBusy = 0, MVT = 0, RDT = 0, SEENW = new Set(), SEENC = new Set(), WARNED = 0, BTN = null;
   const JN = () => window.KA_JENIS || {};
   const hav = (a, b, c, d) => { const x = Math.sin(rad(c - a) / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(rad(d - b) / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); };
   const fm = m => m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(1) + " km";
@@ -65,15 +65,91 @@
   const stIcon = s => L.divIcon({ className: "", html: '<div class="pqkr-st c' + s.cls + '"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
   function drawNet() {
     if (!ensure()) return; const m = gmap(); GL.clearLayers(); GS.clearLayers(); GC.clearLayers();
-    JL.forEach(j => { const pl = L.polyline(j.pts, { color: j.col, weight: 3.2, opacity: .9 }).bindPopup('<b>' + esc(j.n) + '</b><br><span style="color:#64748b">' + esc((JN()[j.jenis] || {}).n || "") + " • " + j.codes.length + " stasiun</span>"); GL.addLayer(pl); GL.addLayer(L.polyline(j.pts, { color: "#fff", weight: 1, opacity: .45, dashArray: "2 8", interactive: false })); });
-    OSMW.forEach(w => { const sub = /subway|light_rail|tram/.test(w.t.railway); GL.addLayer(L.polyline(w.g, { color: w.t.bridge || w.t.tunnel ? "#94a3b8" : sub ? "#a78bfa" : "#fb7185", weight: w.t.usage === "main" ? 3 : 2, opacity: .9 }).bindPopup('<b>' + esc(w.t.name || "Jalur KA (OSM)") + '</b><br><span style="color:#64748b">' + esc([w.t.railway, w.t.usage, w.t.gauge ? "sepur " + w.t.gauge + " mm" : "", w.t.electrified && w.t.electrified !== "no" ? "listrik" : "", w.t.maxspeed ? w.t.maxspeed + " km/j" : "", w.t.tracks ? w.t.tracks + " jalur" : ""].filter(Boolean).join(" • ")) + "</span>")); });
+    drawLines();
     Object.values(ST).forEach(s => GS.addLayer(L.marker([s.lat, s.lng], { icon: stIcon(s), title: s.n }).bindPopup('<b>🚉 ' + esc(s.n) + '</b><div style="color:#64748b;font-size:11.5px">' + esc(s.city + ", " + s.prov) + "<br>Jalur: " + esc(s.lines.map(l => line(l).n).join(", ")) + '</div><div class="pqkr-pb"><button onclick="PETAQU_KERETA.setPt(\'from\',\'' + s.k + '\')">Asal</button><button onclick="PETAQU_KERETA.setPt(\'to\',\'' + s.k + '\')">Tujuan</button></div>')));
     OSMC.forEach(c => { c.id = c.id || "osm" + c.lat.toFixed(5) + c.lng.toFixed(5); });
     syncVis(); drawX();
   }
   function syncVis() {
-    if (!ensure()) return; const m = gmap();
-    [[GL, S.jalur], [GS, S.stasiun], [GC, S.cross], [GR, true], [GA, true]].forEach(([g, on]) => on ? (!m.hasLayer(g) && g.addTo(m)) : (m.hasLayer(g) && m.removeLayer(g)));
+    if (!ensure()) return; const m = gmap(), on = S.on !== false;
+    [[GL, on && S.jalur], [GS, on && S.stasiun], [GC, on && S.cross], [GR, on], [GA, on]].forEach(([g, v]) => v ? (!m.hasLayer(g) && g.addTo(m)) : (m.hasLayer(g) && m.removeLayer(g)));
+    updBtn();
+  }
+  function updBtn() { if (!BTN) return; const on = S.on !== false; BTN.classList.toggle("on", on); BTN.classList.toggle("off", !on); BTN.title = "Jaringan Kereta Api: " + (on ? "NYALA (klik untuk matikan)" : "MATI (klik untuk nyalakan)"); BTN.setAttribute("aria-pressed", on ? "true" : "false"); }
+  function setOn(v) { S.on = v == null ? !(S.on !== false) : !!v; save(); syncVis(); if (S.on) { if (!G) { build(); } drawNet(); autoLoad(); } say("🚆 Jaringan kereta api " + (S.on ? "DINYALAKAN" : "DIMATIKAN"), 1800); if (P && P.style.display === "flex") render(); }
+
+  /* ---- gambar jalur: rel asli (OSM) + garis perkiraan HANYA di bagian yang belum ada rel aslinya ---- */
+  function relPop(w) { const t = w.t || {}; return '<b>' + esc(t.name || "Jalur KA (OSM)") + '</b><br><span style="color:#64748b">' + esc([t.railway, t.usage, t.gauge ? "sepur " + t.gauge + " mm" : "", t.electrified && t.electrified !== "no" ? "listrik" : "", t.maxspeed ? t.maxspeed + " km/j" : "", t.tracks ? t.tracks + " jalur" : "", t.bridge ? "jembatan" : "", t.tunnel ? "terowongan" : ""].filter(Boolean).join(" • ")) + "</span>"; }
+  const TS = .25, tkey = (la, lo) => Math.floor(la / TS) + "_" + Math.floor(lo / TS);
+  function covered(a, b) {
+    const A = ST[a], B = ST[b]; if (!A || !B) return false; const n = Math.max(2, Math.ceil(hav(A.lat, A.lng, B.lat, B.lng) / 3)); let any = false;
+    for (let i = 0; i <= n; i++) { const f = i / n, r = TL[tkey(A.lat + (B.lat - A.lat) * f, A.lng + (B.lng - A.lng) * f)]; if (!r) return false; if (r.n > 0) any = true; }
+    return any;
+  }
+  function drawLines() {
+    if (!ensure()) return; GL.clearLayers();
+    JL.forEach(j => {
+      let run = []; const flush = () => { if (run.length > 1) GL.addLayer(L.polyline(run, { color: j.col, weight: 2, opacity: .55, dashArray: "7 7" }).bindPopup('<b>' + esc(j.n) + '</b><br><span style="color:#64748b">' + esc((JN()[j.jenis] || {}).n || "") + " • garis perkiraan antar-stasiun (rel asli belum dimuat)</span>")); run = []; };
+      for (let i = 0; i < j.codes.length - 1; i++) { if (covered(j.codes[i], j.codes[i + 1])) flush(); else { if (!run.length) run.push(j.pts[i]); run.push(j.pts[i + 1]); } } flush();
+    });
+    const many = OSMW.length > 2500, st = w => { const t = w.t || {}, br = t.bridge || t.tunnel, sub = /subway|light_rail|tram/.test(t.railway || ""), nar = t.railway === "narrow_gauge"; return { col: br ? "#94a3b8" : sub ? "#a78bfa" : nar ? "#84cc16" : "#f97316", wt: t.usage === "main" || t.usage === "branch" ? 3.6 : 2.6 }; };
+    if (!many) OSMW.forEach(w => { const s = st(w); GL.addLayer(L.polyline(w.g, { color: "#0f172a", weight: s.wt + 2.2, opacity: .6, interactive: false, lineJoin: "round" })); });
+    OSMW.forEach(w => { const s = st(w); GL.addLayer(L.polyline(w.g, { color: s.col, weight: s.wt, opacity: .97, lineJoin: "round", lineCap: "butt" }).bindPopup(() => relPop(w))); });
+    OSMW.forEach(w => { GL.addLayer(L.polyline(w.g, { color: "#fff", weight: 1.1, opacity: .85, dashArray: "2 7", interactive: false })); });
+  }
+  const soonDraw = () => { clearTimeout(RDT); RDT = setTimeout(() => { drawLines(); drawX(); if (P && P.style.display === "flex" && (S.tab === "jaringan" || S.tab === "perlintasan")) render(); }, 350); };
+
+  /* ---- cache rel per petak (IndexedDB, 30 hari) ---- */
+  const IDB = new Promise(res => { try { const r = indexedDB.open("petaqu_kereta_rel", 1); r.onupgradeneeded = () => r.result.createObjectStore("t"); r.onsuccess = () => res(r.result); r.onerror = () => res(null); } catch (e) { res(null); } });
+  const idbGet = k => IDB.then(d => d ? new Promise(r => { try { const q = d.transaction("t").objectStore("t").get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(null); } catch (e) { r(null); } }) : null);
+  const idbPut = (k, v) => IDB.then(d => { if (d) try { d.transaction("t", "readwrite").objectStore("t").put(v, k); } catch (e) { } });
+  const idbDel = k => IDB.then(d => { if (d) try { d.transaction("t", "readwrite").objectStore("t").delete(k); } catch (e) { } });
+  const TAGS = ["railway", "usage", "name", "bridge", "tunnel", "gauge", "electrified", "maxspeed", "tracks", "service"];
+  const r5 = v => Math.round(v * 1e5) / 1e5;
+  function applyTile(t, rec) {
+    (rec.w || []).forEach(w => { if (SEENW.has(w.id)) return; SEENW.add(w.id); OSMW.push(w); });
+    (rec.c || []).forEach(c => { if (SEENC.has(c.oid)) return; SEENC.add(c.oid); c.id = "osm" + c.lat.toFixed(5) + c.lng.toFixed(5); OSMC.push(c); });
+    (rec.s || []).forEach(s => { if (!Object.values(ST).some(x => hav(x.lat, x.lng, s.lat, s.lng) < .35)) ST[s.k] = { k: s.k, n: s.n, city: "(OSM)", prov: "", lat: s.lat, lng: s.lng, cls: 3, lines: [] }; });
+    TL[t.k] = { n: (rec.w || []).length };
+  }
+  async function fetchTile(t) {
+    const bb = [t.s, t.w, t.s + TS, t.w + TS].map(v => v.toFixed(5)).join(",");
+    const q = '[out:json][timeout:40];(way["railway"~"^(rail|light_rail|subway|narrow_gauge)$"]["service"!~"yard|siding|spur|crossover"](' + bb + ');node["railway"="level_crossing"](' + bb + ');node["railway"="station"]["station"!="subway"](' + bb + '););out geom tags;';
+    let j = null;
+    for (const u of OVP) { try { const c = new AbortController(), to = setTimeout(() => c.abort(), 38000), r = await fetch(u + "?data=" + encodeURIComponent(q), { signal: c.signal }); clearTimeout(to); if (!r.ok) continue; j = await r.json(); break; } catch (e) { } }
+    if (!j) return null;
+    const rec = { t: Date.now(), w: [], c: [], s: [] };
+    (j.elements || []).forEach(e => { const tg = e.tags || {};
+      if (e.type === "way" && e.geometry && e.geometry.length > 1) { const o = {}; TAGS.forEach(k => { if (tg[k] != null) o[k] = tg[k]; }); rec.w.push({ id: e.id, t: o, g: e.geometry.map(p => [r5(p.lat), r5(p.lon)]) }); }
+      else if (e.type === "node" && tg.railway === "level_crossing") { const bar = tg["crossing:barrier"], ctrl = bar && bar !== "no" ? "gate" : tg.crossing === "barrier" || tg["crossing:light"] === "yes" ? "gate" : tg.crossing === "uncontrolled" || bar === "no" ? "nogate" : "unknown"; rec.c.push({ oid: e.id, lat: e.lat, lng: e.lon, ctrl, road: tg.name || "Perlintasan sebidang (OSM)", line: "", t: { crossing: tg.crossing, barrier: bar } }); }
+      else if (e.type === "node" && tg.railway === "station" && tg.name) rec.s.push({ k: "O" + e.id, n: tg.name, lat: e.lat, lng: e.lon }); });
+    return rec;
+  }
+  async function loadTile(t, force) {
+    if (force) await idbDel(t.k);
+    let rec = force ? null : await idbGet(t.k);
+    if (rec && Date.now() - rec.t < 30 * 864e5) { applyTile(t, rec); return true; }
+    rec = await fetchTile(t);
+    if (!rec) { FAIL[t.k] = Date.now() + 90000; return false; }
+    idbPut(t.k, rec); applyTile(t, rec); return true;
+  }
+  function viewTiles() {
+    const m = gmap(), b = m.getBounds(), c = m.getCenter(), out = [];
+    for (let i = Math.floor(b.getSouth() / TS); i <= Math.floor(b.getNorth() / TS); i++)for (let j = Math.floor(b.getWest() / TS); j <= Math.floor(b.getEast() / TS); j++) out.push({ k: i + "_" + j, s: i * TS, w: j * TS, d: Math.hypot((i + .5) * TS - c.lat, (j + .5) * TS - c.lng) });
+    return out.sort((a, b) => a.d - b.d).slice(0, 12);
+  }
+  function setLoading(v) { if (BTN) BTN.classList.toggle("ld", !!v); }
+  function autoLoad(force) {
+    if (S.on === false || (!S.auto && !force) || !ensure()) return; const m = gmap(); if (m.getZoom() < 10) return;
+    const need = viewTiles().filter(t => force || (!TL[t.k] && !LD.has(t.k) && !(FAIL[t.k] > Date.now())));
+    TQ.length = 0; need.forEach(t => TQ.push(Object.assign(t, { force: !!force }))); pump();
+  }
+  function pump() {
+    while (tBusy < 2 && TQ.length) {
+      const t = TQ.shift(); if (LD.has(t.k)) continue; LD.add(t.k); tBusy++;
+      loadTile(t, t.force).then(ok => { if (!ok && !WARNED) { WARNED = 1; say("Server OSM sibuk/offline — garis perkiraan tetap ditampilkan, akan dicoba lagi otomatis.", 4500); } soonDraw(); }).catch(() => { }).finally(() => { LD.delete(t.k); tBusy--; if (!tBusy && !TQ.length) { setLoading(false); soonDraw(); } pump(); });
+    }
+    setLoading(tBusy > 0 || TQ.length > 0);
   }
   const XC = { Rendah: "#34d399", Sedang: "#facc15", Tinggi: "#fb923c", Kritis: "#ef4444" };
   function drawX() {
@@ -133,20 +209,7 @@
 
   /* ================= OSM ================= */
   const OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
-  async function loadOSM() {
-    const m = gmap(); if (!m || osmBusy) return; if (m.getZoom() < 10) { say("Perbesar peta (zoom ≥ 10) agar area tidak terlalu luas."); return; }
-    const b = m.getBounds(), bb = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(v => v.toFixed(5)).join(",");
-    const q = '[out:json][timeout:40];(way["railway"~"^(rail|light_rail|subway|narrow_gauge)$"]["service"!~"yard|siding|spur|crossover"](' + bb + ');node["railway"="level_crossing"](' + bb + ');node["railway"="station"]["station"!="subway"](' + bb + '););out geom tags;';
-    osmBusy = true; say("Memuat jalur & perlintasan OSM…", 9000); let j = null;
-    for (const u of OVP) { try { const r = await fetch(u + "?data=" + encodeURIComponent(q)); if (!r.ok) continue; j = await r.json(); break; } catch (e) { } }
-    osmBusy = false; if (!j) { say("Gagal memuat OSM (jaringan/server sibuk). Coba lagi."); return; }
-    const seenW = new Set(OSMW.map(w => w.id)), seenN = new Set(OSMC.map(c => c.oid)); let nw = 0, nc = 0, ns = 0;
-    (j.elements || []).forEach(e => { const t = e.tags || {};
-      if (e.type === "way" && e.geometry && !seenW.has(e.id)) { OSMW.push({ id: e.id, t, g: e.geometry.map(p => [p.lat, p.lon]) }); nw++; }
-      else if (e.type === "node" && t.railway === "level_crossing" && !seenN.has(e.id)) { const bar = t["crossing:barrier"], ctrl = bar && bar !== "no" ? "gate" : t.crossing === "barrier" || t["crossing:light"] === "yes" ? "gate" : t.crossing === "uncontrolled" || bar === "no" ? "nogate" : "unknown"; OSMC.push({ oid: e.id, lat: e.lat, lng: e.lon, ctrl, road: t.name || "Perlintasan sebidang (OSM)", line: "", t }); nc++; }
-      else if (e.type === "node" && t.railway === "station" && t.name && !Object.values(ST).some(s => hav(s.lat, s.lng, e.lat, e.lon) < .35)) { const k = "O" + e.id; ST[k] = { k, n: t.name, city: "(OSM)", prov: "", lat: e.lat, lng: e.lon, cls: 3, lines: [] }; ns++; } });
-    S.osm = true; drawNet(); say("OSM: " + nw + " segmen jalur, " + nc + " perlintasan, " + ns + " stasiun baru.", 4200); if (S.tab === "perlintasan" || S.tab === "jaringan") render();
-  }
+  function loadOSM() { const m = gmap(); if (!m) return; if (m.getZoom() < 10) { say("Perbesar peta (zoom ≥ 10) agar rel asli bisa dimuat.", 3500); return; } if (S.on === false) setOn(true); WARNED = 0; say("Menyegarkan rel asli area ini…", 2500); autoLoad(true); }
 
   /* ================= RUTE ================= */
   function drawPlan(p) {
@@ -177,7 +240,7 @@
       ".kr-chips{display:flex;flex-wrap:wrap;gap:5px}.kr-chips button{padding:4px 9px;border-radius:999px;border:1px solid #94b2cc33;background:#111a2b;color:#cbd5e1;font:600 11.5px system-ui;cursor:pointer}.kr-chips button.on{background:#dc2626;border-color:#fca5a5;color:#fff}.kr-card{border:1px solid #94b2cc2e;border-radius:11px;background:#0f172a;padding:9px 10px}.kr-mini{color:#8fa6bd;font-size:11.5px}.kr-ins{border:1px solid #fca5a533;background:#2a1215;border-radius:10px;padding:8px 10px}.kr-st{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;margin-top:4px}.kr-leg{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:1px dashed #94b2cc26}.kr-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none}.kr-xfer{color:#fbbf24;font-size:11px;margin-left:18px}" +
       ".kr-sc{display:inline-block;min-width:32px;text-align:center;padding:1px 7px;border-radius:999px;font:700 11.5px system-ui;color:#0b0f1a}.kr-tip{font-size:12px;margin:3px 0;color:#cfe6f3}.kr-sw{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}.kr-item{cursor:pointer}.kr-item:hover{border-color:#fca5a5}.kr-bar{height:6px;border-radius:4px;background:#ef4444;min-width:3px}" +
       "#pqkrToast{position:fixed;left:50%;transform:translateX(-50%);bottom:80px;z-index:5000;display:none;background:#b91c1c;color:#fff;padding:8px 14px;border-radius:999px;font:600 12.5px system-ui;box-shadow:0 6px 20px #0007;max-width:90vw;text-align:center}" +
-      ".pqkr-st{width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid #1e293b;box-shadow:0 0 0 1px #fff}.pqkr-st.c1{width:15px;height:15px;border-color:#dc2626}.pqkr-st.c2{border-color:#2563eb}.pqkr-x{width:20px;height:20px;border-radius:50%;border:2px solid #fff;color:#111;font:800 12px/16px system-ui;text-align:center;box-shadow:0 2px 6px #0009}.pqkr-tr{font-size:22px;filter:drop-shadow(0 2px 3px #000a)}.pqkr-pb{display:flex;gap:5px;margin-top:6px}.pqkr-pb button{padding:4px 8px;border-radius:7px;border:1px solid #b91c1c;background:#b91c1c;color:#fff;font:600 11.5px system-ui;cursor:pointer}";
+      "#pqkrOnOff{position:relative}#pqkrOnOff.on{color:#fb923c}#pqkrOnOff.off{opacity:.55}#pqkrOnOff.off::after{content:\"\";position:absolute;left:18%;right:18%;top:50%;height:2px;background:#ef4444;transform:rotate(-45deg);border-radius:2px;pointer-events:none}#pqkrOnOff.ld i{animation:pqkrp 1s ease-in-out infinite}@keyframes pqkrp{50%{opacity:.25}}.pqkr-st{width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid #1e293b;box-shadow:0 0 0 1px #fff}.pqkr-st.c1{width:15px;height:15px;border-color:#dc2626}.pqkr-st.c2{border-color:#2563eb}.pqkr-x{width:20px;height:20px;border-radius:50%;border:2px solid #fff;color:#111;font:800 12px/16px system-ui;text-align:center;box-shadow:0 2px 6px #0009}.pqkr-tr{font-size:22px;filter:drop-shadow(0 2px 3px #000a)}.pqkr-pb{display:flex;gap:5px;margin-top:6px}.pqkr-pb button{padding:4px 8px;border-radius:7px;border:1px solid #b91c1c;background:#b91c1c;color:#fff;font:600 11.5px system-ui;cursor:pointer}";
     document.head.appendChild(s);
   }
   const TABS = [["jaringan", "🕸️ Jaringan"], ["wilayah", "🗺️ Wilayah"], ["rute", "🧭 Rute"], ["perlintasan", "⚠️ Perlintasan"], ["jenis", "🚄 Jenis KA"], ["hitung", "🧮 Kalkulator"]];
@@ -198,7 +261,7 @@
   const chip = (k, lab, on) => '<button data-kr="tg" data-k="' + k + '" class="' + (on ? "on" : "") + '">' + lab + "</button>";
   function tNet() {
     const sub = {}; JL.forEach(j => sub[j.jenis] = (sub[j.jenis] || 0) + 1);
-    return '<div class="kr-mini">Jaringan bawaan indikatif (' + Object.keys(ST).length + " stasiun, " + JL.length + ' jalur). Untuk geometri rel asli & ribuan perlintasan resmi, arahkan peta ke area kerja lalu muat dari OSM.</div><div class="kr-chips">' + chip("jalur", "🛤️ Jalur", S.jalur) + chip("stasiun", "🚉 Stasiun", S.stasiun) + chip("cross", "⚠️ Perlintasan", S.cross) + '</div><div class="kr-row"><button class="kr-btn" data-kr="osm">' + (osmBusy ? "Memuat…" : "⬇️ Muat jalur & perlintasan dari OSM") + '</button></div><div class="kr-mini">OSM termuat: ' + OSMW.length + " segmen jalur • " + OSMC.length + " perlintasan sebidang" + (OSMW.length ? ' • <a href="#" data-kr="clrosm" style="color:#fca5a5">bersihkan</a>' : "") + '</div><div class="kr-card"><b>Legenda jalur</b>' + JL.map(j => '<div class="kr-mini" style="margin-top:3px"><span class="kr-sw" style="background:' + j.col + '"></span>' + esc(j.n) + "</div>").join("") + "</div>";
+    return '<div class="kr-mini">Rel asli (OSM) dimuat OTOMATIS mengikuti area peta (zoom ≥ 10) dan disimpan di perangkat. Garis putus-putus = perkiraan antar-stasiun, hanya tampil di bagian yang rel aslinya belum termuat. (' + Object.keys(ST).length + " stasiun, " + JL.length + ' jalur)</div><div class="kr-chips">' + chip("on", "⏻ Jaringan KA", S.on !== false) + chip("auto", "🔄 Rel asli otomatis", S.auto) + chip("jalur", "🛤️ Jalur", S.jalur) + chip("stasiun", "🚉 Stasiun", S.stasiun) + chip("cross", "⚠️ Perlintasan", S.cross) + '</div><div class="kr-row"><button class="kr-btn" data-kr="osm">' + (osmBusy ? "Memuat…" : "⬇️ Segarkan rel asli area ini") + '</button></div><div class="kr-mini">Rel asli termuat: ' + OSMW.length + " segmen jalur • " + OSMC.length + " perlintasan sebidang" + (OSMW.length ? ' • <a href="#" data-kr="clrosm" style="color:#fca5a5">bersihkan</a>' : "") + '</div><div class="kr-card"><b>Legenda jalur</b>' + JL.map(j => '<div class="kr-mini" style="margin-top:3px"><span class="kr-sw" style="background:' + j.col + '"></span>' + esc(j.n) + "</div>").join("") + "</div>";
   }
 
   /* ===== Tab Wilayah: Provinsi → Kab./Kota → stasiun & jalur ===== */
@@ -249,12 +312,12 @@
   }
   function onClick(e) {
     const a = e.target.closest("[data-kr]"); if (!a) return; e.preventDefault(); const k = a.dataset.kr;
-    if (k === "tg") { S[a.dataset.k] = !S[a.dataset.k]; save(); syncVis(); render(); }
+    if (k === "tg") { const kk = a.dataset.k; if (kk === "on") { setOn(); return; } S[kk] = !S[kk]; save(); syncVis(); if (kk === "auto" && S.auto) autoLoad(); render(); }
     else if (k === "pv") { S.prov = a.dataset.p || ""; save(); render(); }
     else if (k === "zp") { const m = gmap(); const ar = Object.values(ST).filter(s => s.prov === a.dataset.p); if (m && ar.length) m.fitBounds(ar.map(s => [s.lat, s.lng]), { padding: [40, 40], maxZoom: 11 }); }
     else if (k === "zs") { const s = ST[a.dataset.id], m = gmap(); if (m && s) m.setView([s.lat, s.lng], 15); }
     else if (k === "osm") loadOSM();
-    else if (k === "clrosm") { OSMW = []; OSMC = []; S.osm = false; drawNet(); render(); }
+    else if (k === "clrosm") { OSMW = []; OSMC = []; S.osm = false; TL = {}; FAIL = {}; SEENW = new Set(); SEENC = new Set(); IDB.then(d => { if (d) try { d.transaction("t", "readwrite").objectStore("t").clear(); } catch (e) { } }); drawNet(); autoLoad(); render(); }
     else if (k === "plan") doPlan();
     else if (k === "swap") { const t = S.from; S.from = S.to; S.to = t; PLAN = null; render(); }
     else if (k === "near") { const m = gmap(); if (!m) return; const c = m.getCenter(); $("krNear").innerHTML = nearestSt(c.lat, c.lng, 5).map(x => '<div class="kr-card" style="margin-top:5px"><b>🚉 ' + esc(x.s.n) + '</b> <span class="kr-mini">' + x.d.toFixed(1) + " km (≈" + fmin(x.d * 1.35 / 35 * 60) + ' via jalan)</span><div class="kr-row" style="margin-top:4px"><button class="kr-btn g sm" data-kr="pickfrom" data-id="' + x.s.k + '">Asal</button><button class="kr-btn g sm" data-kr="pickto" data-id="' + x.s.k + '">Tujuan</button></div></div>').join(""); }
@@ -269,12 +332,15 @@
   function setPt(w, k) { S[w] = k; save(); S.tab = "rute"; open(); render(); }
 
   function init() {
-    build();
+    build(); css();
+    const tg = document.createElement("button"); tg.id = "pqkrOnOff"; tg.innerHTML = '<i class="fa-solid fa-train-tram"></i>'; BTN = tg; updBtn(); tg.onclick = () => setOn();
+    const putT = () => { try { PQ_DOCK.adopt(tg, "KA On/Off"); } catch (e) { tg.style.cssText = "position:fixed;left:10px;bottom:300px;z-index:900"; document.body.append(tg); } };
+    typeof PQ_DOCK !== "undefined" ? putT() : setTimeout(putT, 1000);
     const b = document.createElement("button"); b.id = "pqkrBtn"; b.innerHTML = '<i class="fa-solid fa-train"></i>'; b.title = "Kereta Api: jaringan, perlintasan & jenis KA"; b.onclick = () => (P && P.style.display === "flex") ? (P.style.display = "none") : open();
     const put = () => { try { PQ_DOCK.adopt(b, "Kereta Api"); } catch (e) { b.style.cssText = "position:fixed;left:10px;bottom:350px;z-index:900"; document.body.append(b); } };
     typeof PQ_DOCK !== "undefined" ? put() : setTimeout(put, 1000);
-    const wait = setInterval(() => { if (gmap() && window.L) { clearInterval(wait); drawNet(); } }, 800); setTimeout(() => clearInterval(wait), 60000);
+    const wait = setInterval(() => { if (gmap() && window.L) { clearInterval(wait); drawNet(); const mm = gmap(); mm.on("moveend", () => { clearTimeout(MVT); MVT = setTimeout(autoLoad, 700); }); autoLoad(); } }, 800); setTimeout(() => clearInterval(wait), 60000);
   }
-  window.PETAQU_KERETA = { open, setPt, focusX, _plan: plan, _risk: risk, _detect: detect, _st: () => ST, _jl: () => JL, _build: build, _osm: (w, c) => { OSMW = w || []; OSMC = c || []; } };
+  window.PETAQU_KERETA = { open, toggle: setOn, refresh: () => autoLoad(true), setPt, focusX, _plan: plan, _risk: risk, _detect: detect, _st: () => ST, _jl: () => JL, _build: build, _osm: (w, c) => { OSMW = w || []; OSMC = c || []; } };
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init();
 })();
