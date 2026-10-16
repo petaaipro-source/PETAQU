@@ -149,6 +149,7 @@
     }
     return list;
   }
+  function kmLbl(v) { var m = /^\s*(\d+)\s*\+\s*(\d{1,3})\s*$/.exec(String(v || "")); return m ? +m[1] + (+m[2]) / 1000 : null; }
   var JNC = null;
   function jnCands() {
     if (!JNC) {
@@ -156,8 +157,8 @@
       try {   /* cadangan: patok KM nasional (pk-data) → jalur garis lurus antar patok, STA = jarak kumulatif */
         var pk = JSON.parse($("pk-data").textContent), grp = {}, have = {};
         JNC.forEach(function (c) { have[c.tok && Object.keys(c.tok).sort().join(" ")] = 1; });
-        pk.forEach(function (r) { var nm = String(r[3] || "").replace(/^\s*\d+\.\s*/, "").trim(), d = parseFloat(String(r[4]).replace(/,/g, "")); if (nm && isFinite(r[0]) && isFinite(r[1]) && isFinite(d)) (grp[nm] = grp[nm] || []).push([r[0], r[1], d]); });
-        Object.keys(grp).forEach(function (nm) { var a = grp[nm].sort(function (x, y) { return x[2] - y[2]; }); if (a.length < 2) return; var c = mkCand(nm, "", a.map(function (p) { return [p[0], p[1]]; }), a.map(function (p) { return p[2]; }), "jn", null); c.viaPk = 1; if (!have[Object.keys(c.tok).sort().join(" ")]) JNC.push(c); });
+        pk.forEach(function (r) { var nm = String(r[3] || "").replace(/^\s*\d+\.\s*/, "").trim(), d = parseFloat(String(r[4]).replace(/,/g, "")); if (nm && isFinite(r[0]) && isFinite(r[1]) && isFinite(d)) (grp[nm] = grp[nm] || []).push([r[0], r[1], d, kmLbl(r[2])]); });
+        Object.keys(grp).forEach(function (nm) { var a = grp[nm].sort(function (x, y) { return x[2] - y[2]; }); if (a.length < 2) return; var c = mkCand(nm, "", a.map(function (p) { return [p[0], p[1]]; }), a.map(function (p) { return p[2]; }), "jn", null); c.viaPk = 1; c.posts = a.map(function (p) { return { sta: p[2], lat: p[0], lng: p[1], km: p[3] }; }); if (!have[Object.keys(c.tok).sort().join(" ")]) JNC.push(c); });
       } catch (e) { }
     }
     return JNC;
@@ -734,7 +735,19 @@
     var n = 0, nr = 0;
     IRI_G.forEach(function (g) {
       if (!g.cand || !g.ints) return;
-      if (g.cand.src === "jn") { var jp = g.samples.map(function (s) { var q = atSta(g.cand, Math.max(0, s.sta)); return q && q.inRange ? mkPoint(fmtSta(s.sta), q.lat, q.lng, { iri: s.iri, kondisi: s.kond }) : null; }).filter(Boolean); if (jp.length) { n += pushToRoad(g.name, jp, null); nr++; } return; }
+      if (g.cand.src === "jn") { var jp = g.samples.map(function (s) { var q = atSta(g.cand, Math.max(0, s.sta)); var pt = q && q.inRange ? mkPoint(fmtSta(s.sta), q.lat, q.lng, { iri: s.iri, kondisi: s.kond }) : null; if (pt) pt._s = s.sta; return pt; }).filter(Boolean);
+        if (g.cand.posts && jp.length) {   /* sinkron: titik patok KM database ikut jadi titik STA (koordinat & KM asli), titik interpolasi berdekatan diganti */
+          var lo = Math.min.apply(0, jp.map(function (p) { return p._s; })) - 50, hi = Math.max.apply(0, jp.map(function (p) { return p._s; })) + 50;
+          g.cand.posts.forEach(function (po) {
+            if (po.sta < lo || po.sta > hi) return;
+            var nearI = -1, nd = 1e9; jp.forEach(function (p, i) { var d = Math.abs(p._s - po.sta); if (d < nd) { nd = d; nearI = i; } });
+            var base = nearI >= 0 ? jp[nearI] : null, np = mkPoint(fmtSta(po.sta), po.lat, po.lng, { iri: base ? base.iri : null, kondisi: base ? base.kondisi : null });
+            np._s = po.sta; np.km = po.km; np.kmAuto = null;
+            if (base && nd <= 25) jp.splice(nearI, 1); jp.push(np);
+          });
+          jp.sort(function (a, b) { return a._s - b._s; });
+        }
+        jp.forEach(function (p) { delete p._s; }); if (jp.length) { n += pushToRoad(g.name, jp, null); nr++; } return; }
       if (g.cand.src === "xls") { var pts = g.samples.filter(function (s) { return s.lat != null; }).map(function (s) { return mkPoint(fmtSta(s.sta), s.lat, s.lng, { iri: s.iri, kondisi: s.kond }); }); if (pts.length) { n += pushToRoad(g.name, pts, null); nr++; } return; }
       var road = roads.filter(function (r) { return r.id === g.cand.id; })[0]; if (!road) return;
       var pick = function (sta) { for (var i = 0; i < g.ints.length; i++) { var it = g.ints[i]; if (it.a && it.a.length && sta >= it.l0 - .5 && sta <= it.l1 + .5) return it; } return null; };
