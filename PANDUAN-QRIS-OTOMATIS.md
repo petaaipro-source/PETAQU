@@ -1,3 +1,12 @@
+# UPDATE 16 Okt 2026 — harga baru + deploy otomatis lewat GitHub
+
+**Harga:** 1 bln Rp 99.900 · 3 bln 269.900 · 6 bln 499.900 · 1 th 899.900 · 2 th 1.599.900 · 3 th 2.199.900 (diskon .ac.id/.sch.id 30% tetap). Jalankan `supabase-harga-baru.sql` sekali di SQL Editor (juga mengubah pembulatan ke Rp 100).
+
+**Fungsi server kini ada di repo** (`supabase/functions/`). Cukup push ke GitHub; workflow `.github/workflows/deploy-supabase.yml` men-deploy otomatis. Isi 3 secret di GitHub (Settings → Secrets → Actions): `SUPABASE_ACCESS_TOKEN`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_ENV` (`sandbox`/`production`). Payment Notification URL Midtrans: `https://fhulmqwuzswxrqjcioww.supabase.co/functions/v1/qris-webhook`.
+
+**Syarat go-live:** akun Midtrans Production harus lolos Business registration/review dulu (QRIS statis GoPay Merchant tidak bisa mendeteksi pembayaran otomatis). Sebelum itu, uji pakai Sandbox.
+
+---
 # Bayar QRIS otomatis — akun aktif sendiri, tanpa admin klik
 
 ## Cara kerja

@@ -1,0 +1,6 @@
+[functions.qris-buat]
+verify_jwt = false
+[functions.qris-cek]
+verify_jwt = false
+[functions.qris-webhook]
+verify_jwt = false

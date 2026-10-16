@@ -9,8 +9,8 @@
 
   /* cadangan tampilan bila daftar harga server belum terbaca (harus sama dengan tabel harga_langganan) */
   var HARGA0 = [
-    { bulan: 1, label: "1 bulan", normal: 49000 }, { bulan: 3, label: "3 bulan", normal: 129000 }, { bulan: 6, label: "6 bulan", normal: 239000 },
-    { bulan: 12, label: "1 tahun", normal: 429000 }, { bulan: 24, label: "2 tahun", normal: 749000 }, { bulan: 36, label: "3 tahun", normal: 999000 }
+    { bulan: 1, label: "1 bulan", normal: 99900 }, { bulan: 3, label: "3 bulan", normal: 269900 }, { bulan: 6, label: "6 bulan", normal: 499900 },
+    { bulan: 12, label: "1 tahun", normal: 899900 }, { bulan: 24, label: "2 tahun", normal: 1599900 }, { bulan: 36, label: "3 tahun", normal: 2199900 }
   ];
   var SK = "pq_bayar_order", POLL_MS = 3000;
   var $ = function (id) { return document.getElementById(id); };

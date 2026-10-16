@@ -24,12 +24,12 @@ alter table harga_langganan enable row level security;     -- tanpa policy: diba
 -- Harga awal (ubah kapan saja dengan UPDATE; berlaku untuk order berikutnya):
 --   1 bln 49rb | 3 bln 129rb (43rb/bln) | 6 bln 239rb (40rb/bln) | 1 th 429rb (36rb/bln) | 2 th 749rb (31rb/bln) | 3 th 999rb (28rb/bln)
 insert into harga_langganan(bulan, harga, label) values
-  (1,   49000, '1 bulan'),
-  (3,  129000, '3 bulan'),
-  (6,  239000, '6 bulan'),
-  (12, 429000, '1 tahun'),
-  (24, 749000, '2 tahun'),
-  (36, 999000, '3 tahun')
+  (1,   99900, '1 bulan'),
+  (3,  269900, '3 bulan'),
+  (6,  499900, '6 bulan'),
+  (12, 899900, '1 tahun'),
+  (24, 1599900, '2 tahun'),
+  (36, 2199900, '3 tahun')
 on conflict (bulan) do nothing;
 
 -- Diskon otomatis untuk email pelajar/mahasiswa/instansi pendidikan (berdasarkan domain email, bukan pengakuan sendiri)
@@ -52,7 +52,7 @@ $$;
 
 -- harga akhir (dibulatkan ke Rp 1.000 terdekat)
 create or replace function qris_hitung_harga(p_bulan int, p_email text) returns bigint language sql stable security definer set search_path = public as $$
-  select (round(h.harga * (100 - qris_persen_diskon(p_email)) / 100.0 / 1000.0) * 1000)::bigint
+  select (round(h.harga * (100 - qris_persen_diskon(p_email)) / 100.0 / 100.0) * 100)::bigint
     from harga_langganan h where h.bulan = p_bulan and h.aktif
 $$;
 
