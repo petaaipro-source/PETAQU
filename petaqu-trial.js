@@ -1,4 +1,6 @@
-/* PETAQU — Uji coba gratis 10 menit (Gmail WAJIB dipilih lewat Google, tidak bisa diketik).
+/* PETAQU — TIKET COBA berbayar (Rp 5.000 / 15 menit, bayar QRIS lewat petaqu-bayar.js; harga & menit dari tabel tiket_coba).
+   Tombol di layar login membuka layar bayar; setelah lunas, tiket (undangan server terikat ke Gmail pembeli) ditebus lewat Google di sini.
+   Versi lama: Uji coba gratis 10 menit (Gmail WAJIB dipilih lewat Google, tidak bisa diketik).
    Aturan: 1 akun Gmail ATAU 1 perangkat hanya boleh sekali, tidak dapat diulang.
    Alur:
      1. Tombol "Coba Gratis 10 Menit" -> "Lanjut dengan Google" -> pilih akun Gmail di layar Google (terverifikasi).
@@ -16,7 +18,14 @@
   var CFG = { aktif: true, menit: 10, alasan: null };
   function D(r) { return (r && r.dur) || DUR; }
   function mnt(r) { return Math.max(1, Math.round(D(r) / 60000)); }
-  var K = "pq_trial", AUTHK = "peta_auth_ok", FLAG = "pq_trial_oauth";
+  var K = "pq_trial", AUTHK = "peta_auth_ok", FLAG = "pq_trial_oauth", TIKET = "pq_tiket", TGO = "pq_tiket_go";
+  var TI = { aktif: false, harga: 5000, menit: 15 };   /* info tiket dari server (tiket_info) */
+  function adaTiket() { try { var t = JSON.parse(lsGet(TIKET)); return t && t.email ? t : null; } catch (e) { return null; } }
+  function resetLokal() {   /* tiket baru = jatah baru: hapus penanda uji coba lama di perangkat ini (server tetap yang memutuskan) */
+    lsDel(K); lsDel("pq_tstart");
+    try { document.cookie = "pq_trd=;max-age=0;path=/"; document.cookie = "pq_tstart=;max-age=0;path=/"; } catch (e) { /* abaikan */ }
+    try { idbSet(0); cacheSet(0); } catch (e) { /* abaikan */ }
+  }
   var $ = function (id) { return document.getElementById(id); };
   var iv = 0, last = 0, ticks = 0, badge = null;
 
@@ -141,15 +150,19 @@
   })();
 
   /* ---------- pengaturan dari admin (durasi / buka-tutup / kuota) ---------- */
-  function cfgLock(why) { CFG.aktif = false; CFG.alasan = why; if (!usedBefore()) lockButton(why === "full" ? "Kuota gratis hari ini habis" : "Uji coba gratis sedang ditutup"); }
+  function labelTiket() { return "Coba " + TI.menit + " Menit \u2014 Rp " + Math.round(TI.harga).toLocaleString("id-ID"); }
   function cfgApply() {
-    var b = $("pqTrialBtn"), n = $("pqTrialNote"); if (!b || usedBefore()) return;
-    if (!CFG.aktif) return cfgLock(CFG.alasan);
-    var s = b.querySelector("span"); if (s) s.textContent = "Coba Gratis " + CFG.menit + " Menit";
-    if (n) n.textContent = "Gratis " + CFG.menit + " menit untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Gmail dipilih lewat Google, tidak bisa diketik.";
+    var b = $("pqTrialBtn"), n = $("pqTrialNote"), w = $("pqTrial"); if (!b) return;
+    if (!TI.aktif) { if (w) w.style.display = "none"; return; }   /* tiket tidak dijual / SQL belum dipasang: tombol disembunyikan */
+    if (w) w.style.display = "";
+    var s = b.querySelector("span"); if (s) s.textContent = labelTiket();
+    var a = adaTiket();
+    if (a && s) s.textContent = "Mulai tiket " + TI.menit + " menit";
+    if (n) n.textContent = "Tiket " + TI.menit + " menit untuk Gmail " + (a ? a.email : "yang kamu bayar") + ". Sekali pakai. Gmail dipilih lewat Google, tidak bisa diketik.";
   }
   async function cfgLoad() {
-    try { var d = await rpc("get_trial_config", {}); if (d && typeof d.menit === "number") { CFG = { aktif: d.aktif !== false, menit: d.menit, alasan: d.alasan || null }; cfgApply(); } } catch (e) { /* SQL belum dipasang / offline: tetap 10 menit */ }
+    try { var d = await rpc("tiket_info", {}); if (d && typeof d.menit === "number") { TI = { aktif: d.aktif !== false, harga: +d.harga || 5000, menit: d.menit }; } } catch (e) { TI.aktif = false; }
+    cfgApply();
   }
 
   /* ---------- tampilan ---------- */
@@ -170,7 +183,7 @@
     document.head.appendChild(st);
     badge = document.createElement("div");
     badge.id = "pqTrialBadge";
-    badge.innerHTML = '<i class="fa-solid fa-gift"></i> Uji coba gratis <b>10:00</b>';
+    badge.innerHTML = '<i class="fa-solid fa-gift"></i> Waktu coba <b>15:00</b>';
     document.body.appendChild(badge);
   }
   function setBadge(ms) {
@@ -207,10 +220,10 @@
     if (s && lsGet(AUTHK) !== "1") {
       s.classList.remove("hide");
       var e = $("loginError");
-      if (e) { e.querySelector("span").textContent = "Uji coba gratis " + mnt(r) + " menit telah berakhir. Hubungi admin untuk akses penuh."; e.style.color = ""; e.classList.add("show"); }
+      if (e) { e.querySelector("span").textContent = "Waktu coba " + mnt(r) + " menit telah berakhir. Beli tiket lagi atau berlangganan lewat tombol QRIS di bawah."; e.style.color = ""; e.classList.add("show"); }
     }
-    lockButton("Uji coba telah berakhir");
-    T("Uji coba gratis berakhir", true);
+    cfgApply();
+    T("Waktu coba berakhir", true);
   }
   async function verify(r) {
     if (r.local || navigator.onLine === false) return;
@@ -249,10 +262,11 @@
   /* ---------- Gmail dipilih lewat Google ---------- */
   function keGoogle() {
     var c = window.PETAQU_CFG;
-    if (usedBefore()) { lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
+    if (!adaTiket()) { return window.PQBayar ? PQBayar.open({ tiket: 1 }) : formMsg("Layar pembayaran belum siap."); }
     if (!c) return formMsg("Login Google belum dikonfigurasi.");
     if (navigator.onLine === false) return formMsg("Butuh koneksi internet untuk memilih akun Google.");
-    deviceId();
+    resetLokal(); deviceId();
+    lsSet(TGO, "1");
     lsSet(FLAG, String(Date.now()));
     location.href = c.url + "/auth/v1/authorize?provider=google&prompt=select_account&redirect_to=" + encodeURIComponent(location.origin + location.pathname);
   }
@@ -270,7 +284,8 @@
       email = normGmail((await r.json()).email);
     } catch (e) { signOut(tok); return formMsg("Verifikasi Google gagal, coba lagi."); }
     if (!email) { signOut(tok); return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba."); }
-    if (usedBefore()) { signOut(tok); lockButton(); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba (termasuk saat pengetesan) dan tidak dapat diulang."); }
+    var memakaiTiket = lsGet(TGO) === "1"; lsDel(TGO);
+    if (!memakaiTiket && usedBefore()) { signOut(tok); return formMsg("Perangkat/browser ini sudah pernah memakai uji coba dan tidak dapat diulang. Beli tiket baru lewat tombol Coba."); }
     var did = deviceId();
     try {
       var d = await rpc("claim_trial_g", { p_device: did, p_fp: await fingerprint() }, tok);
@@ -284,13 +299,14 @@
       }
       signOut(tok);
       if (!d || !d.ok) {
-        if (d && d.reason === "expired") { save({ did: did, email: email, end: 0, used: DUR, done: true }); lockButton("Uji coba telah berakhir"); return formMsg("Uji coba perangkat ini sudah berakhir."); }
+        if (d && d.reason === "expired") { save({ did: did, email: email, end: 0, used: DUR, done: true }); return formMsg("Waktu coba sudah berakhir. Beli tiket baru lewat tombol Coba."); }
         if (d && d.reason === "bad_email") return formMsg("Gunakan akun Gmail (@gmail.com) untuk uji coba.");
-        if (d && (d.reason === "closed" || d.reason === "full")) { cfgLock(d.reason); return formMsg(d.reason === "closed" ? "Uji coba gratis sedang ditutup admin. Silakan coba lagi nanti atau hubungi admin." : "Kuota uji coba gratis hari ini sudah habis. Coba lagi besok atau hubungi admin."); }
-        if (d && d.reason === "used") return formMsg("Uji coba gratis sudah pernah digunakan oleh Gmail atau perangkat ini dan tidak dapat diulang.");
+        if (d && (d.reason === "nonaktif" || d.reason === "ditutup" || d.reason === "kuota_habis" || d.reason === "penuh")) return formMsg("Tiket untuk Gmail ini tidak ditemukan. Pastikan memilih Gmail yang sama dengan saat bayar, atau hubungi admin.");
+        if (d && d.reason === "used") return formMsg("Gmail ini bukan Gmail yang dipakai membeli tiket, atau tiketnya sudah terpakai. Pilih Gmail yang sama dengan saat bayar.");
         return formMsg("Server menolak klaim uji coba (alasan: " + ((d && d.reason) || "tidak diketahui") + ").");
       }
-      begin({ did: did, email: email, end: Date.now() + d.remaining * 1000, used: (d.total || d.remaining) * 1000 - d.remaining * 1000, dur: (d.total || d.remaining) * 1000, done: false }, "Uji coba gratis dimulai: " + Math.round(d.remaining / 60) + " menit");
+      lsDel(TIKET);
+      begin({ did: did, email: email, end: Date.now() + d.remaining * 1000, used: (d.total || d.remaining) * 1000 - d.remaining * 1000, dur: (d.total || d.remaining) * 1000, done: false }, "Waktu coba dimulai: " + Math.round(d.remaining / 60) + " menit");
     } catch (e) {
       signOut(tok);
       if (e && e.code === "nosql") {   /* SQL belum dipasang: Gmail tetap terverifikasi, batas per perangkat */
@@ -310,18 +326,21 @@
     w.id = "pqTrial";
     w.style.marginTop = "12px";
     w.innerHTML =
-      '<button type="button" id="pqTrialBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px;border-radius:9px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-size:14px;font-weight:700;cursor:pointer"><i class="fa-solid fa-gift"></i><span>Coba Gratis 10 Menit</span></button>' +
+      '<button type="button" id="pqTrialBtn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px;border-radius:9px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-size:14px;font-weight:700;cursor:pointer"><i class="fa-solid fa-gift"></i><span>Coba 15 Menit \u2014 Rp 5.000</span></button>' +
       '<div id="pqTrialForm" style="display:none;margin-top:10px">' +
       '<button type="button" class="login-btn" id="pqTrialGo"><i class="fa-brands fa-google"></i> <span>Pilih Gmail dengan Google</span></button>' +
       '<div id="pqTrialMsg" style="display:none;margin-top:8px;font-size:12px;line-height:1.5"></div>' +
-      '<p id="pqTrialNote" style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.5">Gratis 10 menit untuk 1 akun Gmail atau 1 perangkat. Tidak dapat diulang. Gmail dipilih lewat Google, tidak bisa diketik.</p>' +
+      '<p id="pqTrialNote" style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.5">Tiket coba 15 menit, sekali pakai. Gmail dipilih lewat Google, tidak bisa diketik.</p>' +
       '</div>';
     g.parentNode.insertBefore(w, g.nextSibling);
-    $("pqTrialBtn").addEventListener("click", function () { var f = $("pqTrialForm"); f.style.display = f.style.display === "none" ? "" : "none"; });
+    $("pqTrialBtn").addEventListener("click", function () {
+      if (!adaTiket()) { if (window.PQBayar) PQBayar.open({ tiket: 1 }); return; }
+      var f = $("pqTrialForm"); f.style.display = f.style.display === "none" ? "" : "none";
+    });
     $("pqTrialBtn").addEventListener("click", function () { try { window.__pqInfoPerangkat && window.__pqInfoPerangkat().catch(function () { }); } catch (e) { /* abaikan */ } }, { once: true });   /* siapkan lokasi (cache) sebelum pindah ke Google */
     $("pqTrialGo").addEventListener("click", keGoogle);
     g.addEventListener("click", function () { lsDel(FLAG); }, true);   /* login Google biasa tidak boleh dianggap uji coba */
-    if (usedBefore()) lockButton(); else cfgLoad();
+    cfgLoad();
 
     /* kolom Email/OTP disembunyikan (index.html). Akses: Google (terverifikasi) atau Username untuk akun admin */
     if (!$("pqLoginAlt")) {
@@ -353,6 +372,7 @@
       verify(r);
     }
   }
+  window.PQTrialTiket = { mulai: function () { if (adaTiket()) keGoogle(); else if (window.PQBayar) PQBayar.open({ tiket: 1 }); } };
   function boot() { setTimeout(start, 60); setTimeout(function () { if (!$("pqTrial")) inject(); }, 800); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();

@@ -22,7 +22,7 @@
   function fmtTgl(s) { var d = new Date(String(s).slice(0, 10) + "T00:00:00"); return isNaN(d) ? String(s) : d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }); }
   function emailOk(e) { return /^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$/.test(e) && e.length <= 120; }
 
-  var st = { email: "", bulan: 12, harga: HARGA0.map(function (h) { return { bulan: h.bulan, label: h.label, normal: h.normal, diskon: 0, harga: h.normal }; }), order: null, tm: 0, tick: 0, n: 0, busy: false, final: "", hargaTm: 0 };
+  var st = { email: "", bulan: 12, harga: HARGA0.map(function (h) { return { bulan: h.bulan, label: h.label, normal: h.normal, diskon: 0, harga: h.normal }; }), tiket: null, order: null, tm: 0, tick: 0, n: 0, busy: false, final: "", hargaTm: 0 };
 
   /* ---------- panggilan ke server ---------- */
   function restHead() { var c = cfg(); return { apikey: c.anon, "Content-Type": "application/json" }; }
@@ -93,12 +93,14 @@
         (h.bulan === 12 ? "<em>Disarankan</em>" : "") + (hemat >= 5 ? '<em class="h">Hemat ' + hemat + "%</em>" : "") + "</b><small>" + rp(perBln) + " / bulan</small></span>" +
         '<span class="r"><b>' + rp(h.harga) + "</b>" + (h.diskon > 0 ? "<s>" + rp(h.normal) + "</s>" : "") + "</span></button>";
     }).join("");
-    var pilih = st.harga.filter(function (h) { return h.bulan === st.bulan; })[0] || st.harga[0];
+    var T = st.tiket, tk = T ? '<button type="button" class="p' + (st.bulan === 0 ? " on" : "") + '" data-m="0" role="radio" aria-checked="' + (st.bulan === 0) + '"><span><b>Coba ' + T.menit + ' menit<em>Coba dulu</em></b><small>Sekali pakai · wajib Gmail · tanpa langganan</small></span><span class="r"><b>' + rp(T.harga) + "</b></span></button>" : "";
+    pl = tk + pl;
+    var pilih = st.bulan === 0 && T ? { harga: T.harga, tiket: 1 } : (st.harga.filter(function (h) { return h.bulan === st.bulan; })[0] || st.harga[0]);
     box.innerHTML = head('<i class="fa-solid fa-qrcode"></i> Bayar Langganan', "Bayar pakai QRIS — nominal terisi otomatis, akun aktif sendiri begitu pembayaran masuk.") +
-      '<label for="pqByEm">Email akun PETAQU (yang akan diaktifkan)</label><input id="pqByEm" type="email" inputmode="email" autocomplete="email" placeholder="nama@email.com" value="' + esc(st.email) + '">' +
-      '<div class="hint" id="pqByDis">' + (adaDiskon ? "🎓 Diskon pelajar/mahasiswa aktif untuk email ini." : "Email berakhiran <b>.ac.id</b> / <b>.sch.id</b> otomatis dapat diskon pelajar/mahasiswa.") + "</div>" +
+      '<label for="pqByEm">'+(pilih.tiket?"Gmail kamu":"Email akun PETAQU (yang akan diaktifkan)")+'</label><input id="pqByEm" type="email" inputmode="email" autocomplete="email" placeholder="nama@email.com" value="' + esc(st.email) + '">' +
+      '<div class="hint" id="pqByDis">' + (pilih.tiket ? "Isi <b>Gmail</b> yang akan kamu pilih saat masuk lewat Google. Tiket hanya berlaku untuk Gmail ini, sekali pakai." : adaDiskon ? "🎓 Diskon pelajar/mahasiswa aktif untuk email ini." : "Email berakhiran <b>.ac.id</b> / <b>.sch.id</b> otomatis dapat diskon pelajar/mahasiswa.") + "</div>" +
       '<div class="pl" role="radiogroup" aria-label="Lama langganan">' + pl + "</div>" +
-      '<button type="button" class="go" id="pqByGo">Bayar ' + rp(pilih.harga) + " dengan QRIS</button>" +
+      '<button type="button" class="go" id="pqByGo">' + (pilih.tiket ? "Bayar " + rp(pilih.harga) + " — coba " + T.menit + " menit" : "Bayar " + rp(pilih.harga) + " dengan QRIS") + "</button>" +
       '<div class="msg" id="pqByMsg">' + esc(pesanErr || "") + "</div>" +
       '<div class="hint">Belum punya akun? Daftar dulu atau bayar sekarang — akun dengan email ini langsung aktif begitu Anda mendaftar. Perpanjangan: sisa masa aktif <b>tidak hangus</b>, ditambah di belakangnya.</div>';
     pasangX();
@@ -112,11 +114,13 @@
     if (!cfg()) return;
     try {
       var em = emailOk(st.email) ? st.email.toLowerCase() : null;
+      try { var ti = await rpcPub("tiket_info", {}); st.tiket = ti && ti.aktif ? ti : null; } catch (e) { st.tiket = null; }
+      if (st.bulan === 0 && !st.tiket) st.bulan = 12;
       var rows = await rpcPub("qris_harga", { p_email: em });
       if (rows && rows.length) {
         var beda = JSON.stringify(rows) !== JSON.stringify(st.harga);
         st.harga = rows.map(function (r) { return { bulan: r.bulan, label: r.label, normal: +r.normal, diskon: r.diskon, harga: +r.harga }; });
-        if (!st.harga.some(function (h) { return h.bulan === st.bulan; })) st.bulan = st.harga[0].bulan;
+        if (st.bulan !== 0 && !st.harga.some(function (h) { return h.bulan === st.bulan; })) st.bulan = st.harga[0].bulan;
         if (rerender && beda && !st.order && $("pqByEm")) { var f = document.activeElement === $("pqByEm"), pos = f ? $("pqByEm").selectionStart : 0; renderPilih(); if (f) { var e = $("pqByEm"); e.focus(); try { e.setSelectionRange(pos, pos); } catch (x) { /* abaikan */ } } }
       }
     } catch (e) { /* pakai harga cadangan */ }
@@ -127,12 +131,13 @@
     if (st.busy) return;
     var em = $("pqByEm").value.trim().toLowerCase(); st.email = em;
     if (!emailOk(em)) return msg("Isi email yang benar dulu.");
+    if (st.bulan === 0 && !/@(gmail|googlemail)\.com$/i.test(em)) return msg("Tiket coba hanya untuk akun Gmail (@gmail.com).");
     if (!cfg()) return msg("Konfigurasi server belum diisi.");
     st.busy = true; var g = $("pqByGo"); g.disabled = true; g.textContent = "Membuat QRIS…"; msg("");
     try {
       var j = await fn("qris-buat", { email: em, bulan: st.bulan });
       if (!j.ok) {
-        var t = { email_tidak_valid: "Format email tidak valid.", paket_tidak_valid: "Paket tidak tersedia, pilih paket lain.", terlalu_banyak: "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.", gateway: "Layanan pembayaran sedang bermasalah. Coba lagi beberapa saat.", origin: "Alamat situs tidak diizinkan.", server: "Server sedang bermasalah, coba lagi." }[j.reason];
+        var t = { email_tidak_valid: "Format email tidak valid.", paket_tidak_valid: "Paket tidak tersedia, pilih paket lain.", terlalu_banyak: "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.", tiket_nonaktif: "Tiket coba sedang tidak dijual.", wajib_gmail: "Tiket coba hanya untuk akun Gmail (@gmail.com).", gateway: "Layanan pembayaran sedang bermasalah. Coba lagi beberapa saat.", origin: "Alamat situs tidak diizinkan.", server: "Server sedang bermasalah, coba lagi." }[j.reason];
         throw new Error(t || (j._http === 404 ? "Layanan pembayaran belum dipasang di server (lihat PANDUAN-QRIS-OTOMATIS.md)." : "Gagal membuat QRIS (" + (j._http || "jaringan") + ")."));
       }
       st.order = { order_id: j.order_id, email: em, bulan: j.bulan || st.bulan, jumlah: j.jumlah, qr_string: j.qr_string, qr_url: j.qr_url, kedaluwarsa: j.kedaluwarsa, diskon: j.diskon || 0 };
@@ -153,7 +158,7 @@
   }
   function renderQR() {
     var o = st.order, wrap;
-    box.innerHTML = head('<i class="fa-solid fa-qrcode"></i> Scan untuk membayar', esc(o.email) + " · " + (o.bulan % 12 === 0 ? o.bulan / 12 + " tahun" : o.bulan + " bulan")) +
+    box.innerHTML = head('<i class="fa-solid fa-qrcode"></i> Scan untuk membayar', esc(o.email) + " · " + (o.bulan === 0 ? "Tiket coba " + (st.tiket ? st.tiket.menit : 15) + " menit" : o.bulan % 12 === 0 ? o.bulan / 12 + " tahun" : o.bulan + " bulan")) +
       '<div class="amt"><b>' + rp(o.jumlah) + '</b><small>Nominal sudah terisi otomatis di QR — jangan diubah</small></div>' +
       '<div class="qr" id="pqByQr"></div>' +
       '<div class="cd" id="pqByCd"></div>' +
@@ -209,7 +214,12 @@
   /* ---------- 3) hasil ---------- */
   function selesai(jenis, s) {
     stopPoll(); st.final = jenis; var o = st.order || {}, h;
-    if (jenis === "paid" && s.diterapkan) {
+    if (jenis === "paid" && s.diterapkan && (s.bulan === 0 || o.bulan === 0)) {
+      lsSet(SK, null); lsSet("pq_tiket", { kode: s.kode || "", email: o.email, menit: s.menit || 15 });
+      h = '<div class="ok"><div class="ic"><i class="fa-solid fa-ticket"></i></div><h3>Pembayaran diterima — tiket siap!</h3><p>Waktu coba <b>' + (s.menit || 15) + ' menit</b> baru mulai berjalan setelah kamu menekan tombol di bawah.</p></div>' +
+        '<div class="row"><span>Gmail tiket</span><b>' + esc(o.email) + '</b></div><div class="row"><span>Dibayar</span><b>' + rp(s.jumlah || o.jumlah) + '</b></div>' + (s.kode ? '<div class="row"><span>Kode tiket</span><b>' + esc(s.kode) + "</b></div>" : "") +
+        '<button type="button" class="go" id="pqByOk" style="margin-top:14px">Mulai coba sekarang</button><div class="hint">Pilih akun Gmail <b>yang sama</b> (' + esc(o.email) + ') di layar Google. Tiket sekali pakai dan tersimpan di perangkat ini; bila tertutup, tekan tombol "Coba" di layar login.</div>';
+    } else if (jenis === "paid" && s.diterapkan) {
       lsSet(SK, null);
       h = '<div class="ok"><div class="ic"><i class="fa-solid fa-check"></i></div><h3>Pembayaran diterima — akun aktif!</h3><p>Langganan Anda sudah aktif otomatis.</p></div>' +
         '<div class="row"><span>Email</span><b>' + esc(o.email) + '</b></div><div class="row"><span>Dibayar</span><b>' + rp(s.jumlah || o.jumlah) + '</b></div><div class="row"><span>Aktif sampai</span><b>' + esc(s.sampai ? fmtTgl(s.sampai) : "-") + "</b></div>" +
@@ -230,6 +240,7 @@
     box.innerHTML = '<button class="x" type="button" id="pqByX" aria-label="Tutup">×</button>' + h; pasangX();
     var ok = $("pqByOk"), cl = $("pqByCl");
     if (ok) ok.onclick = function () {
+      if (jenis === "paid" && s.diterapkan && (s.bulan === 0 || o.bulan === 0)) { tutup(); try { window.PQTrialTiket && window.PQTrialTiket.mulai(); } catch (e) { /* abaikan */ } return; }
       if (jenis === "paid" && !s.diterapkan) { tutup(); try { var b = $("pqdOpen"); if (b) b.click(); } catch (e) { /* abaikan */ } }
       else if (jenis === "expired" || jenis === "failed" || jenis === "tidak_ada") renderPilih(); else tutup();
     };
@@ -244,7 +255,8 @@
     var lama = lsGet(SK);
     if (opt.email) st.email = String(opt.email).trim();
     else if (!st.email) st.email = sesiEmail() || (lama && lama.email) || "";
-    if (opt.bulan && st.harga.some(function (h) { return h.bulan === +opt.bulan; })) st.bulan = +opt.bulan;
+    if (opt.bulan === 0 || opt.tiket) st.bulan = 0;
+    else if (opt.bulan && st.harga.some(function (h) { return h.bulan === +opt.bulan; })) st.bulan = +opt.bulan;
     muatHarga(false).then(function () { if (!st.order && !st.busy) renderPilih(); });
     /* lanjutkan order yang belum selesai (QR masih berlaku & email sama) */
     if (lama && lama.order_id && lama.kedaluwarsa && new Date(lama.kedaluwarsa) - Date.now() > 20000 && (!opt.email || opt.email.toLowerCase() === lama.email)) {
