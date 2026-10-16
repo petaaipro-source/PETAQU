@@ -7,7 +7,7 @@
   "use strict";
   if (window.__pqData) return; window.__pqData = 1;
 
-  const $ = id => document.getElementById(id), C = () => window.PETAQU_CONVERT;
+  const $ = id => document.getElementById(id), C = () => window.PETAQU_CONVERT, ADM = () => window.__pqIsAdmin === true;
   const BB = { la: [-8.95, -5.6], ln: [108.3, 111.95] };           // kotak Jawa Tengah + DIY
   const GONE = "pq_gone_roads", R_KEY = "peta_ruas_jalan_cilacap_v1", B_KEY = "petaqu_jembatan_v1";
   const KNOWN = new Set(("ruas namaruas jalan namajalan road id kabupaten kab kota kabkota sta km station latitude lat lintang y longitude lng lon long bujur x " +
@@ -77,6 +77,15 @@
     const r = lsLen(R_KEY), b = lsLen(B_KEY), o = Math.max(0, tot - r - b), free = Math.max(0, LS_MAX - tot), pct = Math.min(100, tot / LS_MAX * 100), cls = pct > 85 ? "bad" : pct > 65 ? "mid" : "ok";
     let est = null, per = false; try { est = await navigator.storage.estimate(); per = await navigator.storage.persisted(); } catch (_) { }
     const d = est && est.usageDetails || {}, ix = d.indexedDB || 0, ca = d.caches || 0, use = est ? est.usage || 0 : 0, q = est ? est.quota || 0 : 0, ot = Math.max(0, use - ix - ca);
+    const stEl = $("pqdStat"); if (stEl) { const R = liveR(), Bj = liveB(), pts = R.reduce((a, x) => a + ((x.points || []).length), 0); stEl.innerHTML = [[fmt(R.length), "Ruas jalan"], [fmt(pts), "Titik STA"], [fmt(Bj.length), "Jembatan"], [mb(r + b), "Ukuran data"]].map(x => "<div><b>" + x[0] + "</b><span>" + x[1] + "</span></div>").join(""); }
+    if (!ADM()) {
+      el.innerHTML = '<h4><span>Memori data pribadi (browser ini)</span><span class="' + cls + '">' + pct.toFixed(1) + "% terpakai · sisa " + mb(free) + "</span></h4>" +
+        bar([[r, "#22d3ee", "Ruas jalan"], [b, "#a78bfa", "Jembatan"], [o, "#64748b", "Lainnya"], [free, "#1e293b", "Sisa"]], LS_MAX) +
+        lg([[r, "#22d3ee", "Ruas jalan"], [b, "#a78bfa", "Jembatan"], [free, "#334155", "Sisa bebas"]]) +
+        "<small>" + (pct > 85 ? "⚠ Hampir penuh — unduh cadangan .json lalu hapus data yang tidak perlu. " : "Kapasitas aman. ") + (per ? "Penyimpanan permanen aktif." : '<a href="#" id="pqdPer" style="color:#22d3ee">Minta penyimpanan permanen</a> agar browser tidak menghapus data Anda saat memori HP menipis.') + "</small>";
+      const pe = $("pqdPer"); if (pe) pe.onclick = async e => { e.preventDefault(); try { note(await navigator.storage.persist() ? "Penyimpanan permanen aktif" : "Browser belum mengizinkan (coba setelah memasang aplikasi ke layar utama)", false); } catch (_) { } };
+      return;
+    }
     el.innerHTML = '<h4><span>Memori data PETAQU</span><span class="' + cls + '">' + pct.toFixed(1) + "% terpakai · sisa " + mb(free) + "</span></h4>" +
       bar([[r, "#22d3ee", "Ruas jalan"], [b, "#a78bfa", "Jembatan"], [o, "#64748b", "Lainnya"], [free, "#1e293b", "Sisa"]], LS_MAX) +
       lg([[r, "#22d3ee", "Ruas jalan"], [b, "#a78bfa", "Jembatan"], [o, "#64748b", "Pengaturan lain"], [free, "#334155", "Sisa bebas"]]) +
@@ -195,7 +204,7 @@
   const dlJS = k => dl(k === "ruas" ? "data-ruas.js" : "data-jembatan.js", new Blob([C().toJS(k, seedNow(k))], { type: "text/javascript" }));
   function dlXlsx(k) { const wb = XLSX.utils.book_new(), rows = k === "ruas" ? C().roadRows(seedNow(k)) : C().bridgeRows(liveB()); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), k === "ruas" ? "Ruas" : "Jembatan"); XLSX.writeFile(wb, "PETAQU-" + k + "-" + new Date().toISOString().slice(0, 10) + ".xlsx"); }
   async function reset() {
-    if (!confirm("Kembalikan SEMUA ruas & jembatan ke data bawaan aplikasi (data-ruas.js / data-jembatan.js)? Cadangan dibuat otomatis.")) return;
+    if (!confirm(ADM() ? "Kembalikan SEMUA ruas & jembatan ke data bawaan aplikasi (data-ruas.js / data-jembatan.js)? Cadangan dibuat otomatis." : "Hapus semua data pribadi Anda dan kembali ke data resmi PETAQU? Cadangan dibuat otomatis di perangkat ini.")) return;
     await bakPut("Sebelum reset ke data bawaan"); [R_KEY, B_KEY, GONE].forEach(k => localStorage.removeItem(k)); location.reload();
   }
 
@@ -212,19 +221,21 @@
     ".pqd-is{margin:4px 0 0;padding:0;list-style:none;font-size:11.5px}.pqd-is li{padding:2px 0}.pqd-is .warn{color:#fbbf24}.pqd-is .info{color:#8fa6bd}.pqd details{border:1px solid #94b2cc22;border-radius:10px;padding:8px 12px}.pqd summary{cursor:pointer;font-weight:600}" +
     ".pqd-hr{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #94b2cc17;font-size:12px}.pqd-hr span{flex:1;color:#9db3c9}.pqd-g{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}" +
     ".pqd-m h4{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;gap:8px}.pqd-bar{display:flex;height:16px;border-radius:99px;overflow:hidden;background:#1e293b;margin:6px 0}.pqd-bar i{display:block;height:100%;min-width:3px}" +
-    ".pqd-lg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#9db3c9}.pqd-lg em{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}.pqd-lg b{color:#e6f1fb}.pqd-m .ok{color:#4ade80}.pqd-m .mid{color:#facc15}.pqd-m .bad{color:#f87171}.pqd-m small{display:block;color:#8fa6bd;margin-top:6px;font-size:11.5px}";
+    ".pqd-lg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#9db3c9}.pqd-lg em{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}.pqd-lg b{color:#e6f1fb}.pqd-role{display:flex;gap:10px;align-items:flex-start;border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.5}.pqd-role.u{background:#0e2a3a;border:1px solid #22d3ee44;color:#bfe9f5}.pqd-role.a{background:#2a1f0a;border:1px solid #f59e0b55;color:#fde7b0}.pqd-role i{margin-top:2px}.pqd-badge{font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:99px;background:#f59e0b;color:#1a1204}.pqd-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.pqd-stats div{background:#0f1726;border:1px solid #94b2cc2e;border-radius:12px;padding:9px 11px}.pqd-stats b{display:block;font-size:17px;color:#e6f1fb}.pqd-stats span{font-size:11px;color:#8fa6bd}.pqd-m .ok{color:#4ade80}.pqd-m .mid{color:#facc15}.pqd-m .bad{color:#f87171}.pqd-m small{display:block;color:#8fa6bd;margin-top:6px;font-size:11.5px}";
 
   function build() {
     const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
     const box = document.createElement("div"); box.id = "pqdBox"; box.className = "pqd";
-    box.innerHTML = '<div class="pqd-card"><div class="pqd-h"><b><i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Perbarui Data</b><button id="pqdX" aria-label="Tutup">×</button></div><div class="pqd-b">' +
-      '<div id="pqdMem" class="pqd-it pqd-m"></div><div id="pqdDrop" class="pqd-drop"><b>Seret file Excel / CSV ke sini</b> atau <u>pilih file</u><small>Ruas jalan (kolom Ruas, STA, Latitude, Longitude) dan/atau jembatan (Nama, Latitude, Longitude). Jenis data dikenali otomatis; boleh banyak file sekaligus. Bisa juga tempel (Ctrl+V) langsung dari Excel.</small><input id="pqdFile" type="file" multiple accept=".xlsx,.xls,.csv" hidden></div>' +
-      '<div class="pqd-row">Mode: <label><input type="radio" name="pqdM" value="merge" checked> Gabung (tambah &amp; perbarui)</label><label><input type="radio" name="pqdM" value="replace"> Ganti semua</label>' +
+    box.innerHTML = '<div class="pqd-card"><div class="pqd-h"><b><i class="fa-solid fa-cloud-arrow-up"></i> ' + (ADM() ? 'Pusat Data Admin</b><span class="pqd-badge">ADMIN</span>' : 'Data Saya</b>') + '<button id="pqdX" aria-label="Tutup">×</button></div><div class="pqd-b">' +
+      (ADM() ? '<div class="pqd-role a"><i class="fa-solid fa-shield-halved"></i><div><b>Mode admin.</b> Kapasitas GitHub, ekspor <code>data-ruas.js</code>/<code>data-jembatan.js</code>, mode ganti-semua, dan seluruh alat data hanya tampil untuk akun admin.</div></div><div id="pqdStat" class="pqd-stats"></div>' : '<div class="pqd-role u"><i class="fa-solid fa-user-lock"></i><div><b>Data pribadi Anda.</b> Semua yang Anda unggah atau ubah di sini <b>hanya tersimpan di browser perangkat ini</b>. Tidak dikirim ke server dan tidak mengubah data resmi PETAQU milik pengguna lain. Anda bebas mengubah, mencadangkan, atau menghapusnya kapan saja.</div></div>') + '<div id="pqdMem" class="pqd-it pqd-m"></div><div id="pqdDrop" class="pqd-drop"><b>Seret file Excel / CSV ke sini</b> atau <u>pilih file</u><small>Ruas jalan (kolom Ruas, STA, Latitude, Longitude) dan/atau jembatan (Nama, Latitude, Longitude). Jenis data dikenali otomatis; boleh banyak file sekaligus. Bisa juga tempel (Ctrl+V) langsung dari Excel.</small><input id="pqdFile" type="file" multiple accept=".xlsx,.xls,.csv" hidden></div>' +
+      '<div class="pqd-row"' + (ADM() ? '' : ' style="display:none"') + '>Mode: <label><input type="radio" name="pqdM" value="merge" checked> Gabung (tambah &amp; perbarui)</label>' + (ADM() ? '<label><input type="radio" name="pqdM" value="replace"> Ganti semua</label>' : '') +
       '<label><input type="checkbox" id="pqdClip" checked> Lewati jembatan di luar wilayah data</label><label><input type="checkbox" id="pqdFix" checked> Perbaiki koordinat otomatis</label><label>Jenis: <select id="pqdKind"><option value="auto">Otomatis</option><option value="ruas">Ruas jalan</option><option value="jembatan">Jembatan</option></select></label></div>' +
       '<div id="pqdRes"></div><div class="pqd-row"><button id="pqdGo" class="pqd-btn pri" disabled>Terapkan ke peta</button><button id="pqdPv" class="pqd-btn" disabled>Lihat pratinjau di peta</button><button class="pqd-btn" data-t="ruas">Template ruas</button><button class="pqd-btn" data-t="jembatan">Template jembatan</button></div>' +
       '<details id="pqdHd"><summary>Cadangan &amp; urungkan</summary><div id="pqdHist"></div></details>' +
-      '<details><summary>Simpan permanen / ekspor</summary><div style="color:#9db3c9;font-size:12px;margin-top:6px">Perubahan di atas tersimpan di perangkat ini. Agar semua pengguna ikut ter-update, unduh file .js lalu ' + (window.__pqIsAdmin ? "unggah ke GitHub (ganti file lama)." : "berikan ke admin untuk menggantikan file lama.") + '</div><div class="pqd-g">' +
-      '<button class="pqd-btn" data-js="ruas">Unduh data-ruas.js</button><button class="pqd-btn" data-js="jembatan">Unduh data-jembatan.js</button><button class="pqd-btn" data-x="ruas">Excel ruas</button><button class="pqd-btn" data-x="jembatan">Excel jembatan</button><button class="pqd-btn" id="pqdReset" style="border-color:#f8717166">Reset ke data bawaan</button></div></details></div></div>';
+      (ADM() ? '<details><summary>Simpan permanen / ekspor (admin)</summary><div style="color:#9db3c9;font-size:12px;margin-top:6px">Perubahan di atas tersimpan di perangkat ini. Agar semua pengguna ikut ter-update, unduh file .js lalu unggah ke GitHub (ganti file lama).</div><div class="pqd-g">' +
+      '<button class="pqd-btn" data-js="ruas">Unduh data-ruas.js</button><button class="pqd-btn" data-js="jembatan">Unduh data-jembatan.js</button><button class="pqd-btn" data-x="ruas">Excel ruas</button><button class="pqd-btn" data-x="jembatan">Excel jembatan</button><button class="pqd-btn" id="pqdReset" style="border-color:#f8717166">Reset ke data bawaan</button></div></details>'
+      : '<details><summary>Cadangan &amp; ekspor pribadi</summary><div style="color:#9db3c9;font-size:12px;margin-top:6px">Simpan salinan data pribadi Anda agar tidak hilang bila cache browser dibersihkan, lalu pulihkan di perangkat mana pun.</div><div class="pqd-g">' +
+      '<button class="pqd-btn" id="pqdJsonOut">Unduh cadangan (.json)</button><button class="pqd-btn" id="pqdJsonIn">Pulihkan dari .json</button><input id="pqdJsonFile" type="file" accept=".json" hidden><button class="pqd-btn" data-x="ruas">Excel ruas</button><button class="pqd-btn" data-x="jembatan">Excel jembatan</button><button class="pqd-btn" id="pqdReset" style="border-color:#f8717166">Hapus data pribadi &amp; kembali ke data resmi</button></div></details>') + '</div></div>';
     document.body.appendChild(box);
     const drop = $("pqdDrop"), inp = $("pqdFile");
     $("pqdX").onclick = () => { box.classList.remove("show"); pvClear(); }; box.onclick = e => { if (e.target === box) box.classList.remove("show"); };
@@ -233,11 +244,17 @@
     ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("on"); }));
     drop.addEventListener("drop", e => take(e.dataTransfer.files));
     box.querySelectorAll("[name=pqdM]").forEach(r => r.onchange = () => { S.mode = r.value; reanalyze(); });
-    $("pqdClip").onchange = e => { S.clip = e.target.checked; reanalyze(); };
-    $("pqdKind").onchange = e => { S.force = e.target.value; const fs = S.items.map(i => i.f); S.items = []; take(fs); };
-    $("pqdFix").onchange = e => { S.fix = e.target.checked; reanalyze(); }; $("pqdPv").onclick = preview;
+    const gd = (id, f) => { const e = $(id); if (e) e.onchange = f; };
+    gd("pqdClip", e => { S.clip = e.target.checked; reanalyze(); });
+    gd("pqdKind", e => { S.force = e.target.value; const fs = S.items.map(i => i.f); S.items = []; take(fs); });
+    gd("pqdFix", e => { S.fix = e.target.checked; reanalyze(); }); $("pqdPv").onclick = preview;
     document.addEventListener("paste", e => { if (!box.classList.contains("show")) return; let t = (e.clipboardData || window.clipboardData).getData("text"); if (!t || !/\n/.test(t)) return; const tab = /\t/.test(t); if (!tab && (t.match(/;/g) || []).length > (t.match(/,/g) || []).length) t = t.replace(/;/g, "\t"); if (!tab && !/[;,\t]/.test(t)) return; e.preventDefault(); take([new File([t], tab || /;/.test(t) ? "tempelan.tsv" : "tempelan.csv")]); });
     $("pqdGo").onclick = apply; $("pqdReset").onclick = reset;
+    const jo = $("pqdJsonOut"); if (jo) {
+      jo.onclick = () => dl("petaqu-data-saya-" + new Date().toISOString().slice(0, 10) + ".json", new Blob([JSON.stringify({ app: "PETAQU", v: 1, t: Date.now(), roads: liveR(), jbt: liveB() })], { type: "application/json" }));
+      $("pqdJsonIn").onclick = () => $("pqdJsonFile").click();
+      $("pqdJsonFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { const j = JSON.parse(await f.text()); if (j.app !== "PETAQU" || !Array.isArray(j.roads) || !Array.isArray(j.jbt)) throw new Error("Bukan file cadangan PETAQU"); if (!confirm("Pulihkan " + fmt(j.roads.length) + " ruas & " + fmt(j.jbt.length) + " jembatan dari file ini? Data sekarang dicadangkan dulu.")) return; await bakPut("Sebelum pulihkan file .json"); setRoads(j.roads); setBr(j.jbt); refresh(); histDraw(); note("Data pribadi dipulihkan"); } catch (err) { note("Gagal: " + err.message, true); } };
+    }
     box.querySelectorAll("[data-t]").forEach(b => b.onclick = () => C().downloadExample(b.dataset.t));
     box.querySelectorAll("[data-js]").forEach(b => b.onclick = () => dlJS(b.dataset.js));
     box.querySelectorAll("[data-x]").forEach(b => b.onclick = () => dlXlsx(b.dataset.x));
@@ -263,7 +280,7 @@
   }
   /* status admin berubah (login/logout): bangun ulang panel agar teks GitHub ikut tampil/hilang */
   window.addEventListener("pq-admin", () => { const m = $("pqdBox"); if (m) m.remove(); });
-  function open() { if (!$("pqdBox")) build(); const bk = $("pqdBack"); if (bk) bk.remove(); $("pqdBox").classList.add("show"); draw(); memDraw(); }
+  function open() { if (!ADM()) { S.mode = "merge"; S.force = "auto"; } if (!$("pqdBox")) build(); const bk = $("pqdBack"); if (bk) bk.remove(); $("pqdBox").classList.add("show"); draw(); memDraw(); }
   function init() {
     const b = document.createElement("button"); b.type = "button"; b.title = "Upload data ruas jalan & jembatan (Excel/CSV) — langsung tampil di peta"; b.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i>'; b.onclick = open;
     if (window.PQ_DOCK) PQ_DOCK.adopt(b, "Upload Data");
