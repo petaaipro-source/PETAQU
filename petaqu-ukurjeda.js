@@ -224,6 +224,11 @@
       if (st.type === "road") {
         road = R.filter(function (r) { return r.id === st.roadId; })[0]; if (!road || !road.points[st.index]) return null;
         idx = st.index; lat = +road.points[idx].lat; lng = +road.points[idx].lng;
+      } else if (st.type === "jembatan") {      /* Street View dibuka dari jembatan → ukur di titik jembatan, arah dari ruas terdekat */
+        var J = (typeof JEMBATAN_DB !== "undefined" ? JEMBATAN_DB : []).filter(function (j) { return j.id === st.jembatanId; })[0];
+        if (!J || !isFinite(J.lat) || !isFinite(J.lng)) return null;
+        lat = +J.lat; lng = +J.lng; label = J.nama || "Jembatan"; var bj = 120;
+        R.forEach(function (r) { (r.points || []).forEach(function (p, i) { var d = meters({ lat: lat, lng: lng }, { lat: +p.lat, lng: +p.lng }); if (d < bj) { bj = d; road = r; idx = i; } }); });
       } else if (st.type === "geo" && isFinite(st.lat) && isFinite(st.lng)) {
         lat = +st.lat; lng = +st.lng; var bd = 80;
         R.forEach(function (r) { (r.points || []).forEach(function (p, i) { var d = meters({ lat: lat, lng: lng }, { lat: +p.lat, lng: +p.lng }); if (d < bd) { bd = d; road = r; idx = i; } }); });
