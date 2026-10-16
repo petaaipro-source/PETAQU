@@ -150,7 +150,18 @@
     return list;
   }
   var JNC = null;
-  function jnCands() { if (!JNC) { try { JNC = buildCands(true).filter(function (c) { return c.src === "jn"; }); } catch (e) { JNC = []; } } return JNC; }
+  function jnCands() {
+    if (!JNC) {
+      try { JNC = buildCands(true).filter(function (c) { return c.src === "jn"; }); } catch (e) { JNC = []; }
+      try {   /* cadangan: patok KM nasional (pk-data) → jalur garis lurus antar patok, STA = jarak kumulatif */
+        var pk = JSON.parse($("pk-data").textContent), grp = {}, have = {};
+        JNC.forEach(function (c) { have[c.tok && Object.keys(c.tok).sort().join(" ")] = 1; });
+        pk.forEach(function (r) { var nm = String(r[3] || "").replace(/^\s*\d+\.\s*/, "").trim(), d = parseFloat(String(r[4]).replace(/,/g, "")); if (nm && isFinite(r[0]) && isFinite(r[1]) && isFinite(d)) (grp[nm] = grp[nm] || []).push([r[0], r[1], d]); });
+        Object.keys(grp).forEach(function (nm) { var a = grp[nm].sort(function (x, y) { return x[2] - y[2]; }); if (a.length < 2) return; var c = mkCand(nm, "", a.map(function (p) { return [p[0], p[1]]; }), a.map(function (p) { return p[2]; }), "jn", null); c.viaPk = 1; if (!have[Object.keys(c.tok).sort().join(" ")]) JNC.push(c); });
+      } catch (e) { }
+    }
+    return JNC;
+  }
   function fillSta(c) {
     var n = c.pts.length, s = c.sta ? c.sta.slice() : new Array(n).fill(null), cum = c.cum, k;
     var known = s.map(function (v, i) { return v != null ? i : -1; }).filter(function (i) { return i >= 0; });
@@ -540,7 +551,7 @@
       if (best < .4) cand = null;
       if (!cand) {   /* tak ada di peta → cocokkan NAMA ruas ke database Jalan Nasional (jalur & STA dari jarak) */
         var jb = 0, jc = null; jnCands().forEach(function (c) { var sc = nameScore(tk, c.tok); if (c.code && k.indexOf(c.code) > -1) sc = Math.max(sc, .9); if (sc > jb) { jb = sc; jc = c; } });
-        if (jc && jb >= .6) { cand = jc; best = jb; note.push("ruas dicocokkan dari NAMA ke database Jalan Nasional (STA dihitung dari jarak" + (opt.flip ? ", arah dibalik" : "; centang 'Balik arah' bila terbalik") + ")"); }
+        if (jc && jb >= .6) { cand = jc; best = jb; note.push("ruas dicocokkan dari NAMA ke database Jalan Nasional" + (jc.viaPk ? " (jalur garis lurus antar patok KM, perkiraan)" : "") + (jc.staReal ? "" : " (STA dihitung dari jarak; centang 'Balik arah' bila terbalik)")); }
       }
       var smp = cr.length > 25 ? cr.filter(function (r, i) { return i % Math.ceil(cr.length / 25) === 0; }) : cr;
       var near = function (c) { return smp.map(function (r) { return snap(c, r.lat, r.lng).d; }); };
