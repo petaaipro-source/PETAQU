@@ -420,6 +420,6 @@
     typeof PQ_DOCK !== "undefined" ? put() : setTimeout(put, 1000);
     const wait = setInterval(() => { if (gmap() && window.L) { clearInterval(wait); drawNet(); const mm = gmap(); mm.on("moveend", () => { clearTimeout(MVT); MVT = setTimeout(autoLoad, 700); }); autoLoad(); } }, 800); setTimeout(() => clearInterval(wait), 60000);
   }
-  window.PETAQU_KERETA = { open, toggle: setOn, refresh: () => autoLoad(true), setPt, focusX, _plan: plan, _risk: risk, _detect: detect, _st: () => ST, _jl: () => JL, _build: build, _osm: (w, c) => { OSMW = w || []; OSMC = c || []; }, setScope, loadRegion, _reg: { S, card: scopeCard, build: buildReg, inReg, tileIn, wayIn, tiles: regTiles, get REG() { return REG; } } };
+  window.PETAQU_KERETA = { rows: () => [{ id: "kereta", name: "Jaringan Kereta Api", ic: "\uf238", c: "#f59e0b", on: S.on !== false }, { id: "keretapanel", name: "Perlintasan & Jenis KA (panel)", ic: "\uf238", c: "#fbbf24", on: null }], act: id => { if (id === "keretapanel") open(); else setOn(); }, open, toggle: setOn, refresh: () => autoLoad(true), setPt, focusX, _plan: plan, _risk: risk, _detect: detect, _st: () => ST, _jl: () => JL, _build: build, _osm: (w, c) => { OSMW = w || []; OSMC = c || []; }, setScope, loadRegion, _reg: { S, card: scopeCard, build: buildReg, inReg, tileIn, wayIn, tiles: regTiles, get REG() { return REG; } } };
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init();
 })();

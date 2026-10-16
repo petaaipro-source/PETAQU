@@ -72,7 +72,7 @@
   function dockItems() {
     var d = $("pqDock");
     var n = d && d.children[1];
-    return n ? Array.prototype.filter.call(n.children, function (a) { return a.tagName === "BUTTON" && a.id !== "pqkBtn" && a.id !== "pqgBtn"; }) : [];
+    return n ? Array.prototype.filter.call(n.children, function (a) { return a.tagName === "BUTTON" && a.id !== "pqkBtn" && a.id !== "pqgBtn" && !/KA On\/Off|^\s*Kereta Api\s*$|Rute Pesawat/i.test(((a.children[1] ? a.children[1].textContent : a.textContent) || "")); }) : [];
   }
 
   function jtParts() {
@@ -129,9 +129,15 @@
     var Z = [];
     try { if (window.PETAQU_RAWAN && PETAQU_RAWAN.rows) Z = PETAQU_RAWAN.rows(); } catch (e) { Z = []; }
     try { if (window.PETAQU_GEMPA && PETAQU_GEMPA.rows) Z = Z.concat(PETAQU_GEMPA.rows()); } catch (e) { }
-    try { if (window.PETAQU_FLIGHT && PETAQU_FLIGHT.rows) Z = Z.concat(PETAQU_FLIGHT.rows()); } catch (e) { }
-    grp("rawan", "Rawan Bencana & Lalu Lintas", "\uf071", "#f87171");
+        grp("rawan", "Rawan Bencana", "\uf071", "#f87171");
     Z.forEach(function (x) { add("Z:" + x.id, x.name, fi(x.ic), x.c, x.on); });
+
+    var T = [];
+    try { if (window.PETAQU_KERETA && PETAQU_KERETA.rows) T = T.concat(PETAQU_KERETA.rows().map(function (x) { x.p = "KA"; return x; })); } catch (e) { }
+    try { if (window.PETAQU_PESAWAT && PETAQU_PESAWAT.rows) T = T.concat(PETAQU_PESAWAT.rows().map(function (x) { x.p = "PW"; return x; })); } catch (e) { }
+    try { if (window.PETAQU_FLIGHT && PETAQU_FLIGHT.rows) T = T.concat(PETAQU_FLIGHT.rows().map(function (x) { x.p = "FL"; return x; })); } catch (e) { }
+    grp("transport", "Kereta Api & Pesawat", "\uf238", "#f59e0b");
+    T.forEach(function (x) { add("K:" + x.p + ":" + x.id, x.name, fi(x.ic), x.c, x.on); });
 
     var N = []; try { if (window.PETAQU_DRAINASE && PETAQU_DRAINASE.rows) N = PETAQU_DRAINASE.rows(); } catch (e) { }
     grp("drainase", "Drainase", "\uf043", "#2dd4bf");
@@ -207,6 +213,10 @@
       closePanels(); closeJt();
       var zid = k.slice(2);
       try { if (zid === "penerbangan") PETAQU_FLIGHT.act(); else if (zid === "gempatsunami") PETAQU_GEMPA.act(); else PETAQU_RAWAN.act(zid); } catch (e) { }
+    } else if (k.charAt(0) === "K") {
+      closePanels(); closeJt();
+      var kp = k.split(":");
+      try { if (kp[1] === "KA") PETAQU_KERETA.act(kp[2]); else if (kp[1] === "PW") PETAQU_PESAWAT.act(kp[2]); else PETAQU_FLIGHT.act(); } catch (e) { }
     } else if (k.charAt(0) === "N") {
       closePanels(); closeJt();
       try { PETAQU_DRAINASE.act(k.slice(2)); } catch (e) { }

@@ -713,6 +713,8 @@
     const wait = setInterval(() => { if (gmap() && window.L) { clearInterval(wait); ensureLayers(); if (S.net) setNet(true); if (S.apts) setApts(true); } }, 800); setTimeout(() => clearInterval(wait), 60000);
   }
   window.PETAQU_PESAWAT = {
+    rows: () => [{ id: "pwnet", name: "Jaringan Rute Pesawat", ic: "\uf5af", c: "#22d3ee", on: !!S.net }, { id: "pwapt", name: "Bandara Indonesia", ic: "\uf072", c: "#38bdf8", on: !!S.apts }, { id: "pwpanel", name: "Perencana Rute Pesawat (panel)", ic: "\uf5af", c: "#7dd3fc", on: null }],
+    act: id => { if (id === "pwnet") setNet(!S.net); else if (id === "pwapt") setApts(!S.apts); else open(); },
     open, _plan: plan, _nearest: nearest, _airs: AIRS, _edges: EDGES, _adj: ADJ, _draw: drawItin, _spider: drawSpider, _components: components, _state: () => S, _insights: insights, _hav: hav, _rebuild: buildData, _tz: tzFor,
     _legs: legOptions, _island: islandOfPoint, _rc: RC, _need: NEED, _fetchNeeds: fetchNeeds, _legName: legName, _sta: STA, _overland: overland,
     _f: filterAirports, _pj: v => { const x = projectList()[+v]; if (x) { REFSRC = { type: "proj" }; setRef(x.lat, x.lng, x.n); } },
