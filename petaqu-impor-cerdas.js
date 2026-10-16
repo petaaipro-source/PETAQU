@@ -149,6 +149,8 @@
     }
     return list;
   }
+  var JNC = null;
+  function jnCands() { if (!JNC) { try { JNC = buildCands(true).filter(function (c) { return c.src === "jn"; }); } catch (e) { JNC = []; } } return JNC; }
   function fillSta(c) {
     var n = c.pts.length, s = c.sta ? c.sta.slice() : new Array(n).fill(null), cum = c.cum, k;
     var known = s.map(function (v, i) { return v != null ? i : -1; }).filter(function (i) { return i >= 0; });
@@ -536,6 +538,10 @@
       var g = groups[k], rs = g.rows, cr = rs.filter(function (r) { return r.lat != null; }), hasC = cr.length >= Math.max(2, rs.length * .6), cand = null, best = 0, tk = tokens(k), S = [], note = [];
       cands.forEach(function (c) { var sc = nameScore(tk, c.tok); if (c.code && k.indexOf(c.code) > -1) sc = Math.max(sc, .9); if (sc > best) { best = sc; cand = c; } });
       if (best < .4) cand = null;
+      if (!cand) {   /* tak ada di peta → cocokkan NAMA ruas ke database Jalan Nasional (jalur & STA dari jarak) */
+        var jb = 0, jc = null; jnCands().forEach(function (c) { var sc = nameScore(tk, c.tok); if (c.code && k.indexOf(c.code) > -1) sc = Math.max(sc, .9); if (sc > jb) { jb = sc; jc = c; } });
+        if (jc && jb >= .6) { cand = jc; best = jb; note.push("ruas dicocokkan dari NAMA ke database Jalan Nasional (STA dihitung dari jarak" + (opt.flip ? ", arah dibalik" : "; centang 'Balik arah' bila terbalik") + ")"); }
+      }
       var smp = cr.length > 25 ? cr.filter(function (r, i) { return i % Math.ceil(cr.length / 25) === 0; }) : cr;
       var near = function (c) { return smp.map(function (r) { return snap(c, r.lat, r.lng).d; }); };
       if (!cand && hasC) {
@@ -713,6 +719,7 @@
     var n = 0, nr = 0;
     IRI_G.forEach(function (g) {
       if (!g.cand || !g.ints) return;
+      if (g.cand.src === "jn") { var jp = g.samples.map(function (s) { var q = atSta(g.cand, Math.max(0, s.sta)); return q && q.inRange ? mkPoint(fmtSta(s.sta), q.lat, q.lng, { iri: s.iri, kondisi: s.kond }) : null; }).filter(Boolean); if (jp.length) { n += pushToRoad(g.name, jp, null); nr++; } return; }
       if (g.cand.src === "xls") { var pts = g.samples.filter(function (s) { return s.lat != null; }).map(function (s) { return mkPoint(fmtSta(s.sta), s.lat, s.lng, { iri: s.iri, kondisi: s.kond }); }); if (pts.length) { n += pushToRoad(g.name, pts, null); nr++; } return; }
       var road = roads.filter(function (r) { return r.id === g.cand.id; })[0]; if (!road) return;
       var pick = function (sta) { for (var i = 0; i < g.ints.length; i++) { var it = g.ints[i]; if (it.a && it.a.length && sta >= it.l0 - .5 && sta <= it.l1 + .5) return it; } return null; };
