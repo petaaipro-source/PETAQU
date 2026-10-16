@@ -42,6 +42,16 @@
     ".pqf-t{flex:1;min-width:0}",
     ".pqf-st{flex:none;font:800 9px/1 system-ui,sans-serif;letter-spacing:.6px;padding:3px 6px;border-radius:8px;background:rgba(52,211,153,.18);color:#6ee7b7}",
     ".pqf-st.off{background:#334155aa;color:#94a3b8}",
+    /* grup tema yang bisa dilipat */
+    ".pqf-g{margin:3px 0}",
+    ".pqf-gh{display:flex;align-items:center;gap:9px;width:100%;padding:8px 9px;border:0;border-radius:10px;background:#ffffff08;color:#9fb3c8;font:700 10.5px/1 system-ui,sans-serif;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;text-align:left}",
+    ".pqf-gh:hover,.pqf-gh:focus-visible{background:#22d3ee14;color:#e2eefa;outline:0}",
+    ".pqf-gi{width:22px;height:22px;flex:none;border-radius:7px;display:flex;align-items:center;justify-content:center;border:1px solid var(--c,#22d3ee);color:var(--c,#22d3ee);background:#0f1726}.pqf-gi .pq-fi{font-size:11px}",
+    ".pqf-gt{flex:1;min-width:0}",
+    ".pqf-gc{flex:none;font:800 9px/1 system-ui,sans-serif;letter-spacing:.4px;padding:3px 6px;border-radius:8px;background:#334155aa;color:#94a3b8}.pqf-gc.on{background:rgba(52,211,153,.18);color:#6ee7b7}",
+    ".pqf-chev{flex:none;font-size:10px!important;transition:transform .2s;transform:rotate(-90deg)}.pqf-g.open .pqf-chev{transform:none}",
+    ".pqf-b{display:none;padding:2px 0 4px 2px}.pqf-g.open .pqf-b{display:block}",
+    ".pqf-tip{padding:7px 10px 2px;font:11px/1.35 system-ui,sans-serif;color:#7c8aa0}.pqf-tip b{color:#22d3ee;font-weight:700}",
     /* panel transparansi: muncul di bawah folder, bukan lagi di pojok kiri-bawah */
     "html body #jtFloat.open .jt-fp{position:fixed;left:var(--pq-fl);top:calc(var(--pq-ft) + 52px);width:min(270px,calc(100vw - 20px));max-width:none;max-height:calc(100dvh - var(--pq-ft) - 80px);z-index:1260;padding-right:30px;background:rgba(7,26,38,.94);border-color:#22d3ee44;transition:left .25s ease}",
     ".pqf-x{position:absolute;top:4px;right:6px;width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#8fa6bd;font-size:18px;line-height:1;cursor:pointer}.pqf-x:hover{color:#fff;background:#ffffff1a}",
@@ -91,161 +101,155 @@
     if (j.box && j.box.classList.contains("open") && j.fb) j.fb.click();
   }
 
-  function render(force) {
-    var L = [];
-    LAY.forEach(function (l) {
-      var b = $(l[0]);
-      if (b) L.push({ id: l[0], name: l[1], ic: l[2], c: l[3], on: !b.classList.contains("off") });
-    });
-    var j = jtParts();
-    var T = j.fb ? { on: !!(j.chk && j.chk.checked) } : null;
-    items = dockItems();
-    var D = items.map(function (a) {
-      return {
-        ic: a.children[0] ? a.children[0].innerHTML : "",
-        t: (a.children[1] ? a.children[1].textContent : a.textContent).trim()
-      };
-    });
+  /* ---------- model: semua lapisan/alat dikelompokkan per tema ---------- */
+  var OPEN_KEY = "pqf_open_v1";
+  function gOpen() { try { var o = JSON.parse(localStorage.getItem(OPEN_KEY) || "null"); if (o && typeof o === "object") return o; } catch (e) { } return { jalan: 1 }; }
+  function gSave(o) { try { localStorage.setItem(OPEN_KEY, JSON.stringify(o)); } catch (e) { } }
+  function fi(g) { return '<i class="pq-fi">' + g + "</i>"; }
 
-    var cnt = L.filter(function (x) { return x.on; }).length;
-    try { (window.PQ_FOLDER_EXTRA || []).forEach(function (sec) { sec.rows().forEach(function (x) { if (x.on && x.id !== "panel") cnt++; }); }); } catch (e) { }
-    var badge = btn.querySelector("b");
-    var txt = cnt ? String(cnt) : "";
-    if (badge.textContent !== txt) badge.textContent = txt;
+  function model() {
+    var G = [], g;
+    function grp(id, t, icon, c) { g = { id: id, t: t, icon: icon, c: c, rows: [] }; G.push(g); return g; }
+    function add(k, name, ic, c, on, label) { g.rows.push({ k: k, name: name, ic: ic, c: c, on: on == null ? null : !!on, label: label }); }
+
+    grp("jalan", "Lapisan Jalan", "\uf018", "#22d3ee");
+    LAY.forEach(function (l) { var b = $(l[0]); if (b) add("L:" + l[0], l[1], fi(l[2]), l[3], !b.classList.contains("off")); });
+
+    grp("tampil", "Tampilan Peta", "\uf1de", "#a78bfa");
+    var j = jtParts();
+    if (j.fb) add("T", "Transparansi wilayah (pilih)", "\u25D0", "#22d3ee", !!(j.chk && j.chk.checked));
+    if (window.PETAQU_BLOK) { var BK = 0; try { BK = PETAQU_BLOK.count(); } catch (e) { } add("B", "Blok warna wilayah", "\u25A8", "#f59e0b", BK > 0, BK ? BK + " ON" : "OFF"); }
 
     var W = [];
     try { if (window.PETAQU_CUACA && PETAQU_CUACA.rows) W = PETAQU_CUACA.rows(); } catch (e) { W = []; }
     try { if (window.PETAQU_KLIMAT && PETAQU_KLIMAT.rows) W = W.concat(PETAQU_KLIMAT.rows()); } catch (e) { }
-    var Z = []; try { if (window.PETAQU_RAWAN && PETAQU_RAWAN.rows) Z = PETAQU_RAWAN.rows(); } catch (e) { Z = []; }
+    grp("cuaca", "Cuaca & Iklim", "\uf743", "#38bdf8");
+    W.forEach(function (x) { add("W:" + x.id, x.name, fi(x.ic), x.c, x.on); });
+
+    var Z = [];
+    try { if (window.PETAQU_RAWAN && PETAQU_RAWAN.rows) Z = PETAQU_RAWAN.rows(); } catch (e) { Z = []; }
     try { if (window.PETAQU_GEMPA && PETAQU_GEMPA.rows) Z = Z.concat(PETAQU_GEMPA.rows()); } catch (e) { }
     try { if (window.PETAQU_FLIGHT && PETAQU_FLIGHT.rows) Z = Z.concat(PETAQU_FLIGHT.rows()); } catch (e) { }
+    grp("rawan", "Rawan Bencana & Lalu Lintas", "\uf071", "#f87171");
+    Z.forEach(function (x) { add("Z:" + x.id, x.name, fi(x.ic), x.c, x.on); });
+
     var N = []; try { if (window.PETAQU_DRAINASE && PETAQU_DRAINASE.rows) N = PETAQU_DRAINASE.rows(); } catch (e) { }
-    var X = [];
-    try { (window.PQ_FOLDER_EXTRA || []).forEach(function (sec, si) { X.push({ si: si, t: sec.title, r: sec.rows() }); }); } catch (e) { X = []; }
-    var s = JSON.stringify([L, T, (window.PETAQU_BLOK ? PETAQU_BLOK.count() : -1), W, Z, N, X, D.map(function (d) { return d.t; })]);
+    grp("drainase", "Drainase", "\uf043", "#2dd4bf");
+    N.forEach(function (x) { add("N:" + x.id, x.name, fi(x.ic), x.c, x.on); });
+
+    try {
+      (window.PQ_FOLDER_EXTRA || []).forEach(function (sec, si) {
+        var r = sec.rows(); if (!r.length) return;
+        grp("x" + si, sec.t || sec.title, "\uf5fd", "#c084fc");
+        r.forEach(function (x) { add("X:" + si + ":" + x.id, x.name, x.ic, x.c, x.on); });
+      });
+    } catch (e) { }
+
+    items = dockItems();
+    grp("alat", "Alat PETAQU", "\uf552", "#fbbf24");
+    items.forEach(function (a, i) {
+      add("D:" + i, (a.children[1] ? a.children[1].textContent : a.textContent).trim(), a.children[0] ? a.children[0].innerHTML : "", "#22d3ee", null);
+    });
+    return G.filter(function (x) { return x.rows.length; });
+  }
+
+  function render(force) {
+    var G = model(), cnt = 0;
+    G.forEach(function (g) { g.rows.forEach(function (x) { if (x.on === true) cnt++; }); });
+    var badge = btn.querySelector("b"), txt = cnt ? String(cnt) : "";
+    if (badge.textContent !== txt) badge.textContent = txt;
+
+    var s = JSON.stringify(G.map(function (g) { return [g.id, g.t, g.rows.map(function (r) { return [r.k, r.name, r.on, r.label]; })]; }));
     if (s === sig && !force) return;
     sig = s;
 
+    var op = gOpen();
     var h = '<button type="button" class="pqf-row pqf-danger" data-k="R" style="--c:#f87171" title="Kembalikan semua data ruas ke data asli impor Excel awal">' +
-      '<span class="pqf-ic"><i class="pq-fi">\uf2ea</i></span><span class="pqf-t">Reset ke Data Asli</span></button>';
-    if (L.length) {
-      h += '<div class="pqf-h">Lapisan jalan</div>';
-      L.forEach(function (x) {
-        h += '<button type="button" class="pqf-row" data-k="L:' + x.id + '" style="--c:' + x.c + '">' +
-          '<span class="pqf-ic"><i class="pq-fi">' + x.ic + "</i></span>" +
-          '<span class="pqf-t">' + esc(x.name) + "</span>" +
-          '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span></button>";
-      });
-    }
-    if (T) {
-      h += '<div class="pqf-h">Tampilan</div>' +
-        '<button type="button" class="pqf-row" data-k="T" style="--c:#22d3ee">' +
-        '<span class="pqf-ic">\u25D0</span><span class="pqf-t">Transparansi wilayah (pilih)</span>' +
-        '<span class="pqf-st' + (T.on ? "" : " off") + '">' + (T.on ? "ON" : "OFF") + "</span></button>";
-
-    }
-    if (window.PETAQU_BLOK) {
-      var BK = PETAQU_BLOK.count();
-      if (!T) h += '<div class="pqf-h">Tampilan</div>';
-      h += '<button type="button" class="pqf-row" data-k="B" style="--c:#f59e0b">' +
-        '<span class="pqf-ic">\u25A8</span><span class="pqf-t">Blok warna wilayah</span>' +
-        '<span class="pqf-st' + (BK ? "" : " off") + '">' + (BK ? BK + " ON" : "OFF") + "</span></button>";
-    }
-    if (W.length) {
-      h += '<div class="pqf-h">Cuaca Indonesia</div>';
-      W.forEach(function (x) {
-        h += '<button type="button" class="pqf-row" data-k="W:' + x.id + '" style="--c:' + x.c + '">' +
-          '<span class="pqf-ic"><i class="pq-fi">' + x.ic + "</i></span>" +
-          '<span class="pqf-t">' + esc(x.name) + "</span>" +
-          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
-      });
-    }
-    if (Z.length) {
-      h += '<div class="pqf-h">Rawan Bencana &amp; Lalu Lintas</div>';
-      Z.forEach(function (x) {
-        h += '<button type="button" class="pqf-row" data-k="Z:' + x.id + '" style="--c:' + x.c + '">' +
-          '<span class="pqf-ic"><i class="pq-fi">' + x.ic + "</i></span>" +
-          '<span class="pqf-t">' + esc(x.name) + "</span>" +
-          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
-      });
-    }
-    if (N.length) {
-      h += '<div class="pqf-h">Drainase</div>';
-      N.forEach(function (x) {
-        h += '<button type="button" class="pqf-row" data-k="N:' + x.id + '" style="--c:' + x.c + '">' +
-          '<span class="pqf-ic"><i class="pq-fi">' + x.ic + "</i></span>" +
-          '<span class="pqf-t">' + esc(x.name) + "</span>" +
-          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
-      });
-    }
-    X.forEach(function (sec) {
-      if (!sec.r.length) return;
-      h += '<div class="pqf-h">' + esc(sec.t) + "</div>";
-      sec.r.forEach(function (x) {
-        h += '<button type="button" class="pqf-row" data-k="X:' + sec.si + ":" + x.id + '" style="--c:' + x.c + '">' +
+      '<span class="pqf-ic"><i class="pq-fi">\uf2ea</i></span><span class="pqf-t">Reset ke Data Asli</span></button>' +
+      '<div class="pqf-tip"><b>Tips:</b> ketik nama lapisan di kolom cari (mis. <b>hujan</b>, <b>tol</b>, <b>gempa</b>) untuk menyalakannya langsung.</div>';
+    G.forEach(function (g) {
+      var on = g.rows.filter(function (r) { return r.on === true; }).length, o = !!op[g.id];
+      h += '<div class="pqf-g' + (o ? " open" : "") + '" data-g="' + g.id + '">' +
+        '<button type="button" class="pqf-gh" aria-expanded="' + o + '" style="--c:' + g.c + '">' +
+        '<span class="pqf-gi"><i class="pq-fi">' + g.icon + '</i></span><span class="pqf-gt">' + esc(g.t) + '</span>' +
+        '<span class="pqf-gc' + (on ? " on" : "") + '">' + (on ? on + " aktif" : g.rows.length) + '</span><i class="pq-fi pqf-chev">\uf078</i></button><div class="pqf-b">';
+      g.rows.forEach(function (x) {
+        h += '<button type="button" class="pqf-row" data-k="' + esc(x.k) + '" style="--c:' + x.c + '">' +
           '<span class="pqf-ic">' + x.ic + '</span><span class="pqf-t">' + esc(x.name) + "</span>" +
-          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.on ? "ON" : "OFF") + "</span>") + "</button>";
+          (x.on == null ? "" : '<span class="pqf-st' + (x.on ? "" : " off") + '">' + (x.label || (x.on ? "ON" : "OFF")) + "</span>") + "</button>";
       });
+      h += "</div></div>";
     });
-    if (D.length) {
-      h += '<div class="pqf-h">Alat PETAQU</div>';
-      D.forEach(function (d, i) {
-        h += '<button type="button" class="pqf-row" data-k="D:' + i + '" style="--c:#22d3ee">' +
-          '<span class="pqf-ic">' + d.ic + '</span><span class="pqf-t">' + esc(d.t) + "</span></button>";
-      });
-    }
+    var top = card.scrollTop;
     card.innerHTML = h || '<div class="pqf-h">Belum ada item</div>';
+    card.scrollTop = top;
   }
 
-  function onRow(e) {
-    var r = e.target.closest(".pqf-row");
-    if (!r) return;
-    var k = r.getAttribute("data-k") || "";
-    set(false);
+  function toggleGroup(gEl) {
+    var o = gEl.classList.toggle("open"), id = gEl.getAttribute("data-g"), op = gOpen();
+    op[id] = o ? 1 : 0; gSave(op);
+    var hb = gEl.querySelector(".pqf-gh"); if (hb) hb.setAttribute("aria-expanded", o ? "true" : "false");
+  }
+
+  function activate(k) {
     if (k === "R") {
-      closePanels();
-      closeJt();
+      closePanels(); closeJt();
       try { if (typeof resetToOriginal === "function") resetToOriginal(); } catch (e) { }
     } else if (k.charAt(0) === "L") {
       var id = k.slice(2), meta = LAY.filter(function (l) { return l[0] === id; })[0];
-      closePanels(meta && meta[4]);
-      closeJt();
-      var b = $(id);
-      if (b) b.click();
+      closePanels(meta && meta[4]); closeJt();
+      var b = $(id); if (b) b.click();
     } else if (k.charAt(0) === "W") {
-      closePanels();
-      closeJt();
+      closePanels(); closeJt();
       var wid = k.slice(2);
       try { if (wid === "angin" || wid === "awan" || wid === "enso") PETAQU_KLIMAT.act(wid); else PETAQU_CUACA.act(wid); } catch (e) { }
     } else if (k.charAt(0) === "Z") {
-      closePanels();
-      closeJt();
+      closePanels(); closeJt();
       var zid = k.slice(2);
       try { if (zid === "penerbangan") PETAQU_FLIGHT.act(); else if (zid === "gempatsunami") PETAQU_GEMPA.act(); else PETAQU_RAWAN.act(zid); } catch (e) { }
     } else if (k.charAt(0) === "N") {
-      closePanels();
-      closeJt();
+      closePanels(); closeJt();
       try { PETAQU_DRAINASE.act(k.slice(2)); } catch (e) { }
     } else if (k.charAt(0) === "X") {
       var pr = k.split(":"), sx = (window.PQ_FOLDER_EXTRA || [])[+pr[1]];
-      closePanels();
-      closeJt();
+      closePanels(); closeJt();
       try { if (sx) sx.act(pr.slice(2).join(":")); } catch (e) { }
     } else if (k === "B") {
       closePanels();
       try { PETAQU_BLOK.open(); } catch (e) { }
     } else if (k === "T") {
       closePanels();
-      var j = jtParts();
-      if (j.fb) j.fb.click();
+      var j = jtParts(); if (j.fb) j.fb.click();
     } else if (k.charAt(0) === "D") {
-      closePanels();
-      closeJt();
-      var a = items[+k.slice(2)];
-      if (a) a.click();
+      closePanels(); closeJt();
+      var a = items[+k.slice(2)]; if (a) a.click();
     }
     setTimeout(function () { render(); }, 60);
   }
+
+  function onRow(e) {
+    var gh = e.target.closest(".pqf-gh");
+    if (gh) { toggleGroup(gh.parentNode); return; }
+    var r = e.target.closest(".pqf-row");
+    if (!r) return;
+    set(false);
+    activate(r.getAttribute("data-k") || "");
+  }
+
+  /* API untuk mesin pencari (petaqu-cari.js): daftar semua lapisan + alat, dan jalankan satu item */
+  window.PQ_FOLDER = {
+    entries: function () {
+      var out = [];
+      try { model().forEach(function (g) { g.rows.forEach(function (r) { if (r.k !== "R") out.push({ k: r.k, name: r.name, group: g.t, gid: g.id, c: r.c, on: r.on }); }); }); } catch (e) { }
+      return out;
+    },
+    go: function (k) { if (card) set(false); activate(k); },
+    open: function (gid) {
+      if (!card) return;
+      if (gid) { var op = gOpen(); op[gid] = 1; gSave(op); }
+      set(true);
+    }
+  };
 
   function addCloseToJt() {
     var fp = document.querySelector("#jtFloat .jt-fp");

@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Peta Ruas Jalan",
+  "name": "PETAQU — Peta Infrastruktur Terpadu",
   "short_name": "PETAQU",
-  "description": "Peta Ruas Jalan & Jembatan",
+  "description": "Peta infrastruktur terpadu: ruas jalan, jembatan, cuaca, bencana & drainase",
   "lang": "id",
   "start_url": "./",
   "scope": "./",

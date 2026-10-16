@@ -78,7 +78,7 @@ body:has(#pqCari.focus) #pqFolderCard{display:none!important}\
 #pqCari .it{display:flex;gap:12px;align-items:center;padding:9px 14px;cursor:pointer;border-left:3px solid transparent}\
 #pqCari .it:hover,#pqCari .it.on{background:rgba(34,211,238,.08);border-left-color:#22d3ee}\
 #pqCari .ic{width:32px;height:32px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;color:#22d3ee;background:rgba(34,211,238,.1)}\
-#pqCari .ic.jembatan{color:#fbbf24;background:rgba(251,191,36,.1)}#pqCari .ic.lokasi{color:#fb923c;background:rgba(251,146,60,.1)}#pqCari .ic.coord{color:#a78bfa;background:rgba(167,139,250,.1)}#pqCari .ic.place{color:#f87171;background:rgba(248,113,113,.1)}#pqCari .ic.hist{color:#94a3b8;background:rgba(148,163,184,.1)}\
+#pqCari .ic.jembatan{color:#fbbf24;background:rgba(251,191,36,.1)}#pqCari .ic.lokasi{color:#fb923c;background:rgba(251,146,60,.1)}#pqCari .ic.coord{color:#a78bfa;background:rgba(167,139,250,.1)}#pqCari .ic.place{color:#f87171;background:rgba(248,113,113,.1)}#pqCari .ic.layer{color:#34d399;background:rgba(52,211,153,.12)}#pqCari .ic.hist{color:#94a3b8;background:rgba(148,163,184,.1)}\
 #pqCari .tx{min-width:0;flex:1}\
 #pqCari .tx b{display:block;font-size:13px;color:#e6edf5;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\
 #pqCari .tx small{display:block;font-size:11px;color:#7c8aa0;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\
@@ -108,9 +108,9 @@ body.full-map-mode #pqCari{opacity:0;pointer-events:none}\
 body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#loginScreen:not(.hide)) #pqCari{display:none}\
 @media(max-width:860px){#pqCari{right:112px}#pqCari .bar{height:48px}#pqCari input{font-size:16px}#pqCari .tag,#pqCari .kbd,#pqCari .ft span+span{display:none}}";
 
-  var FILTERS = [["all", "Semua"], ["jalan", "Ruas"], ["jembatan", "Jembatan"], ["lokasi", "AMP/BP/Quarry"], ["place", "Tempat"]];
-  function cat(it) { return it.kind === "jalan" ? "jalan" : it.kind === "jembatan" ? "jembatan" : (it.kind === "amp" || it.kind === "bp" || it.kind === "quarry") ? "lokasi" : "place"; }
-  var ICON = { jalan: "fa-road", jembatan: "fa-road-bridge", lokasi: "fa-industry", coord: "fa-location-crosshairs", place: "fa-location-dot" };
+  var FILTERS = [["all", "Semua"], ["jalan", "Ruas"], ["jembatan", "Jembatan"], ["lokasi", "AMP/BP/Quarry"], ["place", "Tempat"], ["layer", "Lapisan"]];
+  function cat(it) { return it.kind === "layer" ? "layer" : it.kind === "jalan" ? "jalan" : it.kind === "jembatan" ? "jembatan" : (it.kind === "amp" || it.kind === "bp" || it.kind === "quarry") ? "lokasi" : "place"; }
+  var ICON = { jalan: "fa-road", jembatan: "fa-road-bridge", lokasi: "fa-industry", layer: "fa-layer-group", coord: "fa-location-crosshairs", place: "fa-location-dot" };
 
   var root, inp, dd;
   function build() {
@@ -118,7 +118,7 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     root = document.createElement("div"); root.id = "pqCari";
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     root.innerHTML =
-      '<div class="bar"><input type="search" placeholder="Cari jalan, desa, kantor, jembatan, koordinat…" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Cari">' +
+      '<div class="bar"><input type="search" placeholder="Cari jalan, jembatan, lapisan, cuaca, koordinat…" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Cari">' +
       '<span class="kbd">/</span>' +
       '<button class="ib clr" type="button" title="Hapus"><i class="fa-solid fa-xmark"></i></button>' +
       '<button class="ib cam pqa-tb" type="button" title="Rekam &amp; Screenshot layar (Alt+Shift+R)" aria-label="Rekam dan screenshot"><i class="fa-solid fa-circle-dot"></i></button>' +
@@ -169,7 +169,7 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
 
   function showHome() {
     var h = hist(); items = h; active = -1; lastAll = [];
-    var html = '<div class="qa"><button class="chip" data-qa="loc"><i class="fa-solid fa-crosshairs"></i> Lokasi saya</button><button class="chip" data-qa="paket"><i class="fa-solid fa-file-contract"></i> Paket Upload</button><button class="chip" data-qa="jateng"><i class="fa-solid fa-map"></i> Semua Wilayah</button><button class="chip" data-qa="diy"><i class="fa-solid fa-landmark"></i> Yogyakarta</button></div><div class="ls">';
+    var html = '<div class="qa"><button class="chip" data-qa="lay"><i class="fa-solid fa-layer-group"></i> Lapisan</button><button class="chip" data-qa="loc"><i class="fa-solid fa-crosshairs"></i> Lokasi saya</button><button class="chip" data-qa="paket"><i class="fa-solid fa-file-contract"></i> Paket Upload</button><button class="chip" data-qa="jateng"><i class="fa-solid fa-map"></i> Semua Wilayah</button><button class="chip" data-qa="diy"><i class="fa-solid fa-landmark"></i> Yogyakarta</button></div><div class="ls">';
     if (h.length) html += rows(h, "");
     else html += '<div class="st"><i class="fa-solid fa-circle-info"></i> Ketik nama jalan, desa, jembatan, atau tempel koordinat.</div>';
     dd.innerHTML = html + "</div>" + footer(""); open();
@@ -201,6 +201,16 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     if (n.length < 2) return out;
     var words = n.split(" ");
     function hit(t) { t = norm(t); return words.every(function (w) { return t.indexOf(w) !== -1; }); }
+    try {
+      var LE = (window.PQ_FOLDER && PQ_FOLDER.entries && PQ_FOLDER.entries()) || [], lc = 0;
+      LE.some(function (e) {
+        if (hit(e.name + " " + e.group + " " + e.k + " lapisan layer menu")) {
+          out.push({ group: "Lapisan & Alat", kind: "layer", id: e.k, main: e.name, on: e.on, sub: e.group + (e.on === true ? " · AKTIF — ketuk untuk matikan" : e.on === false ? " · mati — ketuk untuk nyalakan" : " · ketuk untuk membuka") });
+          return ++lc >= 12;
+        }
+        return false;
+      });
+    } catch (e) { }
     try { var c = 0; (typeof roads !== "undefined" ? roads : []).some(function (r) { if (hit(r.name) && r.points && r.points.length) { var p = r.points[0]; out.push({ group: "Ruas Jalan PETAQU", kind: "jalan", id: r.id, main: r.name, sub: r.points.length + " titik STA" + (r.lengthKmCalculated ? " • " + (+r.lengthKmCalculated).toFixed(2) + " km" : ""), lat: p.lat, lng: p.lng }); c++; } return c >= 5; }); } catch (e) {}
     try { var b = 0; (typeof JEMBATAN_DB !== "undefined" ? JEMBATAN_DB : []).some(function (j) { if (typeof j.lat === "number" && hit([j.nama, j.nomor, j.ruas, j.kabupaten].join(" "))) { out.push({ group: "Jembatan", kind: "jembatan", main: j.nama || "Jembatan", sub: [j.ruas, j.kabupaten].filter(Boolean).join(" • "), lat: j.lat, lng: j.lng, rec: j }); b++; } return b >= 5; }); } catch (e) {}
     try { var l = 0; (window.LOKASI_DATA || []).some(function (x) { if (hit([x.owner, x.alamat, x.kabupaten, x.jenis].join(" "))) { var lb = { amp: "AMP", bp: "Batching Plant", quarry: "Quarry" }[x.jenis] || x.jenis; out.push({ group: "AMP / Batching Plant / Quarry", kind: x.jenis, main: x.owner || lb, sub: lb + " • " + (x.kabupaten || ""), lat: +x.lat, lng: +x.lng, addr: x.alamat, rec: x }); l++; } return l >= 5; }); } catch (e) {}
@@ -245,7 +255,7 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
       }).filter(Boolean);
     });
   }
-  function dedupe(list) { var s = {}; return list.filter(function (it) { var k = norm(it.main) + "|" + it.lat.toFixed(3) + "|" + it.lng.toFixed(3); if (s[k]) return false; s[k] = 1; return true; }); }
+  function dedupe(list) { var s = {}; return list.filter(function (it) { var k = typeof it.lat === "number" ? norm(it.main) + "|" + it.lat.toFixed(3) + "|" + it.lng.toFixed(3) : "L|" + it.id; if (s[k]) return false; s[k] = 1; return true; }); }
 
   function run(q, full) {
     if (!q || q.length < (full ? 2 : 3)) { if (!q) showHome(); return; }
@@ -274,12 +284,13 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
     rec = new SR(); rec.lang = "id-ID"; rec.interimResults = false; rec.maxAlternatives = 1;
     btn.classList.add("rec"); inp.placeholder = "Silakan bicara…";
     rec.onresult = function (e) { var t = e.results[0][0].transcript; inp.value = t; root.classList.add("has"); run(t, true); };
-    rec.onend = rec.onerror = function () { btn.classList.remove("rec"); inp.placeholder = "Cari jalan, desa, kantor, jembatan, koordinat…"; rec = null; };
+    rec.onend = rec.onerror = function () { btn.classList.remove("rec"); inp.placeholder = "Cari jalan, jembatan, lapisan, cuaca, koordinat…"; rec = null; };
     try { rec.start(); } catch (e) { rec = null; btn.classList.remove("rec"); }
   }
   function quick(a) {
     var m = getMap(); if (!m) return; close();
-    if (a === "jateng") { if (window.PQ_WILAYAH) PQ_WILAYAH.show("all"); else m.flyTo([-7.15, 110.15], 8, { duration: 1 }); }
+    if (a === "lay") { if (window.PQ_FOLDER) PQ_FOLDER.open(); }
+    else if (a === "jateng") { if (window.PQ_WILAYAH) PQ_WILAYAH.show("all"); else m.flyTo([-7.15, 110.15], 8, { duration: 1 }); }
     else if (a === "diy") { if (window.PQ_WILAYAH) PQ_WILAYAH.show("diy"); else m.flyTo([-7.88, 110.4], 10, { duration: 1 }); }
     else if (a === "paket") {
       var P = window.PETAQU_PAKET;
@@ -300,6 +311,12 @@ body:has(.modal-overlay.show,#svOverlay.show,#arOverlay.show,#cmOverlay.show,#lo
   function clearPin() { var m = getMap(); if (pin && m) m.removeLayer(pin); pin = null; }
   function pick(it, noHist) {
     if (!it) return; var m = getMap(); if (!m) return;
+    if (it.kind === "layer") {
+      close(); inp.blur(); inp.value = ""; root.classList.remove("has");
+      if (window.PQ_FOLDER) PQ_FOLDER.go(it.id);
+      try { if (typeof toast === "function") toast((it.on === true ? "Mematikan: " : it.on === false ? "Menyalakan: " : "Membuka: ") + it.main); } catch (e) { }
+      return;
+    }
     close(); inp.blur(); inp.value = it.main; root.classList.add("has");
     if (!noHist) pushHist(it);
     if (it.kind === "jalan" && it.id && typeof focusRoad === "function") { clearPin(); focusRoad(it.id); return; }
