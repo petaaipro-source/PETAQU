@@ -556,7 +556,7 @@
       if (extF) { cand = extF; best = 1; note.push("dipaksa ke ruas database pilihan" + (extF.viaPk ? " (jalur garis lurus antar patok KM, perkiraan)" : "")); }
       if (!cand) {   /* tak ada di peta → cocokkan NAMA ruas ke database Jalan Nasional (jalur & STA dari jarak) */
         var jb = 0, jc = null; jnCands().forEach(function (c) { var sc = nameScore(tk, c.tok); if (c.code && k.indexOf(c.code) > -1) sc = Math.max(sc, .9); if (sc > jb) { jb = sc; jc = c; } });
-        if (jc && jb >= .6) { cand = jc; best = jb; note.push("ruas dicocokkan dari NAMA ke database Jalan Nasional" + (jc.viaPk ? " (jalur garis lurus antar patok KM, perkiraan)" : "") + (jc.staReal ? "" : " (STA dihitung dari jarak; centang 'Balik arah' bila terbalik)")); }
+        if (jc && jb >= .6) { cand = jc; best = jb; note.push("ruas dicocokkan dari NAMA ke database Jalan Nasional" + (jc.viaPk ? (jc.snapped ? " (jalur dirapatkan ke jalan basemap, STA = patok KM database)" : " (jalur garis lurus antar patok KM, perkiraan)") : "") + (jc.staReal ? "" : " (STA dihitung dari jarak; centang 'Balik arah' bila terbalik)")); }
       }
       var smp = cr.length > 25 ? cr.filter(function (r, i) { return i % Math.ceil(cr.length / 25) === 0; }) : cr;
       var near = function (c) { return smp.map(function (r) { return snap(c, r.lat, r.lng).d; }); };
@@ -686,8 +686,34 @@
     };
     if (isX) rd.readAsArrayBuffer(f); else rd.readAsText(f);
   }
-  function scanIri() {
+  /* rapatkan jalur patok (garis lurus) ke jalan basemap lewat OSRM; STA tetap = STA patok database, di antaranya diinterpolasi sepanjang jalan */
+  function snapPk(c) {
+    if (c.snapped || !c.posts || c.posts.length < 2) return Promise.resolve(false);
+    var P = c.posts, url = "https://router.project-osrm.org/route/v1/driving/" + P.map(function (p) { return p.lng.toFixed(6) + "," + p.lat.toFixed(6); }).join(";") + "?overview=full&geometries=geojson&continue_straight=true";
+    var ctl = typeof AbortController !== "undefined" ? new AbortController() : null, to = setTimeout(function () { ctl && ctl.abort(); }, 15000);
+    return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) { return r.json(); }).then(function (j) {
+      clearTimeout(to);
+      var g = j && j.routes && j.routes[0] && j.routes[0].geometry && j.routes[0].geometry.coordinates; if (!g || g.length < 2) return false;
+      var pts = g.map(function (q) { return [q[1], q[0]]; }), cum = pathStats(pts), idx = [], from = 0;
+      P.forEach(function (p) { var bi = from, bd = 1e12; for (var i = from; i < pts.length; i++) { var d = distM(pts[i], [p.lat, p.lng]); if (d < bd) { bd = d; bi = i; } } idx.push(bi); from = bi; });
+      var sta = new Array(pts.length), k, i;
+      for (k = 0; k < P.length - 1; k++) {
+        var i0 = idx[k], i1 = idx[k + 1], c0 = cum[i0], c1 = cum[i1];
+        for (i = i0; i <= i1; i++) sta[i] = P[k].sta + (c1 > c0 ? (P[k + 1].sta - P[k].sta) * (cum[i] - c0) / (c1 - c0) : 0);
+      }
+      var a = idx[0], b = idx[P.length - 1]; pts = pts.slice(a, b + 1); sta = sta.slice(a, b + 1);
+      P.forEach(function (p, n) { var q = g[idx[n]]; p.lat = q[1]; p.lng = q[0]; });
+      var la = pts.map(function (p) { return p[0]; }), lo = pts.map(function (p) { return p[1]; });
+      c.pts = pts; c.sta = sta; c.s = sta.slice(); c.staReal = true; c.cum = pathStats(pts); c.len = c.cum[c.cum.length - 1];
+      c.bb = [Math.min.apply(0, la), Math.min.apply(0, lo), Math.max.apply(0, la), Math.max.apply(0, lo)]; c.snapped = true; return true;
+    }).catch(function () { clearTimeout(to); return false; });
+  }
+  function scanIri(again) {
     var G = iriGroups(); if (!G) return;
+    if (again !== true) {
+      var need = []; G.forEach(function (g) { if (g.cand && g.cand.viaPk && !g.cand.snapped && need.indexOf(g.cand) < 0) need.push(g.cand); });
+      if (need.length) { say("Merapatkan jalur ke jalan basemap…"); Promise.all(need.map(snapPk)).then(function (r) { if (r.indexOf(false) > -1) say("Gagal merapatkan ke jalan (OSRM) — jalur garis lurus antar patok dipakai", true); scanIri(true); }); return; }
+    }
     var opt = { bin: $("icIb").value, align: $("icIa").value }, fileCls = $("icIk").value === "file", gaps = $("icIg").checked;
     var lines = [], bnd = [], tot = 0, mapped = 0, cls = {}, clsC = {}, strips = [], labs = [], lf = $("icIlf").value, lt = function (l) { l = Math.max(0, l); return lf === "km" ? "KM " + (l / 1000).toFixed(2).replace(/\.?0+$/, "") : fmtSta(l); };
     clearLayer(); IRI_OUT = []; IRI_G = [];
