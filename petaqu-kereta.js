@@ -12,9 +12,9 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const gmap = () => { try { return typeof map !== "undefined" ? map : window.map; } catch (e) { return window.map; } };
   const rad = x => x * Math.PI / 180, RF = 1.18, TRANSFER_MIN = 25, DWELL = 2;
-  let S = { tab: "jaringan", on: true, auto: true, prov: "", q: "", jalur: true, stasiun: true, cross: true, osm: false, min: false, from: "", to: "", kerja: [], custom: [], ref: { vt: 100, trains: 0, aadt: 0, veh: "truk", tracks: 1, ctrl: "unknown", sight: 0, jenis: "eko" } };
+  let S = { tab: "jaringan", on: true, auto: true, prov: "", fp: "", fk: [], q: "", jalur: true, stasiun: true, cross: true, osm: false, min: false, from: "", to: "", kerja: [], custom: [], ref: { vt: 100, trains: 0, aadt: 0, veh: "truk", tracks: 1, ctrl: "unknown", sight: 0, jenis: "eko" } };
   try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || "null") || {}); } catch (e) { }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, auto: S.auto, tab: S.tab, prov: S.prov, jalur: S.jalur, stasiun: S.stasiun, cross: S.cross, min: S.min, from: S.from, to: S.to, custom: S.custom, ref: S.ref })); } catch (e) { } };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, auto: S.auto, tab: S.tab, prov: S.prov, fp: S.fp, fk: S.fk, jalur: S.jalur, stasiun: S.stasiun, cross: S.cross, min: S.min, from: S.from, to: S.to, custom: S.custom, ref: S.ref })); } catch (e) { } };
   S.ref = Object.assign({ vt: 100, trains: 0, aadt: 0, veh: "truk", tracks: 1, ctrl: "unknown", sight: 0, jenis: "eko" }, S.ref || {});
   let P, G, GL, GS, GC, GR, GA, ST = {}, JL = [], ADJ = {}, OSMW = [], OSMC = [], XS = [], XSel = null, PLAN = null, anim = 0, osmBusy = false, clickMode = 0, TT = 0, TL = {}, TQ = [], LD = new Set(), FAIL = {}, tBusy = 0, MVT = 0, RDT = 0, SEENW = new Set(), SEENC = new Set(), WARNED = 0, BTN = null;
   const JN = () => window.KA_JENIS || {};
@@ -60,13 +60,86 @@
   }
   function nearestSt(lat, lng, n) { return Object.values(ST).map(s => ({ s, d: hav(lat, lng, s.lat, s.lng) })).sort((x, y) => x.d - y.d).slice(0, n || 5); }
 
+  /* ================= FILTER WILAYAH (provinsi / kab-kota) =================
+     Tujuan: ringan. Jika provinsi/kab-kota dipilih, HANYA petak rel OSM yang beririsan dengan wilayah itu yang diunduh,
+     dan hanya jalur/stasiun/perlintasan di dalam wilayah itu yang digambar. Batas wilayah: data-kabbatas.js (dimuat sekali, ±144 KB). */
+  let REG = null, REGLD = 0, REGP = 0, BULK = null; const RTOL = .006;
+  function dec(s) { let i = 0, la = 0, lo = 0, o = []; while (i < s.length) { let b, sh = 0, r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); la += r & 1 ? ~(r >> 1) : r >> 1; sh = 0; r = 0; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); lo += r & 1 ? ~(r >> 1) : r >> 1; o.push([la / 1e5, lo / 1e5]); } return o; }
+  function regLoad(cb) {
+    if (window.PQ_KABBATAS) return cb(); if (REGLD) { setTimeout(() => regLoad(cb), 300); return; } REGLD = 1;
+    const sc = document.createElement("script"); sc.src = "data-kabbatas.js"; sc.onload = () => { REGLD = 0; cb(); };
+    sc.onerror = () => { REGLD = 0; S.fp = ""; S.fk = []; save(); say("Batas wilayah gagal dimuat — menampilkan semua wilayah.", 4000); cb(); }; document.head.appendChild(sc);
+  }
+  const sigOf = () => S.fp ? S.fp + "|" + (S.fk || []).slice().sort().join(";") : "";
+  function buildReg() {
+    REG = null; if (!S.fp || !window.PQ_KABBATAS) return;
+    const D = window.PQ_KABBATAS[S.fp]; if (!D) { S.fp = ""; S.fk = []; save(); return; }
+    const sel = (S.fk || []).length ? D.filter(k => S.fk.includes(k[0])) : D, rings = []; let s = 90, w = 180, n = -90, e = -180;
+    sel.forEach(k => k[1].forEach(enc => { const pts = dec(enc); if (pts.length < 3) return; let a = 90, b = 180, c = -90, d = -180; pts.forEach(q => { if (q[0] < a) a = q[0]; if (q[0] > c) c = q[0]; if (q[1] < b) b = q[1]; if (q[1] > d) d = q[1]; }); rings.push({ pts, s: a, w: b, n: c, e: d }); s = Math.min(s, a); w = Math.min(w, b); n = Math.max(n, c); e = Math.max(e, d); }));
+    if (!rings.length) { S.fp = ""; S.fk = []; save(); return; }
+    REG = { sig: sigOf(), rings, s, w, n, e, tl: null };
+  }
+  function regReady() {
+    if (!S.fp || REG) return true;
+    if (!REGP) { REGP = 1; regLoad(() => { REGP = 0; buildReg(); drawNet(); autoLoad(); if (P && P.style.display === "flex") render(); }); }
+    return false;
+  }
+  function pip(r, la, lo) { let ins = false; const p = r.pts; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { if ((p[i][0] > la) !== (p[j][0] > la) && lo < (p[j][1] - p[i][1]) * (la - p[i][0]) / (p[j][0] - p[i][0]) + p[i][1]) ins = !ins; } return ins; }
+  function inExact(la, lo) { if (la < REG.s || la > REG.n || lo < REG.w || lo > REG.e) return false; for (const r of REG.rings) { if (la < r.s || la > r.n || lo < r.w || lo > r.e) continue; if (pip(r, la, lo)) return true; } return false; }
+  /* toleransi ±650 m: batas disederhanakan, rel/stasiun pesisir tidak boleh terpotong */
+  function inReg(la, lo) { if (!REG) return true; if (la < REG.s - RTOL || la > REG.n + RTOL || lo < REG.w - RTOL || lo > REG.e + RTOL) return false; return inExact(la, lo) || inExact(la + RTOL, lo) || inExact(la - RTOL, lo) || inExact(la, lo + RTOL) || inExact(la, lo - RTOL); }
+  function wayIn(w) { if (!REG) return true; if (w._s === REG.sig) return w._v; let v = false; const g = w.g, k = Math.max(1, Math.floor(g.length / 6)); for (let i = 0; i < g.length && !v; i += k) v = inReg(g[i][0], g[i][1]); if (!v) v = inReg(g[g.length - 1][0], g[g.length - 1][1]); w._s = REG.sig; w._v = v; return v; }
+  const stIn = s => inReg(s.lat, s.lng);
+  const curW = () => REG ? OSMW.filter(wayIn) : OSMW, curC = () => REG ? OSMC.filter(c => inReg(c.lat, c.lng)) : OSMC;
+  function tileIn(t) {
+    if (!REG) return true; if (t.s > REG.n || t.s + TS < REG.s || t.w > REG.e || t.w + TS < REG.w) return false;
+    for (let i = 0; i <= 8; i++)for (let j = 0; j <= 8; j++) if (inReg(t.s + TS * i / 8, t.w + TS * j / 8)) return true;
+    for (const r of REG.rings) { if (r.s > t.s + TS || r.n < t.s || r.w > t.w + TS || r.e < t.w) continue; for (const q of r.pts) if (q[0] >= t.s && q[0] <= t.s + TS && q[1] >= t.w && q[1] <= t.w + TS) return true; }
+    return false;
+  }
+  function regTiles() { if (!REG) return []; if (REG.tl) return REG.tl; const out = []; for (let i = Math.floor(REG.s / TS); i <= Math.floor(REG.n / TS); i++)for (let j = Math.floor(REG.w / TS); j <= Math.floor(REG.e / TS); j++) { const t = { k: i + "_" + j, s: i * TS, w: j * TS }; if (tileIn(t)) out.push(t); } return (REG.tl = out); }
+  function scopeName() { if (!S.fp) return "Semua wilayah (area peta)"; const k = S.fk || []; return S.fp + (k.length ? " › " + (k.length > 2 ? k.slice(0, 2).join(", ") + " +" + (k.length - 2) : k.join(", ")) : " (seluruh provinsi)"); }
+  function dropBulk() { BULK = null; for (let i = TQ.length - 1; i >= 0; i--) if (TQ[i].bulk) TQ.splice(i, 1); }
+  function regApply(fit) {
+    dropBulk(); const go = () => {
+      buildReg(); drawNet();
+      if (fit && REG) { const m = gmap(); if (m) m.fitBounds([[REG.s, REG.w], [REG.n, REG.e]], { padding: [30, 30] }); }
+      autoLoad(); if (P && P.style.display === "flex") render();
+    }; S.fp ? regLoad(go) : go();
+  }
+  function setScope(p, ks, fit) { S.fp = p || ""; S.fk = p ? (ks || []) : []; save(); regApply(fit !== false); }
+  /* muat SEMUA petak rel di wilayah terpilih (bukan hanya yang terlihat) — hasilnya tersimpan di perangkat (cache 30 hari) */
+  function loadRegion() {
+    if (!REG) { say("Pilih provinsi dulu."); return; } if (S.on === false) setOn(true);
+    const need = regTiles().filter(t => !TL[t.k] && !LD.has(t.k)); if (!need.length) { say("Semua petak rel di wilayah ini sudah termuat.", 2500); return; }
+    if (need.length > 40 && !confirm("Wilayah ini butuh " + need.length + " petak rel (cukup berat, hanya sekali — setelahnya tersimpan di perangkat). Lanjut?")) return;
+    WARNED = 0; BULK = { total: need.length, done: 0 }; need.forEach(t => { FAIL[t.k] = 0; TQ.push(Object.assign({}, t, { bulk: 1, force: false })); });
+    say("Memuat " + need.length + " petak rel wilayah terpilih…", 3000); pump(); if (P && P.style.display === "flex") render();
+  }
+  const kabNames = p => ((window.PQ_KABBATAS || {})[p] || []).map(k => k[0]).sort();
+  function scopeCard() {
+    const D = window.PQ_KABBATAS; let h = '<div class="kr-card"><b>📍 Wilayah tampil</b> <span class="kr-mini">— pilih agar peta ringan</span>';
+    if (!D) return h + '<div class="kr-mini" style="margin-top:4px">Memuat daftar wilayah…</div></div>';
+    const nSt = {}; Object.values(ST).forEach(x => { if (x.prov) nSt[x.prov] = (nSt[x.prov] || 0) + 1; });
+    h += '<div class="kr-lab">Provinsi</div><select id="krSP"><option value="">Semua wilayah (area peta)</option>' + Object.keys(D).sort().map(n => '<option value="' + esc(n) + '"' + (n === S.fp ? " selected" : "") + ">" + esc(n) + (nSt[n] ? " — " + nSt[n] + " stasiun" : "") + "</option>").join("") + "</select>";
+    if (S.fp && D[S.fp]) {
+      const ks = kabNames(S.fp), fk = S.fk || [];
+      h += '<div class="kr-lab">Kabupaten / Kota <span style="color:#fbbf24">(kosong = seluruh provinsi)</span></div><div class="kr-kab">' + ks.map(n => '<label class="kr-ck"><input type="checkbox" data-kk="' + esc(n) + '"' + (fk.includes(n) ? " checked" : "") + "> " + esc(n.replace(/^Kabupaten /, "Kab. ")) + "</label>").join("") + "</div>";
+      const tl = REG ? regTiles() : [], ld = tl.filter(t => TL[t.k]).length, ns = REG ? Object.values(ST).filter(stIn).length : 0;
+      h += '<div class="kr-mini" style="margin-top:4px">Menampilkan: <b>' + esc(scopeName()) + "</b>" + (REG ? " • " + ns + " stasiun • petak rel termuat " + ld + "/" + tl.length : "") + "</div>";
+      if (BULK) h += '<div class="kr-mini" style="color:#fbbf24">⏳ Memuat rel wilayah: ' + BULK.done + "/" + BULK.total + "</div>";
+      h += '<div class="kr-row" style="margin-top:5px"><button class="kr-btn g sm" data-kr="zreg">🔍 Zoom wilayah</button><button class="kr-btn sm" data-kr="lreg">⬇️ Muat rel wilayah ini</button></div><div class="kr-row" style="margin-top:4px"><button class="kr-btn g sm" data-kr="kall">Semua kab/kota</button><button class="kr-btn g sm" data-kr="sclr">✖ Semua wilayah</button></div>';
+    } else h += '<div class="kr-mini" style="margin-top:4px">Tanpa filter: rel dimuat untuk seluruh area yang terlihat di peta (lebih berat). Pilih provinsi lalu kab./kota agar hanya wilayah itu yang diunduh &amp; digambar.</div>';
+    return h + "</div>";
+  }
+
   /* ================= PETA ================= */
   function ensure() { const m = gmap(); if (!m || !window.L) return false; if (G) return true; G = L.layerGroup(); GL = L.layerGroup(); GS = L.layerGroup(); GC = L.layerGroup(); GR = L.layerGroup(); GA = L.layerGroup(); return true; }
   const stIcon = s => L.divIcon({ className: "", html: '<div class="pqkr-st c' + s.cls + '"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
   function drawNet() {
-    if (!ensure()) return; const m = gmap(); GL.clearLayers(); GS.clearLayers(); GC.clearLayers();
+    if (!ensure()) return; if (!regReady()) return; const m = gmap(); GL.clearLayers(); GS.clearLayers(); GC.clearLayers();
     drawLines();
-    Object.values(ST).forEach(s => GS.addLayer(L.marker([s.lat, s.lng], { icon: stIcon(s), title: s.n }).bindPopup('<b>🚉 ' + esc(s.n) + '</b><div style="color:#64748b;font-size:11.5px">' + esc(s.city + ", " + s.prov) + "<br>Jalur: " + esc(s.lines.map(l => line(l).n).join(", ")) + '</div><div class="pqkr-pb"><button onclick="PETAQU_KERETA.setPt(\'from\',\'' + s.k + '\')">Asal</button><button onclick="PETAQU_KERETA.setPt(\'to\',\'' + s.k + '\')">Tujuan</button></div>')));
+    Object.values(ST).filter(stIn).forEach(s => GS.addLayer(L.marker([s.lat, s.lng], { icon: stIcon(s), title: s.n }).bindPopup('<b>🚉 ' + esc(s.n) + '</b><div style="color:#64748b;font-size:11.5px">' + esc(s.city + ", " + s.prov) + "<br>Jalur: " + esc(s.lines.map(l => line(l).n).join(", ")) + '</div><div class="pqkr-pb"><button onclick="PETAQU_KERETA.setPt(\'from\',\'' + s.k + '\')">Asal</button><button onclick="PETAQU_KERETA.setPt(\'to\',\'' + s.k + '\')">Tujuan</button></div>')));
     OSMC.forEach(c => { c.id = c.id || "osm" + c.lat.toFixed(5) + c.lng.toFixed(5); });
     syncVis(); drawX();
   }
@@ -90,12 +163,12 @@
     if (!ensure()) return; GL.clearLayers();
     JL.forEach(j => {
       let run = []; const flush = () => { if (run.length > 1) GL.addLayer(L.polyline(run, { color: j.col, weight: 2, opacity: .55, dashArray: "7 7" }).bindPopup('<b>' + esc(j.n) + '</b><br><span style="color:#64748b">' + esc((JN()[j.jenis] || {}).n || "") + " • garis perkiraan antar-stasiun (rel asli belum dimuat)</span>")); run = []; };
-      for (let i = 0; i < j.codes.length - 1; i++) { if (covered(j.codes[i], j.codes[i + 1])) flush(); else { if (!run.length) run.push(j.pts[i]); run.push(j.pts[i + 1]); } } flush();
+      for (let i = 0; i < j.codes.length - 1; i++) { if (REG && !(inReg(j.pts[i][0], j.pts[i][1]) || inReg(j.pts[i + 1][0], j.pts[i + 1][1]))) { flush(); continue; } if (covered(j.codes[i], j.codes[i + 1])) flush(); else { if (!run.length) run.push(j.pts[i]); run.push(j.pts[i + 1]); } } flush();
     });
-    const many = OSMW.length > 2500, st = w => { const t = w.t || {}, br = t.bridge || t.tunnel, sub = /subway|light_rail|tram/.test(t.railway || ""), nar = t.railway === "narrow_gauge"; return { col: br ? "#94a3b8" : sub ? "#a78bfa" : nar ? "#84cc16" : "#f97316", wt: t.usage === "main" || t.usage === "branch" ? 3.6 : 2.6 }; };
-    if (!many) OSMW.forEach(w => { const s = st(w); GL.addLayer(L.polyline(w.g, { color: "#0f172a", weight: s.wt + 2.2, opacity: .6, interactive: false, lineJoin: "round" })); });
-    OSMW.forEach(w => { const s = st(w); GL.addLayer(L.polyline(w.g, { color: s.col, weight: s.wt, opacity: .97, lineJoin: "round", lineCap: "butt" }).bindPopup(() => relPop(w))); });
-    OSMW.forEach(w => { GL.addLayer(L.polyline(w.g, { color: "#fff", weight: 1.1, opacity: .85, dashArray: "2 7", interactive: false })); });
+    const W = curW(), many = W.length > 2500, st = w => { const t = w.t || {}, br = t.bridge || t.tunnel, sub = /subway|light_rail|tram/.test(t.railway || ""), nar = t.railway === "narrow_gauge"; return { col: br ? "#94a3b8" : sub ? "#a78bfa" : nar ? "#84cc16" : "#f97316", wt: t.usage === "main" || t.usage === "branch" ? 3.6 : 2.6 }; };
+    if (!many) W.forEach(w => { const s = st(w); GL.addLayer(L.polyline(w.g, { color: "#0f172a", weight: s.wt + 2.2, opacity: .6, interactive: false, lineJoin: "round" })); });
+    W.forEach(w => { const s = st(w); GL.addLayer(L.polyline(w.g, { color: s.col, weight: s.wt, opacity: .97, lineJoin: "round", lineCap: "butt" }).bindPopup(() => relPop(w))); });
+    W.forEach(w => { GL.addLayer(L.polyline(w.g, { color: "#fff", weight: 1.1, opacity: .85, dashArray: "2 7", interactive: false })); });
   }
   const soonDraw = () => { clearTimeout(RDT); RDT = setTimeout(() => { drawLines(); drawX(); if (P && P.style.display === "flex" && (S.tab === "jaringan" || S.tab === "perlintasan")) render(); }, 350); };
 
@@ -136,18 +209,18 @@
   function viewTiles() {
     const m = gmap(), b = m.getBounds(), c = m.getCenter(), out = [];
     for (let i = Math.floor(b.getSouth() / TS); i <= Math.floor(b.getNorth() / TS); i++)for (let j = Math.floor(b.getWest() / TS); j <= Math.floor(b.getEast() / TS); j++) out.push({ k: i + "_" + j, s: i * TS, w: j * TS, d: Math.hypot((i + .5) * TS - c.lat, (j + .5) * TS - c.lng) });
-    return out.sort((a, b) => a.d - b.d).slice(0, 12);
+    return out.filter(tileIn).sort((a, b) => a.d - b.d).slice(0, 12);
   }
   function setLoading(v) { if (BTN) BTN.classList.toggle("ld", !!v); }
   function autoLoad(force) {
-    if (S.on === false || (!S.auto && !force) || !ensure()) return; const m = gmap(); if (m.getZoom() < 10) return;
+    if (S.on === false || (!S.auto && !force) || !ensure()) return; if (!regReady()) return; const m = gmap(); if (m.getZoom() < (REG ? 9 : 10)) return;
     const need = viewTiles().filter(t => force || (!TL[t.k] && !LD.has(t.k) && !(FAIL[t.k] > Date.now())));
-    TQ.length = 0; need.forEach(t => TQ.push(Object.assign(t, { force: !!force }))); pump();
+    for (let i = TQ.length - 1; i >= 0; i--) if (!TQ[i].bulk) TQ.splice(i, 1); need.forEach(t => TQ.push(Object.assign(t, { force: !!force }))); pump();
   }
   function pump() {
     while (tBusy < 2 && TQ.length) {
-      const t = TQ.shift(); if (LD.has(t.k)) continue; LD.add(t.k); tBusy++;
-      loadTile(t, t.force).then(ok => { if (!ok && !WARNED) { WARNED = 1; say("Server OSM sibuk/offline — garis perkiraan tetap ditampilkan, akan dicoba lagi otomatis.", 4500); } soonDraw(); }).catch(() => { }).finally(() => { LD.delete(t.k); tBusy--; if (!tBusy && !TQ.length) { setLoading(false); soonDraw(); } pump(); });
+      const t = TQ.shift(); if (LD.has(t.k) || (TL[t.k] && !t.force)) continue; LD.add(t.k); tBusy++;
+      loadTile(t, t.force).then(ok => { if (!ok && !WARNED) { WARNED = 1; say("Server OSM sibuk/offline — garis perkiraan tetap ditampilkan, akan dicoba lagi otomatis.", 4500); } soonDraw(); }).catch(() => { }).finally(() => { LD.delete(t.k); tBusy--; if (t.bulk && BULK) BULK.done++; if (!tBusy && !TQ.length) { if (BULK) { say("✅ Rel wilayah terpilih selesai dimuat (" + BULK.done + " petak).", 3500); BULK = null; } setLoading(false); soonDraw(); } pump(); });
     }
     setLoading(tBusy > 0 || TQ.length > 0);
   }
@@ -160,12 +233,12 @@
   function xPop(c, r) { return '<b>⚠️ ' + esc(c.road || "Perlintasan") + '</b><div style="font-size:12px;color:#334155;margin:3px 0">' + esc(CTRL[c.ctrl] || c.ctrl) + (c.sta ? " • STA " + esc(c.sta) : "") + (c.line ? "<br>Jalur: " + esc(c.line) : "") + (c.angle ? " • sudut " + Math.round(c.angle) + "°" : "") + '<br>Risiko: <b style="color:' + XC[r.lv] + '">' + r.lv + " (" + r.score + ")</b></div>" + '<div class="pqkr-pb"><button onclick="PETAQU_KERETA.focusX(\'' + c.id + "')\">Analisis</button></div>"; }
 
   /* ================= PERLINTASAN ================= */
-  const allX = () => XS.concat(OSMC.map(c => Object.assign({ src: "osm" }, c))).concat(S.custom.map(c => Object.assign({ src: "manual" }, c)));
+  const allX = () => XS.concat(OSMC.map(c => Object.assign({ src: "osm" }, c))).concat(S.custom.map(c => Object.assign({ src: "manual" }, c))).filter(c => inReg(c.lat, c.lng));
   const projXY = (lat, lng, la0) => [lng * 111.32 * Math.cos(rad(la0)) * 1000, lat * 110.57 * 1000];
   function segX(a, b, c, d) { const r = [b[0] - a[0], b[1] - a[1]], s = [d[0] - c[0], d[1] - c[1]], den = r[0] * s[1] - r[1] * s[0]; if (Math.abs(den) < 1e-9) return null; const t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den, u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den; if (t < 0 || t > 1 || u < 0 || u > 1) return null; return { t, u }; }
   function railSegs() {
-    const o = []; JL.forEach(j => { if (j.jenis === "mrt" || j.jenis === "cepat") return; for (let i = 0; i < j.pts.length - 1; i++) o.push({ a: j.pts[i], b: j.pts[i + 1], l: j.n, jn: j.jenis, bd: 0 }); });
-    OSMW.forEach(w => { for (let i = 0; i < w.g.length - 1; i++) o.push({ a: w.g[i], b: w.g[i + 1], l: w.t.name || "Jalur KA (OSM)", jn: /subway|light_rail/.test(w.t.railway) ? "mrt" : "eko", bd: w.t.bridge || w.t.tunnel ? 1 : 0, t: w.t }); });
+    const o = []; JL.forEach(j => { if (j.jenis === "mrt" || j.jenis === "cepat") return; for (let i = 0; i < j.pts.length - 1; i++) { if (REG && !(inReg(j.pts[i][0], j.pts[i][1]) || inReg(j.pts[i + 1][0], j.pts[i + 1][1]))) continue; o.push({ a: j.pts[i], b: j.pts[i + 1], l: j.n, jn: j.jenis, bd: 0 }); } });
+    OSMW.forEach(w => { if (!wayIn(w)) return; for (let i = 0; i < w.g.length - 1; i++) o.push({ a: w.g[i], b: w.g[i + 1], l: w.t.name || "Jalur KA (OSM)", jn: /subway|light_rail/.test(w.t.railway) ? "mrt" : "eko", bd: w.t.bridge || w.t.tunnel ? 1 : 0, t: w.t }); });
     return o;
   }
   function detect() {
@@ -209,7 +282,7 @@
 
   /* ================= OSM ================= */
   const OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
-  function loadOSM() { const m = gmap(); if (!m) return; if (m.getZoom() < 10) { say("Perbesar peta (zoom ≥ 10) agar rel asli bisa dimuat.", 3500); return; } if (S.on === false) setOn(true); WARNED = 0; say("Menyegarkan rel asli area ini…", 2500); autoLoad(true); }
+  function loadOSM() { const m = gmap(); if (!m) return; if (!regReady()) return; const mz = REG ? 9 : 10; if (m.getZoom() < mz) { say("Perbesar peta (zoom ≥ " + mz + ") agar rel asli bisa dimuat" + (REG ? ", atau tekan “Muat rel wilayah ini”." : "."), 3800); return; } if (S.on === false) setOn(true); WARNED = 0; say("Menyegarkan rel asli area ini…", 2500); autoLoad(true); }
 
   /* ================= RUTE ================= */
   function drawPlan(p) {
@@ -241,6 +314,7 @@
       ".kr-sc{display:inline-block;min-width:32px;text-align:center;padding:1px 7px;border-radius:999px;font:700 11.5px system-ui;color:#0b0f1a}.kr-tip{font-size:12px;margin:3px 0;color:#cfe6f3}.kr-sw{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}.kr-item{cursor:pointer}.kr-item:hover{border-color:#fca5a5}.kr-bar{height:6px;border-radius:4px;background:#ef4444;min-width:3px}" +
       "#pqkrToast{position:fixed;left:50%;transform:translateX(-50%);bottom:80px;z-index:5000;display:none;background:#b91c1c;color:#fff;padding:8px 14px;border-radius:999px;font:600 12.5px system-ui;box-shadow:0 6px 20px #0007;max-width:90vw;text-align:center}" +
       "#pqkrOnOff{position:relative}#pqkrOnOff.on{color:#fb923c}#pqkrOnOff.off{opacity:.55}#pqkrOnOff.off::after{content:\"\";position:absolute;left:18%;right:18%;top:50%;height:2px;background:#ef4444;transform:rotate(-45deg);border-radius:2px;pointer-events:none}#pqkrOnOff.ld i{animation:pqkrp 1s ease-in-out infinite}@keyframes pqkrp{50%{opacity:.25}}.pqkr-st{width:11px;height:11px;border-radius:50%;background:#fff;border:3px solid #1e293b;box-shadow:0 0 0 1px #fff}.pqkr-st.c1{width:15px;height:15px;border-color:#dc2626}.pqkr-st.c2{border-color:#2563eb}.pqkr-x{width:20px;height:20px;border-radius:50%;border:2px solid #fff;color:#111;font:800 12px/16px system-ui;text-align:center;box-shadow:0 2px 6px #0009}.pqkr-tr{font-size:22px;filter:drop-shadow(0 2px 3px #000a)}.pqkr-pb{display:flex;gap:5px;margin-top:6px}.pqkr-pb button{padding:4px 8px;border-radius:7px;border:1px solid #b91c1c;background:#b91c1c;color:#fff;font:600 11.5px system-ui;cursor:pointer}";
+    s.textContent += "#pqkrPanel input[type=checkbox]{width:auto;padding:0;flex:none;accent-color:#dc2626}.kr-kab{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;max-height:150px;overflow:auto;margin-top:5px;padding:6px;border:1px solid #94b2cc2e;border-radius:9px;background:#0b1424}.kr-ck{display:flex;align-items:center;gap:5px;font-size:11.5px;color:#cbd5e1;cursor:pointer;min-width:0}";
     document.head.appendChild(s);
   }
   const TABS = [["jaringan", "🕸️ Jaringan"], ["wilayah", "🗺️ Wilayah"], ["rute", "🧭 Rute"], ["perlintasan", "⚠️ Perlintasan"], ["jenis", "🚄 Jenis KA"], ["hitung", "🧮 Kalkulator"]];
@@ -253,15 +327,15 @@
     $("pqkrTabs").onclick = e => { const t = e.target.closest("button"); if (t) { S.tab = t.dataset.t; save(); render(); } };
     P.addEventListener("click", onClick); P.addEventListener("change", onChange);
   }
-  function open() { if (!P) mount(); if (!G) { build(); drawNet(); } P.style.display = "flex"; render(); }
+  function open() { if (!P) mount(); if (!G) { build(); drawNet(); } P.style.display = "flex"; render(); if (!window.PQ_KABBATAS) regLoad(() => { if (P && P.style.display === "flex") render(); }); }
   function render() {
     [...$("pqkrTabs").children].forEach(b => b.classList.toggle("on", b.dataset.t === S.tab));
-    const B = $("pqkrBody"), top = B.scrollTop; B.innerHTML = ({ jaringan: tNet, wilayah: tWil, rute: tRute, perlintasan: tX, jenis: tJenis, hitung: tCalc }[S.tab] || tNet)(); if (S.tab === "perlintasan") B.scrollTop = top;
+    const B = $("pqkrBody"), top = B.scrollTop, kb0 = B.querySelector(".kr-kab"), kt = kb0 ? kb0.scrollTop : 0; B.innerHTML = ({ jaringan: tNet, wilayah: tWil, rute: tRute, perlintasan: tX, jenis: tJenis, hitung: tCalc }[S.tab] || tNet)(); if (S.tab === "perlintasan" || S.tab === "jaringan") B.scrollTop = top; const kb1 = B.querySelector(".kr-kab"); if (kb1) kb1.scrollTop = kt;
   }
   const chip = (k, lab, on) => '<button data-kr="tg" data-k="' + k + '" class="' + (on ? "on" : "") + '">' + lab + "</button>";
   function tNet() {
     const sub = {}; JL.forEach(j => sub[j.jenis] = (sub[j.jenis] || 0) + 1);
-    return '<div class="kr-mini">Rel asli (OSM) dimuat OTOMATIS mengikuti area peta (zoom ≥ 10) dan disimpan di perangkat. Garis putus-putus = perkiraan antar-stasiun, hanya tampil di bagian yang rel aslinya belum termuat. (' + Object.keys(ST).length + " stasiun, " + JL.length + ' jalur)</div><div class="kr-chips">' + chip("on", "⏻ Jaringan KA", S.on !== false) + chip("auto", "🔄 Rel asli otomatis", S.auto) + chip("jalur", "🛤️ Jalur", S.jalur) + chip("stasiun", "🚉 Stasiun", S.stasiun) + chip("cross", "⚠️ Perlintasan", S.cross) + '</div><div class="kr-row"><button class="kr-btn" data-kr="osm">' + (osmBusy ? "Memuat…" : "⬇️ Segarkan rel asli area ini") + '</button></div><div class="kr-mini">Rel asli termuat: ' + OSMW.length + " segmen jalur • " + OSMC.length + " perlintasan sebidang" + (OSMW.length ? ' • <a href="#" data-kr="clrosm" style="color:#fca5a5">bersihkan</a>' : "") + '</div><div class="kr-card"><b>Legenda jalur</b>' + JL.map(j => '<div class="kr-mini" style="margin-top:3px"><span class="kr-sw" style="background:' + j.col + '"></span>' + esc(j.n) + "</div>").join("") + "</div>";
+    return scopeCard() + '<div class="kr-mini">Rel asli (OSM) dimuat OTOMATIS mengikuti area peta (zoom ≥ 10) dan disimpan di perangkat. Garis putus-putus = perkiraan antar-stasiun, hanya tampil di bagian yang rel aslinya belum termuat. (' + Object.keys(ST).length + " stasiun, " + JL.length + ' jalur)</div><div class="kr-chips">' + chip("on", "⏻ Jaringan KA", S.on !== false) + chip("auto", "🔄 Rel asli otomatis", S.auto) + chip("jalur", "🛤️ Jalur", S.jalur) + chip("stasiun", "🚉 Stasiun", S.stasiun) + chip("cross", "⚠️ Perlintasan", S.cross) + '</div><div class="kr-row"><button class="kr-btn" data-kr="osm">' + (osmBusy ? "Memuat…" : "⬇️ Segarkan rel asli area ini") + '</button></div><div class="kr-mini">Rel asli termuat: ' + curW().length + " segmen jalur • " + curC().length + " perlintasan sebidang" + (REG ? " (di wilayah terpilih)" : "") + (OSMW.length ? ' • <a href="#" data-kr="clrosm" style="color:#fca5a5">bersihkan</a>' : "") + '</div><div class="kr-card"><b>Legenda jalur</b>' + JL.map(j => '<div class="kr-mini" style="margin-top:3px"><span class="kr-sw" style="background:' + j.col + '"></span>' + esc(j.n) + "</div>").join("") + "</div>";
   }
 
   /* ===== Tab Wilayah: Provinsi → Kab./Kota → stasiun & jalur ===== */
@@ -276,7 +350,7 @@
       let arr = provs[pn]; if (q) arr = arr.filter(s => (s.n + " " + s.city + " " + pn).toLowerCase().includes(q)); if (!arr.length) return;
       const kab = {}; arr.forEach(s => (kab[s.city] = kab[s.city] || []).push(s));
       const jl = new Set(); arr.forEach(s => s.lines.forEach(l => jl.add(l)));
-      h += '<div class="kr-card"><b>' + esc(pn) + '</b> <span class="kr-mini">' + arr.length + " stasiun • " + Object.keys(kab).length + " kab./kota • " + jl.size + ' jalur</span> <a href="#" data-kr="zp" data-p="' + esc(pn) + '" style="color:#7dd3fc;font-size:11px">🔍 zoom</a>';
+      h += '<div class="kr-card"><b>' + esc(pn) + '</b> <span class="kr-mini">' + arr.length + " stasiun • " + Object.keys(kab).length + " kab./kota • " + jl.size + ' jalur</span> <a href="#" data-kr="zp" data-p="' + esc(pn) + '" style="color:#7dd3fc;font-size:11px">🔍 zoom</a> <a href="#" data-kr="sp" data-p="' + esc(pn) + '" style="color:#fca5a5;font-size:11px">🎯 batasi peta</a>';
       Object.keys(kab).sort().forEach(c => {
         h += '<div style="margin-top:5px"><span class="kr-mini" style="color:#fbbf24">' + esc(c) + "</span>" + kab[c].map(s => '<div class="kr-mini" style="margin-left:8px"><a href="#" data-kr="zs" data-id="' + s.k + '" style="color:#e2e8f0">🚉 ' + esc(s.n) + "</a> — " + s.lines.map(l => '<span class="kr-sw" style="background:' + line(l).col + ';display:inline-block;width:8px;height:8px;border-radius:50%" title="' + esc(line(l).n) + '"></span>').join(" ") + "</div>").join("") + "</div>";
       });
@@ -307,7 +381,7 @@
   }
   function onChange(e) {
     const t = e.target, R = S.ref;
-    if (t.id === "krQ") { S.q = t.value; save(); const B = $("pqkrBody"); render(); const i = $("krQ"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } } else if (t.id === "krFrom") { S.from = t.value; save(); } else if (t.id === "krTo") { S.to = t.value; save(); }
+    if (t.id === "krSP") { setScope(t.value, [], true); return; } if (t.dataset && t.dataset.kk != null) { const n = t.dataset.kk, fk = (S.fk || []).slice(), i = fk.indexOf(n); if (t.checked && i < 0) fk.push(n); if (!t.checked && i >= 0) fk.splice(i, 1); setScope(S.fp, fk, true); return; } if (t.id === "krQ") { S.q = t.value; save(); const B = $("pqkrBody"); render(); const i = $("krQ"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } } else if (t.id === "krFrom") { S.from = t.value; save(); } else if (t.id === "krTo") { S.to = t.value; save(); }
     else if (/^kr(J|Vt|Tr|Ad|V|Tk|C|Sg)$/.test(t.id)) { const v = t.value; ({ krJ: () => { R.jenis = v; R.vt = Math.min(+(JN()[v] || {}).vmax || 100, 120) || R.vt; }, krVt: () => R.vt = +v || 80, krTr: () => R.trains = +v || 0, krAd: () => R.aadt = +v || 0, krV: () => R.veh = v, krTk: () => R.tracks = +v, krC: () => R.ctrl = v, krSg: () => R.sight = +v || 0 })[t.id](); save(); drawX(); render(); }
   }
   function onClick(e) {
@@ -316,6 +390,11 @@
     else if (k === "pv") { S.prov = a.dataset.p || ""; save(); render(); }
     else if (k === "zp") { const m = gmap(); const ar = Object.values(ST).filter(s => s.prov === a.dataset.p); if (m && ar.length) m.fitBounds(ar.map(s => [s.lat, s.lng]), { padding: [40, 40], maxZoom: 11 }); }
     else if (k === "zs") { const s = ST[a.dataset.id], m = gmap(); if (m && s) m.setView([s.lat, s.lng], 15); }
+    else if (k === "sp") { setScope(a.dataset.p, [], true); say("🎯 Peta dibatasi ke " + a.dataset.p + " — rel hanya dimuat di provinsi ini.", 3200); }
+    else if (k === "zreg") { const m = gmap(); if (m && REG) m.fitBounds([[REG.s, REG.w], [REG.n, REG.e]], { padding: [30, 30] }); }
+    else if (k === "lreg") loadRegion();
+    else if (k === "kall") setScope(S.fp, [], true);
+    else if (k === "sclr") setScope("", [], false);
     else if (k === "osm") loadOSM();
     else if (k === "clrosm") { OSMW = []; OSMC = []; S.osm = false; TL = {}; FAIL = {}; SEENW = new Set(); SEENC = new Set(); IDB.then(d => { if (d) try { d.transaction("t", "readwrite").objectStore("t").clear(); } catch (e) { } }); drawNet(); autoLoad(); render(); }
     else if (k === "plan") doPlan();
@@ -341,6 +420,6 @@
     typeof PQ_DOCK !== "undefined" ? put() : setTimeout(put, 1000);
     const wait = setInterval(() => { if (gmap() && window.L) { clearInterval(wait); drawNet(); const mm = gmap(); mm.on("moveend", () => { clearTimeout(MVT); MVT = setTimeout(autoLoad, 700); }); autoLoad(); } }, 800); setTimeout(() => clearInterval(wait), 60000);
   }
-  window.PETAQU_KERETA = { open, toggle: setOn, refresh: () => autoLoad(true), setPt, focusX, _plan: plan, _risk: risk, _detect: detect, _st: () => ST, _jl: () => JL, _build: build, _osm: (w, c) => { OSMW = w || []; OSMC = c || []; } };
+  window.PETAQU_KERETA = { open, toggle: setOn, refresh: () => autoLoad(true), setPt, focusX, _plan: plan, _risk: risk, _detect: detect, _st: () => ST, _jl: () => JL, _build: build, _osm: (w, c) => { OSMW = w || []; OSMC = c || []; }, setScope, loadRegion, _reg: { S, card: scopeCard, build: buildReg, inReg, tileIn, wayIn, tiles: regTiles, get REG() { return REG; } } };
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init();
 })();
