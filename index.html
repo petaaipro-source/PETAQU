@@ -11,7 +11,7 @@ sv=ls(K);if(sv!=="ringan"&&sv!=="penuh")sv=null;
 var lemah=!!(c.saveData||/(^|slow-)2g|^3g$/.test(c.effectiveType||"")||(n.deviceMemory&&n.deviceMemory<=2));
 PQ.auto=!sv;PQ.mode=sv||(lemah?"ringan":"penuh");PQ.ringan=PQ.mode==="ringan";
 /* modul berat: dilewati di Mode Ringan */
-PQ.heavy=("petaqu-ai petaqu-detect petaqu-scan petaqu-nexus petaqu-ocrgeo petaqu-kmocr petaqu-fotocloud petaqu-wilayah petaqu-jarak petaqu-apex petaqu-guardian petaqu-oracle data-paket-contoh petaqu-paket petaqu-strategos petaqu-svauto petaqu-svlive petaqu-svview petaqu-dimensi petaqu-ukurai petaqu-ukurjeda petaqu-drone petaqu-dronesim petaqu-analisis petaqu-mantap petaqu-kurvas petaqu-cuaca petaqu-cuaca-wilayah petaqu-gempa petaqu-bencana-semua petaqu-penerbangan petaqu-rawan petaqu-karhutla petaqu-drainase petaqu-maskwilayah petaqu-blokwarna petaqu-klimat data-bandara petaqu-pesawat petaqu-lokasi data-lokasi").split(" ");
+PQ.heavy=("petaqu-ai petaqu-detect petaqu-scan petaqu-nexus petaqu-ocrgeo petaqu-kmocr petaqu-fotocloud petaqu-wilayah petaqu-jarak petaqu-apex petaqu-guardian petaqu-oracle data-paket-contoh petaqu-paket petaqu-strategos petaqu-svauto petaqu-svlive petaqu-svview petaqu-dimensi petaqu-ukurai petaqu-ukurjeda petaqu-drone petaqu-dronesim petaqu-analisis petaqu-mantap petaqu-kurvas petaqu-cuaca petaqu-cuaca-wilayah petaqu-gempa petaqu-bencana-semua petaqu-penerbangan petaqu-rawan petaqu-karhutla petaqu-drainase petaqu-maskwilayah petaqu-blokwarna petaqu-klimat data-bandara petaqu-pesawat data-kereta petaqu-kereta petaqu-lokasi data-lokasi").split(" ");
 PQ.s=function(src,sync){
  var nm=src.replace(/[?#].*$/,"").replace(/\.js$/,"");
  if(PQ.ringan&&PQ.heavy.indexOf(nm)>-1)return;
@@ -2081,7 +2081,7 @@ html body .leaflet-control-zoom.leaflet-bar a.leaflet-disabled{background:#071a2
 @media(max-width:400px){html body #legend{max-width:calc(100% - 80px)}html body .leaflet-bottom.leaflet-right>.leaflet-control-scale{grid-column:2;grid-row:1;margin-bottom:6px}html body .leaflet-bottom.leaflet-right>.leaflet-control-zoom{grid-row:2}html body .leaflet-bottom.leaflet-right>.leaflet-control-attribution{grid-row:3}}
 </style>
 <script src="petaqu-tampilan.js" defer="defer"></script><script src="petaqu-mode.js?v=3" defer="defer"></script>
-<script src="petaqu-aksi.js?v=1" defer="defer"></script><script src="petaqu-impor-cerdas.js?v=9" defer="defer"></script><script>PQ.s("petaqu-klimat.js?v=16645")</script><script>PQ.s("data-bandara.js?v=1")</script><script>PQ.s("petaqu-pesawat.js?v=3")</script>
+<script src="petaqu-aksi.js?v=1" defer="defer"></script><script src="petaqu-impor-cerdas.js?v=9" defer="defer"></script><script>PQ.s("petaqu-klimat.js?v=16645")</script><script>PQ.s("data-bandara.js?v=1")</script><script>PQ.s("petaqu-pesawat.js?v=3")</script><script>PQ.s("data-kereta.js?v=2")</script><script>PQ.s("petaqu-kereta.js?v=2")</script>
 <style id="jbp-css">
 .jbp{position:relative;width:40px;height:48px;transform:scale(var(--jbs,1));transform-origin:50% 100%;transition:transform .18s ease;filter:drop-shadow(0 5px 6px rgba(0,0,0,.55));cursor:pointer}
 .jbp-body{position:absolute;left:3px;top:0;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--c);
