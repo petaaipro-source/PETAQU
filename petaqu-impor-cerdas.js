@@ -368,7 +368,10 @@
     build();
     var ds = $("icKd"), so = $("icSo"), h = '<option value="">Ruas baru</option>', h2 = '<option value="">Semua ruas</option>';
     try { roads.forEach(function (r) { h += '<option value="' + esc(r.id) + '">+ ' + esc(r.name) + "</option>"; h2 += '<option value="' + esc(r.id) + '">' + esc(r.name) + "</option>"; }); } catch (e) { }
-    ds.innerHTML = h; so.innerHTML = h2; $("icIo").innerHTML = h2;
+    ds.innerHTML = h; so.innerHTML = h2;
+    var hn = "", hp = "";
+    try { jnCands().map(function (c, i) { return { c: c, i: i }; }).sort(function (a, b) { return String(a.c.name).localeCompare(String(b.c.name)); }).forEach(function (x) { var o = '<option value="ext:' + x.i + '">' + esc(x.c.name) + (x.c.viaPk ? "" : "") + "</option>"; if (x.c.viaPk) hp += o; else hn += o; }); } catch (e) { }
+    $("icIo").innerHTML = h2 + (hn ? '<optgroup label="Database Nasional (geometri jalan)">' + hn + "</optgroup>" : "") + (hp ? '<optgroup label="Database bawaan (patok KM, jalur perkiraan)">' + hp + "</optgroup>" : "");
     $("pqIc").classList.add("show");
     document.querySelector('#pqIc .tab[data-t="' + tab + '"]').click();
     try { closeImportModal(); } catch (e) { }
@@ -544,11 +547,12 @@
   function iriResolve(rows, opt) {
     opt = opt || {}; var cands = buildCands(false), groups = {}, order = [], th = 80;
     rows.forEach(function (r) { var k = r.ruas || "(tanpa nama)"; if (!groups[k]) { groups[k] = { name: k, rows: [] }; order.push(k); } groups[k].rows.push(r); });
-    var forced = opt.only ? cands.filter(function (c) { return c.id === opt.only; })[0] : null;
+    var extF = /^ext:\d+$/.test(opt.only || "") ? jnCands()[+opt.only.slice(4)] : null, forced = extF || (opt.only ? cands.filter(function (c) { return c.id === opt.only; })[0] : null);
     return order.map(function (k) {
       var g = groups[k], rs = g.rows, cr = rs.filter(function (r) { return r.lat != null; }), hasC = cr.length >= Math.max(2, rs.length * .6), cand = null, best = 0, tk = tokens(k), S = [], note = [];
       cands.forEach(function (c) { var sc = nameScore(tk, c.tok); if (c.code && k.indexOf(c.code) > -1) sc = Math.max(sc, .9); if (sc > best) { best = sc; cand = c; } });
       if (best < .4) cand = null;
+      if (extF) { cand = extF; best = 1; note.push("dipaksa ke ruas database pilihan" + (extF.viaPk ? " (jalur garis lurus antar patok KM, perkiraan)" : "")); }
       if (!cand) {   /* tak ada di peta → cocokkan NAMA ruas ke database Jalan Nasional (jalur & STA dari jarak) */
         var jb = 0, jc = null; jnCands().forEach(function (c) { var sc = nameScore(tk, c.tok); if (c.code && k.indexOf(c.code) > -1) sc = Math.max(sc, .9); if (sc > jb) { jb = sc; jc = c; } });
         if (jc && jb >= .6) { cand = jc; best = jb; note.push("ruas dicocokkan dari NAMA ke database Jalan Nasional" + (jc.viaPk ? " (jalur garis lurus antar patok KM, perkiraan)" : "") + (jc.staReal ? "" : " (STA dihitung dari jarak; centang 'Balik arah' bila terbalik)")); }
@@ -643,7 +647,7 @@
   var IRI_OUT = [], IRI_G = [];
 
   function iriGroups() {
-    var src = $("icIs").value, only = $("icIo").value, out = [];
+    var src = $("icIs").value, only = $("icIo").value, out = []; if (/^ext:/.test(only) && src !== "file") only = "";
     if (src === "file") {
       if (!S.iri || !S.iri.rows) { say("Pilih file Excel/CSV dulu", true); return null; }
       return iriResolve(S.iri.rows, { only: only, flip: $("icIfl").checked });
