@@ -252,10 +252,68 @@
     if (road) {
       var have = {}; road.points.forEach(function (p) { have[p.sta + "|" + p.lat.toFixed(5)] = 1; });
       var add = pts.filter(function (p) { return !have[p.sta + "|" + p.lat.toFixed(5)]; });
-      road.points = orderRoadPoints(road.points.concat(add)); persist(); renderRoadLayer(road); renderRoadList(); updateStats(); return add.length;
+      road.points = orderRoadPoints(road.points.concat(add)); persist(); renderRoadLayer(road); renderRoadList(); updateStats(); akRun([road], true); return add.length;
     }
-    addRoad(name, orderRoadPoints(pts)); return pts.length;
+    var nr = addRoad(name, orderRoadPoints(pts)); akRun([nr || roads[roads.length - 1]], true); return pts.length;
   }
+
+
+  /* ================= KABUPATEN OTOMATIS (dari titik yang dipetakan) ================= */
+  var AK = { idx: null, cache: {}, loading: null };
+  function akDec(str) { var i = 0, la = 0, lo = 0, o = []; while (i < str.length) { var b, sh = 0, r = 0; do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); la += r & 1 ? ~(r >> 1) : r >> 1; sh = 0; r = 0; do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32); lo += r & 1 ? ~(r >> 1) : r >> 1; o.push([la / 1e5, lo / 1e5]); } return o; }
+  function akPip(r, la, lo) { var c = false; for (var i = 0, j = r.length - 1; i < r.length; j = i++) { var a = r[i], b = r[j]; if ((a[1] > lo) !== (b[1] > lo) && la < (b[0] - a[0]) * (lo - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+  function akLoad(cb) {
+    if (window.PQ_KABBATAS) return cb(true);
+    if (AK.loading) { AK.loading.push(cb); return; } AK.loading = [cb];
+    var sc = document.createElement("script"); sc.src = "data-kabbatas.js";
+    var fin = function (ok) { var q = AK.loading; AK.loading = null; q.forEach(function (f) { f(ok && !!window.PQ_KABBATAS); }); };
+    sc.onload = function () { fin(true); }; sc.onerror = function () { fin(false); }; document.head.appendChild(sc);
+  }
+  function akIndex() { // bbox murah dulu; cincin didekode malas (hanya kabupaten yang kena)
+    if (AK.idx) return AK.idx; var D = window.PQ_KABBATAS || {}, L = [];
+    for (var p in D) D[p].forEach(function (k) { L.push({ p: p, n: k[0], enc: k[1], rings: null, bb: null }); });
+    return (AK.idx = L);
+  }
+  function akRings(k) {
+    if (!k.rings) { k.rings = k.enc.map(akDec); var s = 90, w = 180, n = -90, e = -180; k.rings.forEach(function (r) { r.forEach(function (q) { if (q[0] < s) s = q[0]; if (q[0] > n) n = q[0]; if (q[1] < w) w = q[1]; if (q[1] > e) e = q[1]; }); }); k.bb = [s, w, n, e]; }
+    return k.rings;
+  }
+  function akKabAt(lat, lng) {
+    var key = lat.toFixed(4) + "," + lng.toFixed(4); if (AK.cache[key] !== undefined) return AK.cache[key];
+    var K = akIndex(), best = null, bd = 1e9, near = [];
+    for (var i = 0; i < K.length; i++) {
+      var k = K[i]; akRings(k); var b = k.bb;
+      if (lat >= b[0] && lat <= b[2] && lng >= b[1] && lng <= b[3]) {
+        var c = false; k.rings.forEach(function (r) { if (akPip(r, lat, lng)) c = !c; });
+        if (c) return (AK.cache[key] = k.n);
+        near.push(k);
+      } else if (lat >= b[0] - .06 && lat <= b[2] + .06 && lng >= b[1] - .06 && lng <= b[3] + .06) near.push(k);
+    }
+    near.forEach(function (k) { k.rings.forEach(function (r) { for (var j = 0; j < r.length; j++) { var d = (r[j][0] - lat) * (r[j][0] - lat) + (r[j][1] - lng) * (r[j][1] - lng); if (d < bd) { bd = d; best = k; } } }); });
+    return (AK.cache[key] = (best && bd < .0036) ? best.n : null); // di luar polygon (garis pantai) -> terdekat <= ~6 km
+  }
+  // Tetapkan kabupaten tiap titik + kabupaten ruas = dominan (mayoritas titik). Mengembalikan nama kab atau null.
+  function akFixRoad(road) {
+    try {
+      if (!road || !road.points || !road.points.length) return null;
+      if (road.kabupaten === "Rute Konstruksi Manual" || road.isManualDrawing && road.kabupaten === "Gambar Manual") return null;
+      var cnt = {}, tot = 0, pts = road.points;
+      for (var i = 0; i < pts.length; i++) { var q = pts[i], la = +q.lat, lo = +q.lng; if (!isFinite(la) || !isFinite(lo)) continue; var n = akKabAt(la, lo); if (!n) continue; q.kab = n; cnt[n] = (cnt[n] || 0) + 1; tot++; }
+      if (!tot) return null;
+      var top = Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; })[0];
+      road.kabupaten = top; road.kabMix = Object.keys(cnt).length > 1 ? cnt : null;
+      return top;
+    } catch (e) { console.error(e); return null; }
+  }
+  function akRun(list, silent) {
+    akLoad(function (ok) {
+      if (!ok) return; var ch = [], mixed = 0;
+      list.forEach(function (r) { var old = r && r.kabupaten, nw = akFixRoad(r); if (nw) { if (r.kabMix) mixed++; if (nw !== old) ch.push(r.name + ": " + (old || "-") + " → " + nw); } });
+      if (ch.length || list.length) { try { persist(); renderRoadList(); updateStats(); } catch (e) { } try { if (typeof updateKabupatenStyleList === "function") updateKabupatenStyleList(); } catch (e) { } }
+      if (!silent || ch.length) say(ch.length ? "Kabupaten otomatis diperbarui di " + ch.length + " ruas (sesuai titik di peta)" + (mixed ? " · " + mixed + " ruas melintasi >1 kabupaten (dipakai yang dominan)" : "") : "Kabupaten sudah sesuai titik peta");
+    });
+  }
+  function akFixAll() { akRun(roads.slice(), false); }
 
   /* ================= UI ================= */
   var css = "#pqIc{position:fixed;inset:0;z-index:3200;display:none;align-items:flex-start;justify-content:center;padding:12px;background:#03060cc7;backdrop-filter:blur(4px);overflow:auto}#pqIc.show{display:flex}#pqIc .bx{width:min(720px,100%);background:var(--panel,#0f1521);border:1px solid var(--line,#1e2938);border-radius:14px;color:var(--text,#e6edf5);font:13px/1.4 system-ui,sans-serif;box-shadow:0 18px 50px #000a;position:relative;margin:auto}#pqIc header{padding:12px 14px 0;display:flex;gap:8px;align-items:center}#pqIc header b{flex:1;font-size:15px}#pqIc .x{background:0;border:0;color:#8fa6bd;font-size:22px;cursor:pointer}#pqIc .tabs{display:flex;gap:6px;padding:10px 14px 0}#pqIc .tab{flex:1;padding:9px;border-radius:9px;border:1px solid var(--line,#1e2938);background:#0a0e17;color:#9db3c9;cursor:pointer;font-weight:600;font-size:12.5px}#pqIc .tab.on{border-color:#22d3ee;color:#22d3ee;background:#22d3ee14}#pqIc .pn{padding:12px 14px 14px;display:none;flex-direction:column;gap:9px}#pqIc .pn.on{display:flex}#pqIc textarea,#pqIc input[type=text],#pqIc select,#pqIc input[type=number]{width:100%;box-sizing:border-box;background:#0a0e17;border:1px solid var(--line,#1e2938);border-radius:9px;color:#e6edf5;padding:8px 10px;font:inherit;outline:0}#pqIc textarea{min-height:110px;font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical}#pqIc textarea:focus,#pqIc input:focus,#pqIc select:focus{border-color:#22d3ee}#pqIc .r{display:flex;gap:8px;flex-wrap:wrap}#pqIc .r>*{flex:1;min-width:130px}#pqIc label.s{font-size:11px;color:#8fa6bd;display:block;margin-bottom:3px}#pqIc .b{padding:9px 14px;border-radius:9px;border:1px solid #22d3ee;background:#22d3ee22;color:#22d3ee;font-weight:700;cursor:pointer;font-size:12.5px}#pqIc .b.g{border-color:#34d399;background:#34d39922;color:#34d399}#pqIc .b.o{border-color:var(--line,#1e2938);background:#0a0e17;color:#9db3c9}#pqIc .b:disabled{opacity:.4;cursor:default}#pqIc .hint{font-size:11.5px;color:#8fa6bd}#pqIc .sum{display:flex;gap:6px;flex-wrap:wrap}#pqIc .chip{padding:3px 9px;border-radius:999px;border:1px solid var(--line,#1e2938);background:#0a0e17;font-size:11.5px}#pqIc .tw{max-height:260px;overflow:auto;border:1px solid var(--line,#1e2938);border-radius:9px}#pqIc table{width:100%;border-collapse:collapse;font-size:11.5px}#pqIc th{position:sticky;top:0;background:#111a29;text-align:left;padding:6px 7px;color:#9db3c9}#pqIc td{padding:5px 7px;border-top:1px solid #1a2433;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}#pqIc .ok{color:#34d399}#pqIc .far{color:#f59e0b}#pqIc .none{color:#f43f5e}#pqIc .bar{height:6px;border-radius:4px;background:#1a2433;overflow:hidden}#pqIc .bar i{display:block;height:100%;width:0;background:#22d3ee;transition:width .15s}";
@@ -660,6 +718,7 @@
       persist(); try { renderRoadLayer(road); } catch (e) { } nr++;
     });
     try { renderRoadList(); updateStats(); } catch (e) { }
+    if (nr) { var fx = []; IRI_G.forEach(function (g) { if (!g.cand) return; var rd = roads.filter(function (r) { return g.cand.id ? r.id === g.cand.id : r.name === g.name; })[0]; if (rd && fx.indexOf(rd) < 0) fx.push(rd); }); akRun(fx, true); }
     if (!nr) return say("Tidak ada ruas yang bisa diterapkan", true);
     if (silent === true) { say(n + " titik STA di " + nr + " ruas masuk ke data & Dashboard"); return; }
     clearLayer(); close(); try { if (!iriMode) toggleIriMode(true); } catch (e) { }
@@ -673,7 +732,9 @@
     grid.appendChild(mk("fa-location-dot", "Koordinat (teks / CSV)", "Tempel lat,lng · DMS · UTM, STA otomatis", "k"));
     grid.appendChild(mk("fa-gauge-high", "Scan IRI per STA", "Petakan nilai IRI tiap interval STA ruas", "i"));
     grid.appendChild(mk("fa-wand-magic-sparkles", "Scan Ruas &amp; STA (Cerdas)", "Cocokkan data ke ruas jalan + STA otomatis", "s"));
+    var kb = mk("fa-city", "Sinkronkan Kabupaten (otomatis)", "Ubah kabupaten semua ruas sesuai posisi titik di peta", "k"); kb.onclick = function () { akFixAll(); }; grid.appendChild(kb);
   }
+  window.PQ_AutoKab = { fixRoad: akFixRoad, fixAll: akFixAll, at: akKabAt };
   window.PQ_ImporCerdas = { iriParse: iriParse, iriResolve: iriResolve, iriIntervals: iriIntervals, scan: scan, open: open, parseCoordText: parseCoordText, normalizeRows: normalizeRows, utmToLL: utmToLL };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", inject); else inject();
   setTimeout(inject, 1500);
