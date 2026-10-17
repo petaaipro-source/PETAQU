@@ -120,14 +120,23 @@
       e.stopPropagation(); var t = e.target.closest("button[data-n]"); if (!t || t.disabled) return;
       var s = S(); if (!s) return; var n = t.getAttribute("data-n"), h = curHeading();
       if (n === "f" || n === "r") { s.hd = ((h + (n === "f" ? 180 : 90)) % 360 + 360) % 360; try { renderStreetView(); } catch (x) { return; } lastSig = ""; refresh(); return; }
-      var p = providerFor(s); if (!p) return;
-      var d = n === "n" ? 1 : -1; if (p.can(d, h)) p.go(d, h); lastSig = "";
+      var p = providerFor(s), d = n === "n" ? 1 : -1, ob = $(d > 0 ? "svNextBtn" : "svPrevBtn");
+      if (p && p.can(d, h)) p.go(d, h); else if (ob && !ob.disabled) ob.click();   /* cadangan: tombol ◀ ▶ bawaan aplikasi (mis. Patok KM) */
+      lastSig = "";
+    });
+    bar.addEventListener("click", function (e) {
+      if (!e.target.closest(".sb-t")) return;
+      var pt; try { pt = getSvPoint(); } catch (x) { pt = null; } if (!pt) return;
+      var txt = pt.lat.toFixed(6) + ", " + pt.lng.toFixed(6);
+      function ok() { try { if (typeof toast === "function") toast("Koordinat disalin: " + txt); } catch (x) { } }
+      try { navigator.clipboard.writeText(txt).then(ok, function () { }); } catch (x) { }
     });
     bar.addEventListener("change", function (e) {
       var s = S(), p = s && s.bar; if (p && p.cls && e.target.tagName === "SELECT") { p.cls.set(e.target.value); lastSig = ""; refresh(); }
     });
     ["mousedown", "touchstart", "wheel", "dblclick"].forEach(function (ev) { bar.addEventListener(ev, function (e) { e.stopPropagation(); }); });
     wrap.appendChild(bar);
+    try { if (window.PQSvDock) window.PQSvDock.adopt(); } catch (e) { }   /* dock Street View memindahkan bilah ini ke baris tombol bawah */
     return bar;
   }
   function refresh() {
@@ -143,8 +152,10 @@
     if (!e.isJembatan && !e.isGeo && sub.indexOf(e.label) < 0) sub = e.label + " · " + sub;
     bar.querySelector(".sb-t b").textContent = title || "Street View";
     bar.querySelector(".sb-t span").textContent = (sub ? sub + " · " : "") + "hadap " + hName(h);
-    bar.querySelector('[data-n="p"]').disabled = !(p && p.can(-1, h));
-    bar.querySelector('[data-n="n"]').disabled = !(p && p.can(1, h));
+    var ob0 = $("svPrevBtn"), ob1 = $("svNextBtn");
+    bar.querySelector('[data-n="p"]').disabled = !((p && p.can(-1, h)) || (ob0 && !ob0.disabled));
+    bar.querySelector('[data-n="n"]').disabled = !((p && p.can(1, h)) || (ob1 && !ob1.disabled));
+    bar.querySelector(".sb-t").title = "Ketuk untuk menyalin koordinat · " + e.lat.toFixed(6) + ", " + e.lng.toFixed(6);
     var sel = bar.querySelector("select");
     if (p && p.cls) {
       var cv = p.cls.val();

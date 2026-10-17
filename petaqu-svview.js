@@ -17,7 +17,7 @@
   if (window.PQSvView) return;
 
   /* ------------------------------------------------------------------ util & state */
-  var K = { view: "pq_sv_view", fixL: "pq_sv_fix_live", fixE: "pq_sv_fix_emb", lay: "pq_sv_layout", r: "pq_sv_dual_r", swap: "pq_sv_swap", sync: "pq_sv_sync", clean: "pq_sv_clean" };
+  var K = { view: "pq_sv_view", fixL: "pq_sv_fix_live", fixE: "pq_sv_fix_emb", lay: "pq_sv_layout", r: "pq_sv_dual_r", swap: "pq_sv_swap", sync: "pq_sv_sync", clean: "pq_sv_clean2" };
   function ls(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function ss(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
   function $(id) { return document.getElementById(id); }
@@ -43,7 +43,7 @@
     r: parseFloat(ls(K.r, "50")) || 50,
     swap: ls(K.swap, "0") === "1",
     sync: ls(K.sync, "1") !== "0",
-    clean: ls(K.clean, "0") === "1"      /* Bersihkan layar: sembunyikan kartu & kontrol bawaan Google */
+    clean: ls(K.clean, "1") === "1"      /* Bersihkan layar (default NYALA): sembunyikan kartu & kontrol bawaan Google; logo & hak cipta tetap */
   };
   if (["live", "embed", "dual"].indexOf(S.view) < 0) S.view = "dual";
   if (["auto", "row", "col"].indexOf(S.lay) < 0) S.lay = "auto";
@@ -275,7 +275,8 @@
     if (show) {
       var wrap = $("svFrameWrap"), wr = wrap.getBoundingClientRect(), br = btns.menu.getBoundingClientRect();
       var left = Math.max(10, Math.min(br.left - wr.left, wr.width - menu.offsetWidth - 10));
-      menu.style.left = left + "px"; menu.style.top = (br.bottom - wr.top + 8) + "px";
+      var above = br.top - wr.top - menu.offsetHeight - 10;        /* dock ada di bawah → menu membuka ke atas */
+      menu.style.left = left + "px"; menu.style.top = (above >= 8 ? above : Math.max(8, br.bottom - wr.top + 8)) + "px";
     }
     refreshUI();
   }
@@ -492,6 +493,12 @@
     if (shown === "dual") et = embBusy ? ["load", "menyinkron…"] : (S.sync ? ["", "ikut Live"] : ["warn", "beku (manual)"]);
     else if (shown === "embed") et = embBusy ? ["load", "memuat…"] : ["", "tanpa watermark"];
     setTag(tagE, et[0], et[1]);
+    var vg = $("pqSvView");
+    if (vg) {
+      var cls = shown === "embed" ? et : (shown === "live" ? lt : (lt[0] === "err" || lt[0] === "warn" || lt[0] === "load" ? lt : et));
+      var stv = cls[0] || "ok"; if (vg.getAttribute("data-st") !== stv) vg.setAttribute("data-st", stv);
+      var tt = "Live: " + lt[1] + " · Embed: " + et[1]; if (vg.title !== tt) vg.title = tt;
+    }
   }
 
   /* ------------------------------------------------------------------ siklus utama & pintasan */
