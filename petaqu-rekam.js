@@ -1,5 +1,5 @@
 /* PETAQU — Rekam Koordinat & KM (inventarisasi patok KM dari Street View)
-   Tombol "Rekam" melayang di dalam Street View + tabel (koordinat, ruas, KM, edit, hapus, unduh).
+   Satu launcher kecil di tepi kanan Street View (aktif hanya saat diklik) → Rekam, Tabel, Auto, Peta + tabel (koordinat, ruas, KM, edit, hapus, unduh).
    Setiap rekaman LANGSUNG tampil di peta (titik + garis per ruas). Seluruh fitur bisa di-hide/show.
    Pintar: ruas/STA/KM terisi otomatis dari posisi Street View, KM kosong ditaksir dari rekaman
    tetangga (tanda ~), deteksi titik ganda, rekam otomatis per jarak, pintasan Shift+R.
@@ -9,7 +9,7 @@
   if (window.PQRekam) return;
 
   var KEY = "petaqu_rekam_v1", UIK = "petaqu_rekam_ui_v1";
-  var rec = [], ui = { open: false, mini: false, onMap: true, sort: "new", step: 100, fmt: "xlsx" };
+  var rec = [], ui = { open: false, onMap: true, sort: "new", step: 100, fmt: "xlsx" }, dock = false;
   var auto = false, editId = null, flashId = null, layer = null, markers = {}, lastAuto = null, tick = 0;
   var PAL = ["#22d3ee", "#f59e0b", "#a78bfa", "#34d399", "#f43f5e", "#60a5fa", "#fb923c", "#e879f9", "#facc15"];
 
@@ -24,6 +24,7 @@
   function load() {
     try { var a = JSON.parse(localStorage.getItem(KEY) || "[]"); if (Array.isArray(a)) rec = a; } catch (e) {}
     try { Object.assign(ui, JSON.parse(localStorage.getItem(UIK) || "{}")); } catch (e) {}
+    ui.open = false; dock = false;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch (e) { note("Penyimpanan penuh — unduh lalu kosongkan data", true); } }
   function saveUi() { try { localStorage.setItem(UIK, JSON.stringify(ui)); } catch (e) {} }
@@ -146,7 +147,7 @@
     try {
       if (!layer) layer = LF.layerGroup();
       layer.clearLayers(); markers = {};
-      if (!ui.onMap || !rec.length) { if (M.hasLayer(layer)) M.removeLayer(layer); return; }
+      if (!dock || !ui.onMap || !rec.length) { if (M.hasLayer(layer)) M.removeLayer(layer); return; }
       if (!M.hasLayer(layer)) layer.addTo(M);
       var perm = rec.length <= 60, groups = {};
       rec.forEach(function (r) {
@@ -204,60 +205,65 @@
     if ($("pqRkCss")) return;
     var s = document.createElement("style"); s.id = "pqRkCss";
     s.textContent = [
-      "#pqRkFab{position:absolute;z-index:9;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;align-items:center}",
-      "#pqRkFab button{font:700 12.5px var(--mono,system-ui);cursor:pointer;border-radius:12px;border:1px solid #ffffff2e;color:#fff;background:#0f1521ee;padding:10px 13px;display:flex;align-items:center;gap:7px;box-shadow:0 6px 18px #0008}",
-      "#pqRkRec{background:linear-gradient(135deg,#e11d48,#f43f5e)!important;border-color:#fda4af!important}#pqRkRec:active{transform:scale(.96)}",
-      "#pqRkTog.on{border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}#pqRkTog b{background:var(--cyan,#22d3ee);color:#04121a;border-radius:9px;padding:1px 7px;font-size:11px}",
-      "#pqRkFab.mini #pqRkRec{display:none}#pqRkFab.mini #pqRkTog{padding:9px 11px}",
-      "#pqRkPanel{position:absolute;z-index:9;right:12px;bottom:calc(138px + env(safe-area-inset-bottom,0px));width:min(430px,calc(100% - 24px));max-height:min(62%,500px);display:none;flex-direction:column;background:#0a0e17f7;border:1px solid #38bdf855;border-radius:14px;box-shadow:0 18px 44px #000a;color:#dbe7f3;font:12px/1.4 var(--mono,system-ui);overflow:hidden}",
+      "#pqRkDock{position:absolute;z-index:9;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:7px;pointer-events:none}",
+      "#pqRkDock>*{pointer-events:auto}",
+      ".pqrk-b{position:relative;width:48px;padding:7px 0 5px;border-radius:14px;border:1px solid #ffffff2e;background:#0f1521f0;color:#e6f1fb;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;box-shadow:0 6px 16px #0009;font:700 8.5px/1 var(--mono,system-ui);letter-spacing:.3px;text-transform:uppercase}",
+      ".pqrk-b i{font-size:16px}.pqrk-b:hover{border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}.pqrk-b.on{background:var(--cyan,#22d3ee);color:#04121a;border-color:var(--cyan,#22d3ee)}",
+      "#pqRkRec{background:linear-gradient(135deg,#e11d48,#f43f5e);border-color:#fda4af;color:#fff}#pqRkRec:hover{color:#fff;filter:brightness(1.12)}#pqRkRec:active{transform:scale(.94)}",
+      "#pqRkLaunch{width:44px;height:44px;padding:0;border-radius:50%;justify-content:center}#pqRkLaunch i{font-size:18px}",
+      "#pqRkLaunch.on{background:#0f1521f0;color:var(--cyan,#22d3ee);border-color:var(--cyan,#22d3ee);box-shadow:0 0 0 3px #22d3ee33,0 6px 16px #0009}",
+      ".pqrk-n{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;border-radius:9px;background:var(--cyan,#22d3ee);color:#04121a;font:800 10.5px/18px var(--mono,system-ui);text-align:center;padding:0 5px;box-sizing:border-box}",
+      "#pqRkTools{display:none;flex-direction:column;gap:7px;align-items:center}#pqRkTools.show{display:flex;animation:pqrkIn .16s ease}@keyframes pqrkIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}",
+      "#pqRkPanel{position:absolute;z-index:9;right:70px;top:68px;bottom:calc(118px + env(safe-area-inset-bottom,0px));width:min(430px,calc(100% - 84px));display:none;flex-direction:column;background:#0a0e17f7;border:1px solid #38bdf855;border-radius:14px;box-shadow:0 18px 44px #000a;color:#dbe7f3;font:12px/1.4 var(--mono,system-ui);overflow:hidden}",
       "#pqRkPanel.show{display:flex}",
-      "#pqRkHead{display:flex;align-items:center;gap:6px;padding:9px 10px;border-bottom:1px solid #ffffff1f}#pqRkHead b{flex:1;font-size:12.5px;color:var(--cyan,#22d3ee);letter-spacing:.3px}",
-      ".pqrk-ib{width:28px;height:28px;border-radius:8px;background:#ffffff0d;border:1px solid #ffffff22;color:#cfe0f0;cursor:pointer;font-size:12px}.pqrk-ib:hover{border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}.pqrk-ib.on{background:var(--cyan,#22d3ee);color:#04121a;border-color:var(--cyan,#22d3ee)}",
+      "#pqRkHead{display:flex;align-items:center;gap:8px;padding:9px 10px;border-bottom:1px solid #ffffff1f}#pqRkHead b{flex:1;font-size:12.5px;color:var(--cyan,#22d3ee);letter-spacing:.3px}",
+      ".pqrk-ib{width:28px;height:28px;border-radius:8px;background:#ffffff0d;border:1px solid #ffffff22;color:#cfe0f0;cursor:pointer;font-size:12px}.pqrk-ib:hover{border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}",
       "#pqRkCur{padding:7px 10px;font-size:11px;color:#9fb6cc;border-bottom:1px solid #ffffff14;word-break:break-word}#pqRkCur b{color:#fff}",
       "#pqRkBar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid #ffffff14}",
       "#pqRkBar button,#pqRkBar select{font:700 11px var(--mono,system-ui);border-radius:8px;border:1px solid #ffffff26;background:#ffffff10;color:#e6f1fb;padding:6px 9px;cursor:pointer}",
-      "#pqRkBar .p{background:#e11d48;border-color:#fda4af}#pqRkBar .on{background:var(--cyan,#22d3ee);color:#04121a;border-color:var(--cyan,#22d3ee)}#pqRkBar .d:hover{border-color:#f43f5e;color:#f43f5e}",
+      "#pqRkBar .d:hover{border-color:#f43f5e;color:#f43f5e}#pqRkBar .sp{flex:1}",
       "#pqRkWrap{overflow:auto;flex:1;min-height:70px}#pqRkTbl{width:100%;border-collapse:collapse}",
       "#pqRkTbl th{position:sticky;top:0;background:#101826;text-align:left;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#8fa6bd;padding:6px 7px;z-index:1}",
       "#pqRkTbl td{padding:6px 7px;border-top:1px solid #ffffff12;vertical-align:top}#pqRkTbl small{display:block;color:#8fa6bd;font-size:10px}",
       "#pqRkTbl td.n{color:#8fa6bd;width:22px}#pqRkTbl td.co,#pqRkTbl td.ru{cursor:pointer}#pqRkTbl td.co{font-size:11px;white-space:nowrap}#pqRkTbl td.km{font-weight:800;color:#fde68a;white-space:nowrap}",
       "#pqRkTbl td.ac{white-space:nowrap;text-align:right}#pqRkTbl td.ac button{width:26px;height:26px;border-radius:7px;background:#ffffff0d;border:1px solid #ffffff22;color:#cfe0f0;cursor:pointer;margin-left:3px}#pqRkTbl td.ac button:hover{border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}#pqRkTbl td.ac button.d:hover{border-color:#f43f5e;color:#f43f5e}",
       "#pqRkTbl tr.fl td{background:#22d3ee22}#pqRkTbl input{width:100%;box-sizing:border-box;background:#05070c;border:1px solid #38bdf866;color:#fff;border-radius:6px;padding:5px 6px;font:11.5px var(--mono,system-ui);margin-bottom:4px}",
-      ".pqrk-empty{padding:22px 14px;text-align:center;color:#8fa6bd;line-height:1.6}.pqrk-tip,.leaflet-tooltip.pqrk-tip{font-size:10.5px}"
+      ".pqrk-empty{padding:22px 14px;text-align:center;color:#8fa6bd;line-height:1.6}.pqrk-tip,.leaflet-tooltip.pqrk-tip{font-size:10.5px}",
+      "@media(max-width:560px){#pqRkPanel{right:62px;width:calc(100% - 74px)}.pqrk-b{width:44px}}"
     ].join("\n");
     document.head.appendChild(s);
   }
 
   function build() {
-    var wrap = $("svFrameWrap"); if (!wrap || $("pqRkFab")) return !!$("pqRkFab");
+    var wrap = $("svFrameWrap"); if (!wrap || $("pqRkDock")) return !!$("pqRkDock");
     css();
-    var fab = document.createElement("div"); fab.id = "pqRkFab";
-    fab.innerHTML = '<button id="pqRkRec" type="button" title="Rekam koordinat titik ini (Shift+R)"><i class="fa-solid fa-circle-dot"></i> Rekam</button>' +
-      '<button id="pqRkTog" type="button" title="Tampilkan / sembunyikan tabel rekaman"><i class="fa-solid fa-table-list"></i> <b id="pqRkCnt">0</b></button>';
+    var dk = document.createElement("div"); dk.id = "pqRkDock";
+    dk.innerHTML = '<div id="pqRkTools">' +
+      '<button id="pqRkRec" class="pqrk-b" type="button" title="Rekam koordinat titik ini (Shift+R)"><i class="fa-solid fa-circle-dot"></i>Rekam</button>' +
+      '<button id="pqRkTog" class="pqrk-b" type="button" title="Tampilkan / sembunyikan tabel rekaman"><i class="fa-solid fa-table-list"></i>Tabel<span class="pqrk-n" id="pqRkCnt">0</span></button>' +
+      '<button id="pqRkAuto" class="pqrk-b" type="button" title="Rekam otomatis tiap menempuh jarak tertentu"><i class="fa-solid fa-bolt"></i>Auto</button>' +
+      '<button id="pqRkMapBtn" class="pqrk-b" type="button" title="Tampilkan rekaman di peta"><i class="fa-solid fa-map-location-dot"></i>Peta</button></div>' +
+      '<button id="pqRkLaunch" class="pqrk-b" type="button" title="Rekam Koordinat & KM — klik untuk mengaktifkan"><i class="fa-solid fa-location-crosshairs"></i><span class="pqrk-n" id="pqRkCnt2">0</span></button>';
     var pn = document.createElement("div"); pn.id = "pqRkPanel";
     pn.innerHTML = '<div id="pqRkHead"><i class="fa-solid fa-location-crosshairs" style="color:var(--cyan,#22d3ee)"></i><b>Rekam Koordinat &amp; KM</b>' +
-      '<button class="pqrk-ib" id="pqRkMapBtn" type="button" title="Tampilkan rekaman di peta"><i class="fa-solid fa-map-location-dot"></i></button>' +
-      '<button class="pqrk-ib" id="pqRkMiniBtn" type="button" title="Ciutkan tombol Rekam (sisakan ikon kecil)"><i class="fa-solid fa-compress"></i></button>' +
-      '<button class="pqrk-ib" id="pqRkClose" type="button" title="Sembunyikan tabel"><i class="fa-solid fa-chevron-down"></i></button></div>' +
+      '<button class="pqrk-ib" id="pqRkClose" type="button" title="Tutup tabel"><i class="fa-solid fa-xmark"></i></button></div>' +
       '<div id="pqRkCur"></div>' +
-      '<div id="pqRkBar"><button class="p" id="pqRkRec2" type="button"><i class="fa-solid fa-circle-dot"></i> Rekam</button>' +
-      '<button id="pqRkAuto" type="button" title="Rekam otomatis tiap menempuh jarak tertentu"><i class="fa-solid fa-bolt"></i> Auto</button>' +
-      '<select id="pqRkStep" title="Jarak rekam otomatis"><option value="50">50 m</option><option value="100">100 m</option><option value="250">250 m</option><option value="500">500 m</option><option value="1000">1 km</option></select>' +
-      '<button id="pqRkSort" type="button" title="Urutan tabel"></button>' +
+      '<div id="pqRkBar"><select id="pqRkStep" title="Jarak rekam otomatis (tombol Auto)"><option value="50">Auto 50 m</option><option value="100">Auto 100 m</option><option value="250">Auto 250 m</option><option value="500">Auto 500 m</option><option value="1000">Auto 1 km</option></select>' +
+      '<button id="pqRkSort" type="button" title="Urutan tabel"></button><span class="sp"></span>' +
       '<select id="pqRkFmt" title="Format unduhan"><option value="xlsx">Excel</option><option value="csv">CSV</option><option value="geojson">GeoJSON</option></select>' +
       '<button id="pqRkDl" type="button"><i class="fa-solid fa-download"></i> Unduh</button>' +
       '<button class="d" id="pqRkClear" type="button" title="Hapus semua rekaman"><i class="fa-solid fa-trash"></i></button></div>' +
       '<div id="pqRkWrap"><table id="pqRkTbl"><thead><tr><th>#</th><th>Koordinat</th><th>Ruas</th><th>KM</th><th></th></tr></thead><tbody id="pqRkBody"></tbody></table></div>';
-    wrap.appendChild(pn); wrap.appendChild(fab);
-    ["pointerdown", "mousedown", "touchstart", "wheel"].forEach(function (ev) { [fab, pn].forEach(function (el) { el.addEventListener(ev, function (e) { e.stopPropagation(); }, { passive: true }); }); });
+    wrap.appendChild(pn); wrap.appendChild(dk);
+    ["pointerdown", "mousedown", "touchstart", "wheel"].forEach(function (ev) { [dk, pn].forEach(function (el) { el.addEventListener(ev, function (e) { e.stopPropagation(); }, { passive: true }); }); });
 
-    $("pqRkRec").onclick = $("pqRkRec2").onclick = function () { record(false); };
-    $("pqRkTog").onclick = function () { ui.open = !ui.open; saveUi(); paintUi(); };
-    $("pqRkClose").onclick = function () { ui.open = false; saveUi(); paintUi(); };
-    $("pqRkMiniBtn").onclick = function () { ui.mini = !ui.mini; saveUi(); paintUi(); };
+    $("pqRkLaunch").onclick = function () { setDock(!dock); };
+    $("pqRkRec").onclick = function () { record(false); };
+    $("pqRkTog").onclick = function () { ui.open = !ui.open; paintUi(); };
+    $("pqRkClose").onclick = function () { ui.open = false; paintUi(); };
     $("pqRkMapBtn").onclick = function () { ui.onMap = !ui.onMap; saveUi(); syncMap(); paintUi(); };
-    $("pqRkAuto").onclick = function () { auto = !auto; lastAuto = auto ? current() : null; if (auto) note("Rekam otomatis aktif tiap " + ui.step + " m — jalankan Street View / animasi"); paintUi(); };
-    $("pqRkStep").onchange = function () { ui.step = +this.value; saveUi(); };
+    $("pqRkAuto").onclick = function () { setAuto(!auto); };
+    $("pqRkStep").onchange = function () { ui.step = +this.value; saveUi(); if (auto) lastAuto = current(); };
     $("pqRkSort").onclick = function () { ui.sort = ui.sort === "new" ? "ruas" : "new"; saveUi(); paintUi(); render(); };
     $("pqRkFmt").onchange = function () { ui.fmt = this.value; saveUi(); };
     $("pqRkDl").onclick = download;
@@ -266,6 +272,16 @@
     $("pqRkBody").addEventListener("keydown", function (e) { if (e.key === "Enter") { var b = e.target.closest("tr"); if (b) saveEdit(b.getAttribute("data-id")); } else if (e.key === "Escape") { editId = null; render(); } });
     paintUi(); render();
     return true;
+  }
+  function setDock(v) {
+    dock = !!v;
+    if (!dock) { ui.open = false; if (auto) setAuto(false); }
+    syncMap(); paintUi(); if (dock) paintCur();
+  }
+  function setAuto(v) {
+    auto = !!v; lastAuto = auto ? current() : null;
+    note(auto ? "Rekam otomatis aktif tiap " + (ui.step >= 1000 ? "1 km" : ui.step + " m") + " — jalankan Street View / animasi" : "Rekam otomatis dimatikan");
+    paintUi();
   }
 
   function onRow(e) {
@@ -298,7 +314,7 @@
 
   function render() {
     var body = $("pqRkBody"); if (!body) return;
-    var cnt = $("pqRkCnt"); if (cnt) cnt.textContent = rec.length;
+    var cnt = $("pqRkCnt"), c2 = $("pqRkCnt2"); if (cnt) cnt.textContent = rec.length; if (c2) { c2.textContent = rec.length; c2.style.display = rec.length ? "" : "none"; }
     if (!rec.length) { body.innerHTML = '<tr><td colspan="5"><div class="pqrk-empty"><i class="fa-solid fa-location-crosshairs"></i><br>Belum ada rekaman.<br>Geser Street View ke patok KM lalu tekan <b>Rekam</b> (atau Shift+R).</div></td></tr>'; return; }
     body.innerHTML = sorted(ui.sort).map(function (r, i) {
       if (r.id === editId) {
@@ -318,15 +334,16 @@
   }
 
   function paintUi() {
-    var fab = $("pqRkFab"), pn = $("pqRkPanel"); if (!fab) return;
-    fab.classList.toggle("mini", !!ui.mini);
-    pn.classList.toggle("show", !!ui.open);
-    $("pqRkTog").classList.toggle("on", !!ui.open);
+    var dk = $("pqRkDock"); if (!dk) return;
+    $("pqRkTools").classList.toggle("show", dock);
+    $("pqRkLaunch").classList.toggle("on", dock);
+    $("pqRkPanel").classList.toggle("show", dock && !!ui.open);
+    $("pqRkTog").classList.toggle("on", dock && !!ui.open);
     $("pqRkMapBtn").classList.toggle("on", !!ui.onMap);
     $("pqRkAuto").classList.toggle("on", auto);
     $("pqRkStep").value = String(ui.step); $("pqRkFmt").value = ui.fmt;
     $("pqRkSort").innerHTML = ui.sort === "new" ? '<i class="fa-solid fa-clock"></i> Terbaru' : '<i class="fa-solid fa-arrow-down-1-9"></i> Ruas+KM';
-    $("pqRkMiniBtn").innerHTML = ui.mini ? '<i class="fa-solid fa-expand"></i>' : '<i class="fa-solid fa-compress"></i>';
+    if (ui.open) paintCur();
   }
 
   function paintCur() {
@@ -341,7 +358,8 @@
   /* detak ringan: segarkan info titik & rekam otomatis */
   function loop() {
     var ov = $("svOverlay"); if (!ov || !ov.classList.contains("show")) return;
-    if (!$("pqRkFab") && !build()) return;
+    if (!$("pqRkDock") && !build()) return;
+    if (!dock) return;
     if (ui.open) paintCur();
     if (auto) {
       var c = current(); if (!c) return;
@@ -356,15 +374,15 @@
     document.addEventListener("keydown", function (e) {
       if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || (e.key !== "R" && e.key !== "r")) return;
       var t = e.target, tag = t && t.tagName; if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
-      var ov = $("svOverlay"); if (!ov || !ov.classList.contains("show")) return;
+      var ov = $("svOverlay"); if (!dock || !ov || !ov.classList.contains("show")) return;
       e.preventDefault(); record(false);
     });
   }
 
   window.PQRekam = {
     record: function () { return record(false); }, all: function () { return rec.slice(); },
-    open: function () { ui.open = true; saveUi(); build(); paintUi(); },
-    edit: function (id) { ui.open = true; editId = id; saveUi(); build(); paintUi(); render(); try { var M = MAP(); M && M.closePopup(); } catch (e) {} },
+    open: function () { build(); dock = true; ui.open = true; syncMap(); paintUi(); },
+    edit: function (id) { build(); dock = true; ui.open = true; editId = id; syncMap(); paintUi(); render(); try { var M = MAP(); M && M.closePopup(); } catch (e) {} },
     del: del, download: download
   };
 
