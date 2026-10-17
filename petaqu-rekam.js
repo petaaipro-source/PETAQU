@@ -11,8 +11,9 @@
   if (window.PQRekam) return;
 
   var KEY = "petaqu_rekam_v1", UIK = "petaqu_rekam_ui_v1";
-  var rec = [], ui = { open: false, onMap: true, sort: "new", step: 100, fmt: "xlsx" }, dock = false;
-  var auto = false, editId = null, flashId = null, layer = null, markers = {}, lastAuto = null, tick = 0;
+  var rec = [], ui = { open: false, onMap: true, sort: "new", step: 100, mode: "d", tsec: 10, cust: [], cx: false, fmt: "xlsx" }, dock = false;
+  var auto = false, editId = null, flashId = null, layer = null, markers = {}, lastAuto = null, lastAutoT = 0, tick = 0;
+  var PRE = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000], PRE_T = [5, 10, 30, 60], MIN_M = 1, MAX_M = 100000, MIN_T = 1, MAX_T = 3600;
   var PAL = ["#22d3ee", "#f59e0b", "#a78bfa", "#34d399", "#f43f5e", "#60a5fa", "#fb923c", "#e879f9", "#facc15"];
 
   function $(i) { return document.getElementById(i); }
@@ -26,7 +27,12 @@
   function load() {
     try { var a = JSON.parse(localStorage.getItem(KEY) || "[]"); if (Array.isArray(a)) rec = a; } catch (e) {}
     try { Object.assign(ui, JSON.parse(localStorage.getItem(UIK) || "{}")); } catch (e) {}
-    ui.open = false; dock = false;
+    ui.open = false; dock = false; ui.cx = false;
+    if (!isFinite(+ui.step) || ui.step < MIN_M || ui.step > MAX_M) ui.step = 100;
+    if (!isFinite(+ui.tsec) || ui.tsec < MIN_T || ui.tsec > MAX_T) ui.tsec = 10;
+    if (ui.mode !== "t") ui.mode = "d";
+    if (!Array.isArray(ui.cust)) ui.cust = [];
+    ui.cust = ui.cust.map(Number).filter(function (v) { return isFinite(v) && v >= MIN_M && v <= MAX_M; }).slice(0, 5);
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch (e) { note("Penyimpanan penuh — unduh lalu kosongkan data", true); } }
   function saveUi() { try { localStorage.setItem(UIK, JSON.stringify(ui)); } catch (e) {} }
@@ -118,12 +124,59 @@
     return v >= 0 ? Math.round(v * 1000) / 1000 : null;
   }
 
+  /* ---------- interval rekam otomatis (jarak bebas / waktu) ---------- */
+  function mLabel(m) { m = +m; if (m >= 1000) { var k = +(m / 1000).toFixed(3); return k + " km"; } return +m.toFixed(1) + " m"; }
+  function tLabel(t) { t = +t; return t >= 60 && t % 60 === 0 ? (t / 60) + " menit" : t + " detik"; }
+  function stepLabel() { return ui.mode === "t" ? "tiap " + tLabel(ui.tsec) : "tiap " + mLabel(ui.step); }
+  function stepSel() { return ui.mode === "t" ? "t:" + ui.tsec : "d:" + ui.step; }
+  function stepOpts() {
+    var o = PRE.map(function (m) { return [m, "Auto " + mLabel(m)]; });
+    ui.cust.forEach(function (m) { if (PRE.indexOf(m) < 0) o.push([m, "Auto " + mLabel(m) + " \u2605"]); });
+    if (ui.mode === "d" && PRE.indexOf(ui.step) < 0 && ui.cust.indexOf(ui.step) < 0) o.push([ui.step, "Auto " + mLabel(ui.step) + " \u2605"]);
+    o.sort(function (a, b) { return a[0] - b[0]; });
+    var h = '<optgroup label="Per jarak">' + o.map(function (x) { return '<option value="d:' + x[0] + '">' + x[1] + "</option>"; }).join("") + "</optgroup>";
+    var tt = PRE_T.slice(); if (ui.mode === "t" && tt.indexOf(ui.tsec) < 0) tt.push(ui.tsec); tt.sort(function (a, b) { return a - b; });
+    h += '<optgroup label="Per waktu">' + tt.map(function (t) { return '<option value="t:' + t + '">Auto ' + tLabel(t) + "</option>"; }).join("") + "</optgroup>";
+    return h + '<option value="custom">\u270E Kustom\u2026</option>';
+  }
+  function paintStep() {
+    var sel = $("pqRkStep"); if (!sel) return;
+    var h = stepOpts(); if (sel.getAttribute("data-h") !== h) { sel.innerHTML = h; sel.setAttribute("data-h", h); }
+    sel.value = ui.cx ? "custom" : stepSel();
+    var row = $("pqRkIv"); if (row) row.classList.toggle("show", !!ui.cx);
+    var ab = $("pqRkAuto"); if (ab) ab.title = "Rekam otomatis " + stepLabel() + " (ubah interval di tabel)";
+  }
+  function setStepFrom(v) {
+    if (v === "custom") { ui.cx = true; paintStep(); var i = $("pqRkIvVal"); if (i) { try { i.focus(); i.select(); } catch (e) {} } return; }
+    var p = String(v).split(":"), n = +p[1]; ui.cx = false;
+    if (p[0] === "t") { ui.mode = "t"; ui.tsec = n; } else { ui.mode = "d"; ui.step = n; }
+    saveUi(); paintStep(); resetAuto();
+  }
+  function applyCustom() {
+    var i = $("pqRkIvVal"), u = $("pqRkIvUnit"); if (!i || !u) return;
+    var v = parseFloat(String(i.value).replace(",", ".")), unit = u.value;
+    if (!isFinite(v) || v <= 0) { note("Isi angka interval lebih dari 0", true); i.focus(); return; }
+    if (unit === "t" || unit === "mnt") {
+      var sec = Math.round(unit === "mnt" ? v * 60 : v);
+      if (sec < MIN_T || sec > MAX_T) { note("Interval waktu: 1 detik \u2013 60 menit", true); return; }
+      ui.mode = "t"; ui.tsec = sec;
+    } else {
+      var m = unit === "km" ? v * 1000 : v; m = Math.round(m * 10) / 10;
+      if (m < MIN_M || m > MAX_M) { note("Interval jarak: 1 m \u2013 100 km", true); return; }
+      ui.mode = "d"; ui.step = m;
+      if (PRE.indexOf(m) < 0) { ui.cust = [m].concat(ui.cust.filter(function (x) { return x !== m; })).slice(0, 5); }
+    }
+    ui.cx = false; saveUi(); paintStep(); resetAuto();
+    note("Interval rekam otomatis: " + stepLabel());
+  }
+  function resetAuto() { lastAuto = auto ? current() : null; lastAutoT = Date.now(); if (ui.open) paintCur(); }
+
   function uid() { return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 
-  function record(silent) {
+  function record(silent, minD) {
     var c = current();
     if (!c) { if (!silent) note("Buka Street View dulu, lalu tekan Rekam", true); return null; }
-    var dup = rec.find(function (r) { return (r.roadId || r.ruas) === (c.roadId || c.ruas) && dist(r, c) < 3; });
+    var dup = rec.find(function (r) { return (r.roadId || r.ruas) === (c.roadId || c.ruas) && dist(r, c) < (typeof minD === "number" ? minD : 3); });
     if (dup) { if (!silent) { flash(dup.id); note("Titik ini sudah direkam (jarak < 3 m)", true); } return null; }
     var e = estKm(c);
     var r = { id: uid(), ts: Date.now(), lat: c.lat, lng: c.lng, ruas: c.ruas || "(Tanpa ruas)", roadId: c.roadId, sta: c.sta, km: c.km != null ? c.km : e, kmEst: c.km == null && e != null, kab: c.kab, note: "" };
@@ -224,6 +277,7 @@
       "#pqRkBar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid #ffffff14}",
       "#pqRkBar button,#pqRkBar select{font:700 11px var(--mono,system-ui);border-radius:8px;border:1px solid #ffffff26;background:#ffffff10;color:#e6f1fb;padding:6px 9px;cursor:pointer}",
       "#pqRkBar .d:hover{border-color:#f43f5e;color:#f43f5e}#pqRkBar .sp{flex:1}",
+      "#pqRkIv{display:none;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid #ffffff14;background:#22d3ee0d}#pqRkIv.show{display:flex}#pqRkIv span{font-weight:700;color:#9fb6cc}#pqRkIv input,#pqRkIv select{font:700 12px var(--mono,system-ui);border-radius:8px;border:1px solid #38bdf866;background:#05070c;color:#fff;padding:6px 8px}#pqRkIv input{width:84px}#pqRkIv button{font:800 11px var(--mono,system-ui);border-radius:8px;border:1px solid var(--cyan,#22d3ee);background:var(--cyan,#22d3ee);color:#04121a;padding:6px 11px;cursor:pointer}#pqRkIv small{flex-basis:100%;color:#8fa6bd;font-size:10px;line-height:1.4}",
       "#pqRkWrap{overflow:auto;flex:1;min-height:70px}#pqRkTbl{width:100%;border-collapse:collapse}",
       "#pqRkTbl th{position:sticky;top:0;background:#101826;text-align:left;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#8fa6bd;padding:6px 7px;z-index:1}",
       "#pqRkTbl td{padding:6px 7px;border-top:1px solid #ffffff12;vertical-align:top}#pqRkTbl small{display:block;color:#8fa6bd;font-size:10px}",
@@ -258,11 +312,12 @@
     pn.innerHTML = '<div id="pqRkHead"><i class="fa-solid fa-location-crosshairs" style="color:var(--cyan,#22d3ee)"></i><b>Rekam Koordinat &amp; KM</b>' +
       '<button class="pqrk-ib" id="pqRkClose" type="button" title="Tutup tabel"><i class="fa-solid fa-xmark"></i></button></div>' +
       '<div id="pqRkCur"></div>' +
-      '<div id="pqRkBar"><select id="pqRkStep" title="Jarak rekam otomatis (tombol Auto)"><option value="50">Auto 50 m</option><option value="100">Auto 100 m</option><option value="250">Auto 250 m</option><option value="500">Auto 500 m</option><option value="1000">Auto 1 km</option></select>' +
+      '<div id="pqRkBar"><select id="pqRkStep" title="Interval rekam otomatis (tombol Auto) — pilih Kustom untuk angka bebas"></select>' +
       '<button id="pqRkSort" type="button" title="Urutan tabel"></button><span class="sp"></span>' +
       '<select id="pqRkFmt" title="Format unduhan"><option value="xlsx">Excel</option><option value="csv">CSV</option><option value="geojson">GeoJSON</option></select>' +
       '<button id="pqRkDl" type="button"><i class="fa-solid fa-download"></i> Unduh</button>' +
       '<button class="d" id="pqRkClear" type="button" title="Hapus semua rekaman"><i class="fa-solid fa-trash"></i></button></div>' +
+      '<div id="pqRkIv"><span>Rekam tiap</span><input id="pqRkIvVal" type="text" inputmode="decimal" autocomplete="off" value="75" aria-label="Nilai interval"><select id="pqRkIvUnit" aria-label="Satuan interval"><option value="m">meter</option><option value="km">km</option><option value="t">detik</option><option value="mnt">menit</option></select><button id="pqRkIvOk" type="button">Terapkan</button><small>Jarak 1 m\u2013100 km \u2022 waktu 1 dtk\u201360 mnt. Mode waktu hanya merekam bila posisi sudah bergeser \u2265 1 m.</small></div>' +
       '<div id="pqRkWrap"><table id="pqRkTbl"><thead><tr><th>#</th><th>Koordinat</th><th>Ruas</th><th>KM</th><th></th></tr></thead><tbody id="pqRkBody"></tbody></table></div>';
     wrap.appendChild(pn); wrap.appendChild(dk);
     ["pointerdown", "mousedown", "touchstart", "wheel"].forEach(function (ev) { [dk, pn].forEach(function (el) { el.addEventListener(ev, function (e) { e.stopPropagation(); }, { passive: true }); }); });
@@ -273,7 +328,9 @@
     $("pqRkClose").onclick = function () { ui.open = false; paintUi(); };
     $("pqRkMapBtn").onclick = function () { ui.onMap = !ui.onMap; saveUi(); syncMap(); paintUi(); };
     $("pqRkAuto").onclick = function () { setAuto(!auto); };
-    $("pqRkStep").onchange = function () { ui.step = +this.value; saveUi(); if (auto) lastAuto = current(); };
+    $("pqRkStep").onchange = function () { setStepFrom(this.value); };
+    $("pqRkIvOk").onclick = applyCustom;
+    $("pqRkIvVal").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); applyCustom(); } });
     $("pqRkSort").onclick = function () { ui.sort = ui.sort === "new" ? "ruas" : "new"; saveUi(); paintUi(); render(); };
     $("pqRkFmt").onchange = function () { ui.fmt = this.value; saveUi(); };
     $("pqRkDl").onclick = download;
@@ -289,8 +346,8 @@
     syncMap(); paintUi(); if (dock) paintCur();
   }
   function setAuto(v) {
-    auto = !!v; lastAuto = auto ? current() : null;
-    note(auto ? "Rekam otomatis aktif tiap " + (ui.step >= 1000 ? "1 km" : ui.step + " m") + " — jalankan Street View / animasi" : "Rekam otomatis dimatikan");
+    auto = !!v; lastAuto = auto ? current() : null; lastAutoT = Date.now();
+    note(auto ? "Rekam otomatis aktif " + stepLabel() + " \u2014 jalankan Street View / animasi" : "Rekam otomatis dimatikan");
     paintUi();
   }
 
@@ -354,18 +411,27 @@
     $("pqRkTog").classList.toggle("on", dock && !!ui.open);
     $("pqRkMapBtn").classList.toggle("on", !!ui.onMap);
     $("pqRkAuto").classList.toggle("on", auto);
-    $("pqRkStep").value = String(ui.step); $("pqRkFmt").value = ui.fmt;
+    paintStep(); $("pqRkFmt").value = ui.fmt;
     $("pqRkSort").innerHTML = ui.sort === "new" ? '<i class="fa-solid fa-clock"></i> Terbaru' : '<i class="fa-solid fa-arrow-down-1-9"></i> Ruas+KM';
     if (ui.open) paintCur();
   }
 
+  function autoInfo(c) {
+    if (!auto) return "";
+    var t = '<br><span style="color:#22d3ee">\u26A1 Auto ' + stepLabel() + "</span>";
+    if (lastAuto) {
+      if (ui.mode === "t") { var w = Math.max(0, Math.ceil(ui.tsec - (Date.now() - lastAutoT) / 1000)); t += " \u2022 berikutnya \u00B1" + tLabel(w); }
+      else { var sisa = Math.max(0, ui.step - dist(lastAuto, c)); t += " \u2022 berikutnya \u00B1" + mLabel(Math.round(sisa)) + " lagi"; }
+    }
+    return t + " \u2022 " + rec.length + " titik";
+  }
   function paintCur() {
     var el = $("pqRkCur"); if (!el) return;
     var c = current();
     if (!c) { el.textContent = "Street View belum aktif."; return; }
     var e = c.km == null ? estKm(c) : null;
     el.innerHTML = 'Titik sekarang: <b>' + c.lat.toFixed(6) + ', ' + c.lng.toFixed(6) + '</b><br>' + esc(c.ruas || "(ruas belum terdeteksi)") +
-      (c.sta ? ' • STA ' + esc(c.sta) : "") + ' • <b>KM ' + (c.km != null ? fmtKm(c.km) : e != null ? "~" + fmtKm(e) : "—") + '</b>';
+      (c.sta ? ' • STA ' + esc(c.sta) : "") + ' • <b>KM ' + (c.km != null ? fmtKm(c.km) : e != null ? "~" + fmtKm(e) : "—") + '</b>' + autoInfo(c);
   }
 
   /* detak ringan: segarkan info titik & rekam otomatis */
@@ -376,14 +442,19 @@
     if (ui.open) paintCur();
     if (auto) {
       var c = current(); if (!c) return;
-      if (!lastAuto) { lastAuto = c; return; }
-      if (dist(lastAuto, c) >= ui.step) { if (record(true)) { lastAuto = c; } else { lastAuto = c; } }
+      if (!lastAuto) { lastAuto = c; lastAutoT = Date.now(); return; }
+      if (ui.mode === "t") {
+        if (Date.now() - lastAutoT >= ui.tsec * 1000) {
+          lastAutoT = Date.now();
+          if (dist(lastAuto, c) >= 1) { record(true, 1); lastAuto = c; }
+        }
+      } else if (dist(lastAuto, c) >= ui.step) { record(true, Math.min(3, ui.step / 2)); lastAuto = c; lastAutoT = Date.now(); }
     }
   }
 
   function init() {
     load(); build(); syncMap();
-    tick = setInterval(loop, 1000);
+    tick = setInterval(loop, 600);
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && dock) {
         var t0 = e.target, tg = t0 && t0.tagName, ov0 = $("svOverlay");
@@ -400,7 +471,8 @@
     record: function () { return record(false); }, all: function () { return rec.slice(); },
     open: function () { build(); dock = true; ui.open = true; syncMap(); paintUi(); },
     edit: function (id) { build(); dock = true; ui.open = true; editId = id; syncMap(); paintUi(); render(); try { var M = MAP(); M && M.closePopup(); } catch (e) {} },
-    del: del, download: download
+    del: del, download: download,
+    setInterval: function (v, unit) { if (unit === "t" || unit === "mnt") { ui.mode = "t"; ui.tsec = Math.round(unit === "mnt" ? v * 60 : v); } else { ui.mode = "d"; ui.step = unit === "km" ? v * 1000 : +v; } paintStep(); resetAuto(); return stepLabel(); }
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();

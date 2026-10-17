@@ -136,7 +136,8 @@
     try { if (window.PETAQU_KERETA && PETAQU_KERETA.rows) T = T.concat(PETAQU_KERETA.rows().map(function (x) { x.p = "KA"; return x; })); } catch (e) { }
     try { if (window.PETAQU_PESAWAT && PETAQU_PESAWAT.rows) T = T.concat(PETAQU_PESAWAT.rows().map(function (x) { x.p = "PW"; return x; })); } catch (e) { }
     try { if (window.PETAQU_FLIGHT && PETAQU_FLIGHT.rows) T = T.concat(PETAQU_FLIGHT.rows().map(function (x) { x.p = "FL"; return x; })); } catch (e) { }
-    grp("transport", "Kereta Api & Pesawat", "\uf238", "#f59e0b");
+    try { if (window.PETAQU_FERI && PETAQU_FERI.rows) T = T.concat(PETAQU_FERI.rows().map(function (x) { x.p = "FR"; return x; })); } catch (e) { }
+    grp("transport", "Kereta Api, Pesawat & Kapal", "\uf238", "#f59e0b");
     T.forEach(function (x) { add("K:" + x.p + ":" + x.id, x.name, fi(x.ic), x.c, x.on); });
 
     var N = []; try { if (window.PETAQU_DRAINASE && PETAQU_DRAINASE.rows) N = PETAQU_DRAINASE.rows(); } catch (e) { }
@@ -216,7 +217,7 @@
     } else if (k.charAt(0) === "K") {
       closePanels(); closeJt();
       var kp = k.split(":");
-      try { if (kp[1] === "KA") PETAQU_KERETA.act(kp[2]); else if (kp[1] === "PW") PETAQU_PESAWAT.act(kp[2]); else PETAQU_FLIGHT.act(); } catch (e) { }
+      try { if (kp[1] === "KA") PETAQU_KERETA.act(kp[2]); else if (kp[1] === "PW") PETAQU_PESAWAT.act(kp[2]); else if (kp[1] === "FR") PETAQU_FERI.act(kp[2]); else PETAQU_FLIGHT.act(); } catch (e) { }
     } else if (k.charAt(0) === "N") {
       closePanels(); closeJt();
       try { PETAQU_DRAINASE.act(k.slice(2)); } catch (e) { }

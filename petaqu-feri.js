@@ -20,7 +20,7 @@
   const LANDJ = { n: "Darat (jalan)", ic: "🚗", kmh: 40, dwell: 0, hs: 99, col: "#e2e8f0" }, LANDR = { id: "darat", n: "Jalan darat", j: "land", f: 99, op: "", km: 0, stops: [], idx: [], pts: [], cum: [] };
   const JN = () => window.FR_JENIS || {}, GOLS = () => window.FR_GOL || [];
   const OBJ = [["cepat", "⏱ Tercepat"], ["murah", "💳 Termurah"], ["sedikit", "🔁 Transit sedikit"]];
-  let S = { tab: "jaringan", on: true, lines: true, ports: true, anim: true, wcol: false, osm: true, min: false, sp: 600, jn: { ro: 1, cepat: 1, pelni: 1, speed: 1, intl: 1, danau: 1 }, A: null, B: null, obj: "cepat", gol: "0", qty: 1, dep: "", closedP: [], closedR: [], custom: { ports: [], routes: [] }, lg: { m: 0, r: "", q: 1, deck: 40 }, q: "" };
+  let S = { tab: "jaringan", on: false, lines: true, ports: true, anim: true, wcol: false, osm: true, min: false, sp: 600, jn: { ro: 1, cepat: 1, pelni: 1, speed: 1, intl: 1, danau: 1 }, A: null, B: null, obj: "cepat", gol: "0", qty: 1, dep: "", closedP: [], closedR: [], custom: { ports: [], routes: [] }, lg: { m: 0, r: "", q: 1, deck: 40 }, q: "" };
   try { const o = JSON.parse(localStorage.getItem(KEY) || "null"); if (o) { Object.assign(S, o); S.jn = Object.assign({ ro: 1, cepat: 1, pelni: 1, speed: 1, intl: 1, danau: 1 }, S.jn || {}); S.custom = Object.assign({ ports: [], routes: [] }, S.custom || {}); S.lg = Object.assign({ m: 0, r: "", q: 1, deck: 40 }, S.lg || {}); } } catch (e) { }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, on: S.on, lines: S.lines, ports: S.ports, anim: S.anim, wcol: S.wcol, osm: S.osm, min: S.min, sp: S.sp, jn: S.jn, A: S.A, B: S.B, obj: S.obj, gol: S.gol, qty: S.qty, dep: S.dep, closedP: S.closedP, closedR: S.closedR, custom: S.custom, lg: S.lg })); } catch (e) { } };
   let P, BTN, PT = {}, RT = [], RM = {}, ADJ = {}, DEG = {}, GL, GP, GA, GR, GO, PLAN = null, ALT = null, W = {}, wBusy = false, wAt = 0, wErr = "", clickMode = "", TT = 0, ships = [], shipT = 0, OSMN = 0, osmBusy = false, osmSeen = new Set(), MVT = 0, shownRoute = "", ROADS_CACHE = null;
@@ -253,7 +253,7 @@
     }, 200);
   }
   function stopShips() { clearInterval(shipT); shipT = 0; ships.forEach(s => { if (s.m && GA) GA.removeLayer(s.m); s.m = null; }); }
-  function setOn(v) { S.on = v === undefined ? S.on === false : !!v; save(); sync(); say(S.on ? "Jalur pelayaran: NYALA" : "Jalur pelayaran: MATI"); if (P && P.style.display === "flex") render(); }
+  function setOn(v) { S.on = v === undefined ? S.on === false : !!v; if (S.on && !S.lines) S.lines = true; save(); sync(); say(S.on ? "Jalur pelayaran: NYALA" : "Jalur pelayaran: MATI"); if (P && P.style.display === "flex") render(); }
   function updBtn() { if (!BTN) return; const on = S.on !== false; BTN.classList.toggle("on", on); BTN.classList.toggle("off", !on); BTN.title = "Jalur Pelayaran: " + (on ? "NYALA (klik untuk matikan)" : "MATI (klik untuk nyalakan)"); }
 
   function legPath(L) {
@@ -510,6 +510,16 @@
     document.addEventListener("click", e => { const b = e.target.closest && e.target.closest(".fr-pop [data-fr]"); if (b) onClick({ target: b }); });
     const wait = setInterval(() => { const M = gmap(); if (M && window.L) { clearInterval(wait); drawNet(); M.on("click", onMapClick); if (S.wcol) fetchWaves(); } }, 800); setTimeout(() => clearInterval(wait), 60000);
   }
-  window.PETAQU_FERI = { rows: () => [{ id: "feri", name: "Jalur Pelayaran & Feri", ic: "\uf21a", c: "#38bdf8", on: S.on !== false }, { id: "feripanel", name: "Rute Kapal & Logistik (panel)", ic: "\uf13d", c: "#7dd3fc", on: null }], act: id => { if (id === "feripanel") open(); else setOn(); }, open, toggle: setOn, waves: fetchWaves, _build: build, _plan: (A, B, obj, gol, qty) => { S.A = A; S.B = B; S.gol = gol || "0"; S.qty = qty || 1; const sa = endpoints(A), sb = endpoints(B); return assemble(dijkstra(sa, sb, obj || "cepat", S.gol, S.qty), S.gol, S.qty); }, _st: () => ({ PT, RT, ADJ, DEG }), _risk: risk, _calc: lgCalc, _S: S, _roadPorts: roadPorts, _iso: isoIslands, _pointAt: pointAt };
+  function setPorts(v) {
+    const shown = S.on !== false && S.ports; v = v === undefined ? !shown : !!v;
+    if (v) { if (S.on === false) { S.on = true; S.lines = false; S.anim = false; } S.ports = true; } else S.ports = false;
+    save(); sync(); say(v ? "Pelabuhan: NYALA" : "Pelabuhan: MATI"); if (P && P.style.display === "flex") render();
+  }
+  function setNet(v) {
+    v = v === undefined ? S.on === false || !S.lines : !!v;
+    if (v) { S.on = true; S.lines = true; if (S.ports === false) S.ports = true; } else S.on = false;
+    save(); sync(); say(v ? "Jalur pelayaran: NYALA" : "Jalur pelayaran: MATI"); if (P && P.style.display === "flex") render();
+  }
+  window.PETAQU_FERI = { rows: () => [{ id: "feri", name: "Jaringan Rute Kapal & Feri", ic: "\uf21a", c: "#38bdf8", on: S.on !== false && !!S.lines }, { id: "feripel", name: "Pelabuhan Indonesia", ic: "\uf13d", c: "#0ea5e9", on: S.on !== false && !!S.ports }, { id: "feripanel", name: "Perencana Rute Kapal (panel)", ic: "\uf21a", c: "#7dd3fc", on: null }], act: id => { if (id === "feripanel") open(); else if (id === "feripel") setPorts(); else setNet(); }, open, toggle: setOn, waves: fetchWaves, _build: build, _plan: (A, B, obj, gol, qty) => { S.A = A; S.B = B; S.gol = gol || "0"; S.qty = qty || 1; const sa = endpoints(A), sb = endpoints(B); return assemble(dijkstra(sa, sb, obj || "cepat", S.gol, S.qty), S.gol, S.qty); }, _st: () => ({ PT, RT, ADJ, DEG }), _risk: risk, _calc: lgCalc, _S: S, _roadPorts: roadPorts, _iso: isoIslands, _pointAt: pointAt };
   typeof document === "undefined" ? 0 : (document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init());
 })();

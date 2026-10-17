@@ -1,7 +1,7 @@
 # Pelayaran & Feri (`petaqu-feri.js` + `data-feri.js`)
 
 Tombol **⚓ Pelayaran & Feri** ada di dock "Alat"; tombol **⛴ On/Off** menyalakan/mematikan jaringan di peta
-(juga ada di menu layer grup *Kereta Api, Pesawat & Kapal*).
+(juga ada di menu layer grup *Kereta Api, Pesawat & Kapal*: **Jaringan Rute Kapal & Feri**, **Pelabuhan Indonesia**, **Perencana Rute Kapal**). Default MATI saat pertama dibuka; pilihan tersimpan di perangkat.
 
 | Tab | Fungsi |
 |---|---|
