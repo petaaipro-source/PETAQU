@@ -128,7 +128,7 @@
       /* ====== BERSIHKAN LAYAR: buang kartu judul/"Lihat di Google Maps" & kontrol bawaan Google agar tidak menumpuk dengan HUD ======
          Embed (iframe lintas-domain → tak bisa disentuh CSS): iframe diperbesar ke atas/kanan lalu dipotong persis seukuran panel.
          Atribusi Google di tepi bawah (logo, syarat, hak cipta) sengaja DIPERTAHANKAN. */
-      "body.pq-clean #svFrameWrap{--pq-ct:80px;--pq-cr:64px;overflow:hidden}",
+      "body.pq-clean #svFrameWrap{--pq-ct:132px;--pq-cr:72px;overflow:hidden}",
       "body.pq-clean #svFrameWrap #svFrame{position:absolute!important;left:0!important;top:calc(-1 * var(--pq-ct))!important;width:calc(100% + var(--pq-cr))!important;height:calc(100% + var(--pq-ct))!important;clip-path:inset(var(--pq-ct) var(--pq-cr) 0 0)}",
       "body.pq-clean #svFrameWrap.pq-v-dual.pq-row:not(.pq-swap) #svFrame{left:var(--pq-r)!important;width:calc(100% - var(--pq-r) + var(--pq-cr))!important}",
       "body.pq-clean #svFrameWrap.pq-v-dual.pq-row.pq-swap #svFrame{left:0!important;width:calc(var(--pq-r) + var(--pq-cr))!important}",
@@ -295,6 +295,11 @@
     b.classList.toggle("pq-fix-l", S.fixL);
     b.classList.toggle("pq-fix-e", S.fixE);
     b.classList.toggle("pq-clean", S.clean);
+    /* Live: panah arah, kontrol geser & zoom bawaan Google ikut dimatikan (klik-untuk-pindah tetap bisa) */
+    try {
+      var L = Live(), P = L && L.pano && L.pano();
+      if (P && P.setOptions && P.__pqClean !== S.clean) { P.__pqClean = S.clean; P.setOptions({ linksControl: !S.clean, panControl: !S.clean, zoomControl: !S.clean }); }
+    } catch (e) {}
   }
   function setClean(on, quiet) {
     S.clean = !!on; ss(K.clean, S.clean ? 1 : 0);
