@@ -68,10 +68,15 @@
     return "kerja";
   }
 
+  /* kunci bawaan TomTom (dipakai bersama; tidak pernah ditampilkan di UI). Pengguna disarankan memasang kunci sendiri. */
+  var DK = "bzJTZUx2SjVWeTVKTmlzYVdoVk1ZQU5wMUl2MFE2Z2Y=";
+  var dKey = function () { try { return (W.atob || atob)(DK).split("").reverse().join(""); } catch (e) { return ""; } };
+
   /* ============================ STATE ============================ */
   var S = { on: false, cls: { nas: true, prov: true, kab: true, kota: true }, mode: "now", key: "kerja", hour: 8, play: false, min: false, live: false, ttKey: "", rain: {}, loadErr: "", busy: false };
-  var pref = lsGet("petaqu_lalin_pref"); if (pref) { if (pref.cls) S.cls = Object.assign(S.cls, pref.cls); S.live = !!pref.live; }
-  S.ttKey = (function () { try { return W.localStorage.getItem("petaqu_lalin_tt") || ""; } catch (e) { return ""; } })();
+  var pref = lsGet("petaqu_lalin_pref"); if (pref && pref.cls) S.cls = Object.assign(S.cls, pref.cls); S.live = pref ? !!pref.live : true;
+  var ownKey = (function () { try { return W.localStorage.getItem("petaqu_lalin_tt") || ""; } catch (e) { return ""; } })();
+  S.own = !!ownKey; S.ttKey = ownKey || dKey();
   var CAL = lsGet("petaqu_lalin_cal") || {};
   var savePref = function () { lsSet("petaqu_lalin_pref", { cls: S.cls, live: S.live }); };
   var segs = new Map(), groups = {}, loaded = [], seq = 0, rend = null, ttLayer = null, card = null, tmr = null, playT = null, moveT = null, tickT = null, lastQ = "";
@@ -278,7 +283,7 @@
       "<div class='pqll-s'>" + esc(reg) + " · ±" + g.km.toFixed(g.km < 1 ? 2 : 1) + " km · " + g.ln + " lajur" + (g.ms ? " · batas " + g.ms + " km/j" : "") + (g.ref && g.ref !== g.name ? " · " + esc(g.ref) : "") + "</div>" +
       "<div class='pqll-b' style='color:" + lv.c + "'>" + lv.n + " · ≈ " + Math.round(e.v) + " km/j</div>" +
       "<div class='pqll-s'>Arus bebas ≈ " + Math.round(e.ff) + " km/j · waktu tempuh ≈ " + (60 / Math.max(e.v, 3)).toFixed(1) + " mnt/km · " + pad2(h) + ":00 · " + KEYS[key].split(" (")[0] + "</div>" +
-      sp.html + advice(g, e, sp, key) + "<div class='pqll-lv' id='pqllLive'>" + (S.ttKey ? "Memeriksa real-time…" : "<i>Estimasi model. Masukkan kunci TomTom di panel untuk pembacaan real-time.</i>") + "</div>" +
+      sp.html + advice(g, e, sp, key) + "<div class='pqll-lv' id='pqllLive'>" + (S.ttKey ? "Memeriksa real-time…" : "<i>Estimasi model. Pasang kunci TomTom di panel untuk pembacaan real-time.</i>") + "</div>" +
       "<div class='pqll-n'>Klasifikasi kelas jalan = perkiraan dari OpenStreetMap; bukan data resmi.</div></div>";
     showDet(html, g);
     if (S.ttKey) probe(g, ll || g.mid, h, key);
@@ -305,7 +310,7 @@
         CAL[kk] = clamp(.7 * (CAL[kk] == null ? 1 : CAL[kk]) + .3 * tg, .5, 2); lsSet("petaqu_lalin_cal", CAL); t += "<br><span style='opacity:.8'>Model dikalibrasi otomatis (" + CLS[g.c].t + ", " + { p: "pagi", s: "siang", o: "sore", m: "malam" }[band(h)] + "): ×" + CAL[kk].toFixed(2) + "</span>"; recolorSoft();
       }
       box.innerHTML = t;
-    }).catch(function (e) { var box = $("pqllLive"); if (box) box.innerHTML = "<i>Real-time tidak tersedia (" + esc(e && e.message || "gagal") + ").</i>"; });
+    }).catch(function (e) { var box = $("pqllLive"); if (box) box.innerHTML = "<i>Real-time tidak tersedia (" + esc(e && e.message || "gagal") + ")." + (S.own ? "" : " Kunci bawaan mungkin habis kuota — pasang kunci TomTom Anda sendiri di panel.") + "</i>"; });
   }
   var softT = null; function recolorSoft() { clearTimeout(softT); softT = setTimeout(recolor, 600); }
 
@@ -332,7 +337,7 @@
     "#pqllCard .ch{display:grid;grid-template-columns:1fr 1fr;gap:5px}#pqllCard .ch button{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:9px;border:1px solid rgba(148,178,204,.25);background:#0f1726;color:#cfe0f0;font:600 11px system-ui;cursor:pointer;text-align:left}#pqllCard .ch button.on{border-color:var(--c);background:rgba(255,255,255,.06)}#pqllCard .ch i{width:14px;height:5px;border-radius:3px;background:var(--c);opacity:.35;flex:none}#pqllCard .ch button.on i{opacity:1}#pqllCard .ch small{margin-left:auto;opacity:.6;font-weight:500}" +
     "#pqllCard .tb{display:flex;gap:5px}#pqllCard .tb button,#pqllCard .ft button{flex:1;padding:6px 8px;border-radius:8px;border:1px solid rgba(148,178,204,.25);background:#0f1726;color:#cfe0f0;font:600 11px system-ui;cursor:pointer}#pqllCard .tb button.on{background:#155e75;border-color:#22d3ee;color:#fff}" +
     "#pqllCard select,#pqllCard input[type=text],#pqllCard input[type=password]{width:100%;box-sizing:border-box;padding:6px 8px;border-radius:8px;border:1px solid rgba(148,178,204,.25);background:#0f1726;color:#e6f1fb;font:12px system-ui}#pqllCard input[type=range]{width:100%}" +
-    "#pqllCard .st{font-size:11px;opacity:.85;min-height:15px}#pqllCard .st.er{color:#fca5a5}#pqllCard .lg{display:flex;gap:3px}#pqllCard .lg span{flex:1;text-align:center;padding:3px 0;border-radius:6px;font-size:9.5px;font-weight:700;color:#0a0e17}" +
+    "#pqllTk{-webkit-text-security:disc;text-security:disc}#pqllCard .st{font-size:11px;opacity:.85;min-height:15px}#pqllCard .st.er{color:#fca5a5}#pqllCard .lg{display:flex;gap:3px}#pqllCard .lg span{flex:1;text-align:center;padding:3px 0;border-radius:6px;font-size:9.5px;font-weight:700;color:#0a0e17}" +
     "#pqllCard h5{margin:2px 0 3px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;opacity:.7}#pqllCard .rw{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:7px}#pqllCard .rw.cl{cursor:pointer}#pqllCard .rw.cl:hover{background:rgba(255,255,255,.07)}#pqllCard .rw .d{width:9px;height:9px;border-radius:50%;flex:none}#pqllCard .rw .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#pqllCard .rw .v{opacity:.8;font-variant-numeric:tabular-nums}" +
     "#pqllCard .ft{display:flex;gap:5px;flex-wrap:wrap}#pqllCard .nt{font-size:10px;opacity:.65}#pqllCard .lv{border-top:1px solid rgba(148,178,204,.15);padding-top:7px;display:flex;flex-direction:column;gap:5px}#pqllCard label{display:flex;gap:6px;align-items:center;font-size:11px}" +
     ".pqll-pop .leaflet-popup-content-wrapper{background:#0a0e17;color:#e6f1fb;border:1px solid rgba(148,178,204,.28);border-radius:12px}.pqll-pop .leaflet-popup-tip{background:#0a0e17}.pqll-pop .leaflet-popup-content{margin:10px 12px;font:12px/1.4 system-ui,sans-serif}" +
@@ -363,6 +368,7 @@
     q("#pqllHot").innerHTML = sm.top.length ? sm.top.map(function (g, i) { return "<div class='rw cl' data-h='" + g.id + "'><span class='d' style='background:" + LV[g.lv].c + "'></span><span class='n'>" + esc(g.name) + (g.K ? " · " + esc(g.K.n) : "") + "</span><span class='v'>" + Math.round(g.v) + " km/j</span></div>"; }).join("") : "<div class='nt'>Tidak ada ruas padat pada jam ini di layar.</div>";
     q("#pqllReg").innerHTML = sm.rg.length ? sm.rg.map(function (r) { var rr = r.rk / r.km, lv = lvOf(rr); return "<div class='rw'><span class='d' style='background:" + LV[lv].c + "'></span><span class='n'>" + esc(r.n) + "</span><span class='v'>" + LV[lv].n + "</span></div>"; }).join("") : "<div class='nt'>—</div>";
     q("#pqllTT").checked = !!(S.live && S.ttKey);
+    q("#pqllKs").innerHTML = !S.ttKey ? "Belum ada kunci — hanya estimasi model." : S.own ? "Memakai <b>kunci TomTom Anda sendiri</b> (tersimpan di perangkat ini)." : "Memakai <b>kunci bawaan PETAQU</b> (dipakai bersama, kuota harian terbatas). <b>Disarankan memasang kunci TomTom sendiri</b> — gratis di developer.tomtom.com (Kunci API &amp; SDK → salin → tempel di bawah).";
     status();
   }
   function build_ui() {
@@ -374,8 +380,7 @@
       "<div id='pqllSimBox' style='display:none;flex-direction:column;gap:6px'><select id='pqllKey'>" + Object.keys(KEYS).map(function (k) { return "<option value='" + k + "'>" + KEYS[k] + "</option>"; }).join("") + "</select><div style='display:flex;gap:8px;align-items:center'><input type='range' id='pqllHr' min='0' max='23' step='1'><b id='pqllHrL' style='min-width:84px;text-align:right'></b></div><div class='ft'><button id='pqllPlay'>▶ Animasi 24 jam</button></div></div>" +
       "<div class='st' id='pqllSt'></div>" + LVL_LEG() +
       "<div><h5>Ringkasan layar</h5><div id='pqllSum'></div></div><div><h5>Titik terpadat (klik untuk lihat)</h5><div id='pqllHot'></div></div><div><h5>Kab/kota terpadat di layar</h5><div id='pqllReg'></div></div>" +
-      "<div class='lv'><h5 style='margin:0'>Real-time (opsional)</h5><input type='password' id='pqllTk' placeholder='Kunci API TomTom (gratis, developer.tomtom.com)' autocomplete='off'><div class='ft'><button id='pqllTs'>Simpan kunci</button><button id='pqllTr'>Hapus</button></div><label><input type='checkbox' id='pqllTT'> Tampilkan lapisan lalu lintas langsung TomTom</label><div class='nt'>Dengan kunci: klik ruas → kecepatan nyata & model belajar menyesuaikan. Tanpa kunci: estimasi model saja.</div></div>" +
-      "<div class='ft'><button id='pqllGm'>Google Maps (lalin langsung)</button><button id='pqllCsv'>Ekspor CSV layar</button><button id='pqllRs'>Reset kalibrasi</button></div>" +
+      "<div class='lv'><h5 style='margin:0'>Lalu lintas langsung (TomTom)</h5><label><input type='checkbox' id='pqllTT'> Tampilkan lapisan lalu lintas langsung</label><div class='nt' id='pqllKs'></div><input type='text' id='pqllTk' name='pqll_tomtom_api_key' placeholder='Tempel kunci TomTom Anda sendiri (opsional)' autocomplete='off' autocapitalize='off' autocorrect='off' spellcheck='false' data-lpignore='true' data-1p-ignore data-form-type='other'><div class='ft'><button id='pqllTs'>Simpan kunci saya</button><button id='pqllTr'>Pakai bawaan</button></div></div><div class='ft'><button id='pqllGm'>Google Maps (lalin langsung)</button><button id='pqllCsv'>Ekspor CSV layar</button><button id='pqllRs'>Reset kalibrasi</button></div>" +
       "<div class='nt'>Estimasi model dari pola jam/hari, karakter wilayah, kelas & lajur jalan, simpang, dan hujan — bukan data sensor kecuali TomTom aktif. Kelas jalan diperkirakan dari OpenStreetMap.</div></div>";
     D.body.appendChild(card);
     var q = function (id) { return card.querySelector(id); };
@@ -384,9 +389,9 @@
     q("#pqllNow").onclick = function () { S.mode = "now"; stopPlay(); recolor(); }; q("#pqllSim").onclick = function () { if (S.mode !== "sim") { S.mode = "sim"; S.hour = hourNow(); S.key = autoKey(new Date()); } recolor(); };
     q("#pqllHr").oninput = function (e) { S.hour = +e.target.value; recolor(); }; q("#pqllKey").onchange = function (e) { S.key = e.target.value; recolor(); };
     q("#pqllPlay").onclick = function () { if (S.play) stopPlay(); else { S.mode = "sim"; S.play = true; playT = setInterval(function () { S.hour = (S.hour + 1) % 24; recolor(); }, 750); recolor(); } };
-    q("#pqllTs").onclick = function () { var v = q("#pqllTk").value.trim(); if (!v) { say("Isi kunci TomTom dulu"); return; } S.ttKey = v; try { W.localStorage.setItem("petaqu_lalin_tt", v); } catch (e) { } q("#pqllTk").value = ""; q("#pqllTk").placeholder = "Kunci tersimpan di perangkat ini"; S.live = true; savePref(); setLive(true); say("Kunci tersimpan · lapisan real-time TomTom aktif"); recolor(); };
+    q("#pqllTs").onclick = function () { var v = q("#pqllTk").value.trim(); if (!v) { say("Isi kunci TomTom dulu"); return; } S.ttKey = v; S.own = true; try { W.localStorage.setItem("petaqu_lalin_tt", v); } catch (e) { } q("#pqllTk").value = ""; q("#pqllTk").placeholder = "Kunci tersimpan di perangkat ini"; S.live = true; savePref(); setLive(true); say("Kunci tersimpan · lapisan real-time TomTom aktif"); recolor(); };
     q("#pqllTk").onkeydown = function (e) { if (e.key === "Enter") q("#pqllTs").click(); };
-    q("#pqllTr").onclick = function () { S.ttKey = ""; S.live = false; try { W.localStorage.removeItem("petaqu_lalin_tt"); } catch (e) { } setLive(false); q("#pqllTk").placeholder = "Kunci API TomTom (gratis, developer.tomtom.com)"; renderCard(); };
+    q("#pqllTr").onclick = function () { S.ttKey = dKey(); S.own = false; try { W.localStorage.removeItem("petaqu_lalin_tt"); } catch (e) { } if (S.live) setLive(true); q("#pqllTk").placeholder = "Tempel kunci TomTom Anda sendiri (opsional)"; say("Memakai kunci bawaan"); renderCard(); };
     q("#pqllTT").onchange = function (e) { if (e.target.checked && !S.ttKey) { e.target.checked = false; say("Masukkan & simpan kunci TomTom dulu"); return; } S.live = e.target.checked; savePref(); setLive(S.live); recolor(); };
     q("#pqllGm").onclick = function () { var m = getMap(), c = m ? m.getCenter() : { lat: -7, lng: 110 }; window.open("https://www.google.com/maps/@" + c.lat.toFixed(5) + "," + c.lng.toFixed(5) + "," + Math.max(10, Math.min(17, m ? m.getZoom() : 13)) + "z/data=!5m1!1e1", "_blank", "noopener"); };
     q("#pqllCsv").onclick = exportCsv; q("#pqllRs").onclick = function () { CAL = {}; lsSet("petaqu_lalin_cal", CAL); recolor(); say("Kalibrasi direset"); };
