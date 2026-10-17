@@ -113,7 +113,7 @@
 
     /* jangan biarkan sentuhan/geser/klik pada dock menggerakkan panorama di belakangnya */
     ["mousedown", "pointerdown", "touchstart", "dblclick", "contextmenu"].forEach(function (ev) { dock.addEventListener(ev, function (e) { e.stopPropagation(); }, { passive: true }); });
-    dock.addEventListener("click", function (e) { e.stopPropagation(); });
+    /* klik SENGAJA dibiarkan naik ke document: banyak tombol (Ukur Bangunan, dll.) memakai delegasi klik di document */
     /* roda mouse → geser mendatar */
     dock.addEventListener("wheel", function (e) {
       e.stopPropagation();
