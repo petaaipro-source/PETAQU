@@ -36,6 +36,43 @@
   const hhmm = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
 
   /* ================= DATA & GRAF ================= */
+  /* ================= RUTE JALAN NYATA (OSRM) — pengganti garis lurus ×1,35 =================
+     Jarak/waktu/geometri darat (asal→pelabuhan, pelabuhan→tujuan, darat antar pelabuhan) diambil dari OSRM
+     (router.project-osrm.org, cadangan routing.openstreetmap.de). Hasil disimpan di localStorage; bila server
+     tidak terjangkau, perhitungan otomatis kembali ke perkiraan garis lurus ×1,35. */
+  const RDK = "petaqu_fr_rd_v1", RD = {}, RG = {}, ROAD_T = 1.25, OSRM = ["https://router.project-osrm.org", "https://routing.openstreetmap.de/routed-car"];
+  try { Object.assign(RD, JSON.parse(localStorage.getItem(RDK) || "null") || {}); } catch (e) { }
+  const saveRD = () => { try { const ks = Object.keys(RD); if (ks.length > 1500) ks.slice(0, ks.length - 1500).forEach(k => delete RD[k]); localStorage.setItem(RDK, JSON.stringify(RD)); } catch (e) { } };
+  const rdk = (a, b) => (+a.lat).toFixed(4) + "," + (+a.lng).toFixed(4) + ">" + (+b.lat).toFixed(4) + "," + (+b.lng).toFixed(4);
+  const rdGet = (a, b) => RD[rdk(a, b)] || RD[rdk(b, a)] || null;
+  function osrmGet(path, ms) {
+    let i = 0;
+    const next = () => {
+      if (typeof fetch === "undefined" || i >= OSRM.length) return Promise.reject(new Error("osrm"));
+      const ac = typeof AbortController !== "undefined" ? new AbortController() : null, tm = setTimeout(() => ac && ac.abort(), ms || 15000);
+      return fetch(OSRM[i++] + path, ac ? { signal: ac.signal } : {}).then(r => { clearTimeout(tm); if (!r.ok) throw new Error("http"); return r.json(); })
+        .then(j => { if (!j || j.code !== "Ok") throw new Error("osrm"); return j; }).catch(() => { clearTimeout(tm); return next(); });
+    };
+    return next();
+  }
+  function thinPts(pts, m) { if (pts.length < 3) return pts; const o = [pts[0]]; let l = pts[0]; for (let i = 1; i < pts.length - 1; i++) { if (hav(l[0], l[1], pts[i][0], pts[i][1]) * 1000 >= m) { o.push(pts[i]); l = pts[i]; } } o.push(pts[pts.length - 1]); return o; }
+  function roadRoute(a, b) {
+    const k = rdk(a, b); if (RG[k]) return Promise.resolve(RG[k].pts ? RG[k] : null);
+    return osrmGet("/route/v1/driving/" + (+a.lng).toFixed(5) + "," + (+a.lat).toFixed(5) + ";" + (+b.lng).toFixed(5) + "," + (+b.lat).toFixed(5) + "?overview=full&geometries=geojson", 25000).then(j => {
+      const r = j.routes && j.routes[0], c = r && r.geometry && r.geometry.coordinates;
+      if (!c || c.length < 2) { RG[k] = { fail: 1 }; return null; }
+      const pts = thinPts(c.map(p => [p[1], p[0]]), 120), o = { km: Math.round(r.distance / 100) / 10, min: Math.round(r.duration / 6 * ROAD_T) / 10, pts };
+      RG[k] = o; RG[rdk(b, a)] = { km: o.km, min: o.min, pts: pts.slice().reverse() }; RD[k] = RD[rdk(b, a)] = { km: o.km, min: o.min }; return o;
+    }).catch(() => { RG[k] = { fail: 1 }; return null; });
+  }
+  function tableEnds(X) {   /* jarak jalan titik X → beberapa pelabuhan terdekat dalam 1 permintaan */
+    const near = nearPorts(X.lat, X.lng, 8).filter(x => !rdGet(X, x.p)); if (!near.length) return Promise.resolve(0);
+    const path = "/table/v1/driving/" + [X].concat(near.map(x => x.p)).map(p => (+p.lng).toFixed(5) + "," + (+p.lat).toFixed(5)).join(";") + "?sources=0&destinations=" + near.map((x, i) => i + 1).join(";") + "&annotations=distance,duration";
+    return osrmGet(path, 20000).then(j => { let n = 0; near.forEach((x, i) => { const d = j.distances && j.distances[0] && j.distances[0][i], t = j.durations && j.durations[0] && j.durations[0][i]; if (d != null && t != null) { RD[rdk(X, x.p)] = { km: Math.round(d / 100) / 10, min: Math.round(t / 6 * ROAD_T) / 10 }; n++; } }); if (n) saveRD(); return n; }).catch(() => 0);
+  }
+  function applyLand(ka, kb, o) { [[ka, kb], [kb, ka]].forEach(([x, y]) => (ADJ[x] || []).forEach(e => { if (e.land && e.to === y) { e.km = o.km; e.rmin = o.min; e.real = true; } })); }
+  async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const it = items[i++]; try { await fn(it); } catch (e) { } } })); }
+
   function build() {
     PT = {}; RT = []; RM = {}; ADJ = {}; DEG = {};
     const add = a => { PT[a[0]] = { k: a[0], n: a[1], city: a[2], prov: a[3], lat: +a[4], lng: +a[5], t: a[6] || "A", isl: a[7] || "", custom: !!a[8] }; };
@@ -64,10 +101,10 @@
     });
     /* sambungan DARAT antar pelabuhan di pulau yang sama (agar perjalanan multi-pulau bisa dirangkai) */
     const byIsl = {}; Object.keys(DEG).forEach(k => { const p = PT[k]; if (p && p.isl && !S.closedP.includes(k)) (byIsl[p.isl] = byIsl[p.isl] || []).push(p); });
-    Object.keys(byIsl).forEach(isl => { const l = byIsl[isl]; for (let x = 0; x < l.length; x++) for (let y = x + 1; y < l.length; y++) { const km = hav(l[x].lat, l[x].lng, l[y].lat, l[y].lng) * LAND_F; if (km > 2200 || km < 1) continue; (ADJ[l[x].k] = ADJ[l[x].k] || []).push({ from: l[x].k, to: l[y].k, r: LANDR, km, land: true }); (ADJ[l[y].k] = ADJ[l[y].k] || []).push({ from: l[y].k, to: l[x].k, r: LANDR, km, land: true }); } });
+    Object.keys(byIsl).forEach(isl => { const l = byIsl[isl]; for (let x = 0; x < l.length; x++) for (let y = x + 1; y < l.length; y++) { const rd = rdGet(l[x], l[y]), km0 = hav(l[x].lat, l[x].lng, l[y].lat, l[y].lng) * LAND_F, km = rd ? rd.km : km0; if (km0 > 2200 || km < 1) continue; (ADJ[l[x].k] = ADJ[l[x].k] || []).push({ from: l[x].k, to: l[y].k, r: LANDR, km, land: true, rmin: rd ? rd.min : null, real: !!rd }); (ADJ[l[y].k] = ADJ[l[y].k] || []).push({ from: l[y].k, to: l[x].k, r: LANDR, km, land: true, rmin: rd ? rd.min : null, real: !!rd }); } });
   }
   const jn = r => r.j === "land" ? LANDJ : (JN()[r.j] || {});
-  const sailMin = e => e.km / (jn(e.r).kmh || 20) * 60;
+  const sailMin = e => e.rmin != null ? e.rmin : e.km / (jn(e.r).kmh || 20) * 60;
   const waitMin = r => r.j === "land" ? 0 : r.f > 0 ? Math.max(10, 720 / r.f) : 24 * 60 * 3;          /* tunggu rata-rata = setengah selang keberangkatan */
   const carries = (r, g) => r.j === "land" || g === "0" || ["ro", "pelni"].includes(r.j);
   function fare(r, km, gk, qty) {
@@ -89,7 +126,7 @@
   function endpoints(X) {
     if (!X) return [];
     if (X.k) return PT[X.k] && ADJ[X.k] ? [{ k: X.k, landKm: 0, landMin: 0, label: PT[X.k].n }] : [];
-    return nearPorts(X.lat, X.lng, 8).map(x => { const km = x.d * LAND_F; return { k: x.p.k, landKm: km, landMin: km / LAND_KMH * 60, label: x.p.n }; });
+    return nearPorts(X.lat, X.lng, 8).map(x => { const rd = rdGet(X, x.p), km = rd ? rd.km : x.d * LAND_F; return { k: x.p.k, landKm: km, landMin: rd ? rd.min : km / LAND_KMH * 60, label: x.p.n, real: !!rd }; });
   }
   function dijkstra(srcs, dsts, obj, gk, qty) {
     const dst = {}; dsts.forEach(d => dst[d.k] = d);
@@ -137,19 +174,50 @@
       co2 += L.km * (L.r.j === "ro" ? .09 : L.r.j === "pelni" ? .05 : L.r.j === "land" ? .1 : .13);
     });
     const landA = res.src ? res.src.landMin : 0, landB = res.dst ? res.dst.landMin : 0;
-    totalMin += landA + landB;
+    totalMin += landA + landB; totalKm += (res.src && res.src.landKm || 0) + (res.dst && res.dst.landKm || 0);
     return { legs, from: PT[legs[0].from], to: PT[legs[legs.length - 1].to], totalMin, totalFare, totalKm, co2, wait0, transfers: legs.length - 1, landA: res.src, landB: res.dst, gk, qty };
   }
-  function planAll() {
-    ALT = null; PLAN = null;
-    const A = S.A, B = S.B; if (!A || !B) { say("Pilih asal & tujuan dulu"); return; }
-    const sa = endpoints(A), sb = endpoints(B);
-    if (!sa.length || !sb.length) { say("Pelabuhan tidak aktif / tidak ada jalur untuk titik itu", 3500); return; }
+  let PSEQ = 0, RSTAT = "";
+  function compute() {
+    const A = S.A, B = S.B, sa = endpoints(A), sb = endpoints(B);
+    if (!sa.length || !sb.length) { say("Pelabuhan tidak aktif / tidak ada jalur untuk titik itu", 3500); ALT = PLAN = null; return false; }
     ALT = {};
     OBJ.forEach(o => { try { ALT[o[0]] = assemble(dijkstra(sa, sb, o[0], S.gol, S.qty), S.gol, S.qty); } catch (e) { console.error(e); ALT[o[0]] = null; } });
     PLAN = ALT[S.obj] || ALT.cepat || ALT.murah || ALT.sedikit || null;
+    return true;
+  }
+  function planAll() {
+    ALT = null; PLAN = null; RSTAT = "";
+    if (!S.A || !S.B) { say("Pilih asal & tujuan dulu"); return; }
+    if (!compute()) return;
     if (!PLAN) say(S.gol !== "0" ? "Tidak ada jalur kapal yang bisa mengangkut kendaraan itu (hanya Ro-Ro/Pelni)" : "Tidak ada jalur laut antara dua titik itu", 4500);
     drawPlan();
+    if (PLAN) refineRoads(++PSEQ);
+  }
+  /* daftar potongan darat yang belum punya geometri jalan nyata */
+  function roadNeeds() {
+    const out = {}, plans = Object.keys(ALT || {}).map(k => ALT[k]).filter(Boolean); if (PLAN && plans.indexOf(PLAN) < 0) plans.push(PLAN);
+    plans.forEach(p => {
+      const first = PT[p.legs[0].from], last = PT[p.legs[p.legs.length - 1].to];
+      if (p.landA && p.landA.landKm && S.A && !S.A.k) { const k = rdk(S.A, first); if (!RG[k]) out[k] = { a: S.A, b: first }; }
+      if (p.landB && p.landB.landKm && S.B && !S.B.k) { const k = rdk(last, S.B); if (!RG[k]) out[k] = { a: last, b: S.B }; }
+      p.legs.forEach(Lg => { if (Lg.r.j === "land") Lg.segs.forEach(e => { const a = PT[e.from], b = PT[e.to], k = rdk(a, b); if (!RG[k]) out[k] = { a, b, ka: e.from, kb: e.to }; }); });
+    });
+    return Object.keys(out).map(k => out[k]);
+  }
+  async function refineRoads(seq) {
+    RSTAT = "busy"; if (P && P.style.display === "flex" && S.tab === "rute") render();
+    try {
+      await Promise.all([S.A, S.B].map(X => X && !X.k ? tableEnds(X) : 0));       /* pilih pelabuhan terdekat menurut jalan, bukan garis lurus */
+      if (seq !== PSEQ) return; compute();
+      for (let it = 0; it < 4; it++) {
+        const need = roadNeeds(); if (!need.length) break;
+        await pool(need, 2, async n => { const o = await roadRoute(n.a, n.b); if (o && n.ka) applyLand(n.ka, n.kb, o); });
+        if (seq !== PSEQ) return; saveRD(); compute();
+      }
+    } catch (e) { console.error(e); }
+    if (seq !== PSEQ) return;
+    RSTAT = ""; drawPlan(); if (P && P.style.display === "flex") render();
   }
   function arrival(p) {
     if (!S.dep || !/^\d{1,2}:\d{2}$/.test(S.dep) || !p) return null;
@@ -258,15 +326,15 @@
 
   function legPath(L) {
     const out = [];
-    L.segs.forEach(e => { if (e.land) { const a = PT[e.from], b = PT[e.to]; if (!out.length) out.push([a.lat, a.lng]); out.push([b.lat, b.lng]); return; } const r = e.r, i0 = r.idx[e.i], i1 = r.idx[e.i + 1]; let part = r.pts.slice(i0, i1 + 1); if (e.rev) part = part.slice().reverse(); part.forEach((p, n) => { if (out.length && n === 0) return; out.push(p); }); });
+    L.segs.forEach(e => { if (e.land) { const a = PT[e.from], b = PT[e.to], g = RG[rdk(a, b)]; if (g && g.pts) { g.pts.forEach((q, n) => { if (out.length && n === 0) return; out.push(q); }); return; } if (!out.length) out.push([a.lat, a.lng]); out.push([b.lat, b.lng]); return; } const r = e.r, i0 = r.idx[e.i], i1 = r.idx[e.i + 1]; let part = r.pts.slice(i0, i1 + 1); if (e.rev) part = part.slice().reverse(); part.forEach((p, n) => { if (out.length && n === 0) return; out.push(p); }); });
     return out;
   }
   function drawPlan() {
     const M = gmap(); if (!M || !groups()) return; GR.clearLayers(); if (!PLAN) return;
     const all = [];
-    if (PLAN.landA && PLAN.landA.landKm && S.A && !S.A.k) { const p = PT[PLAN.legs[0].from]; L.polyline([[S.A.lat, S.A.lng], [p.lat, p.lng]], { color: "#f8fafc", weight: 3, dashArray: "3 7" }).addTo(GR); all.push([S.A.lat, S.A.lng]); }
-    if (PLAN.landB && PLAN.landB.landKm && S.B && !S.B.k) { const p = PT[PLAN.legs[PLAN.legs.length - 1].to]; L.polyline([[S.B.lat, S.B.lng], [p.lat, p.lng]], { color: "#f8fafc", weight: 3, dashArray: "3 7" }).addTo(GR); all.push([S.B.lat, S.B.lng]); }
-    PLAN.legs.forEach(Lg => { const path = legPath(Lg); L.polyline(path, { color: "#111827", weight: 9, opacity: .55 }).addTo(GR); L.polyline(path, { color: jn(Lg.r).col, weight: 5, opacity: 1, dashArray: Lg.r.j === "land" ? "2 9" : null, lineCap: Lg.r.j === "land" ? "round" : "butt" }).addTo(GR); path.forEach(p => all.push(p)); });
+    if (PLAN.landA && PLAN.landA.landKm && S.A && !S.A.k) { const p = PT[PLAN.legs[0].from], g = RG[rdk(S.A, p)], real = g && g.pts, path = real ? g.pts : [[S.A.lat, S.A.lng], [p.lat, p.lng]]; if (real) L.polyline(path, { color: "#111827", weight: 8, opacity: .5 }).addTo(GR); L.polyline(path, real ? { color: "#f8fafc", weight: 4, opacity: .95 } : { color: "#f8fafc", weight: 3, dashArray: "3 7" }).addTo(GR); path.forEach(q => all.push(q)); }
+    if (PLAN.landB && PLAN.landB.landKm && S.B && !S.B.k) { const p = PT[PLAN.legs[PLAN.legs.length - 1].to], g = RG[rdk(p, S.B)], real = g && g.pts, path = real ? g.pts : [[p.lat, p.lng], [S.B.lat, S.B.lng]]; if (real) L.polyline(path, { color: "#111827", weight: 8, opacity: .5 }).addTo(GR); L.polyline(path, real ? { color: "#f8fafc", weight: 4, opacity: .95 } : { color: "#f8fafc", weight: 3, dashArray: "3 7" }).addTo(GR); path.forEach(q => all.push(q)); }
+    PLAN.legs.forEach(Lg => { const path = legPath(Lg); L.polyline(path, { color: "#111827", weight: 9, opacity: .55 }).addTo(GR); L.polyline(path, { color: jn(Lg.r).col, weight: 5, opacity: 1, dashArray: Lg.r.j === "land" && !Lg.segs.every(e => RG[rdk(PT[e.from], PT[e.to])] && RG[rdk(PT[e.from], PT[e.to])].pts) ? "2 9" : null, lineCap: Lg.r.j === "land" ? "round" : "butt" }).addTo(GR); path.forEach(p => all.push(p)); });
     [PLAN.from, PLAN.to].forEach((p, n) => L.circleMarker([p.lat, p.lng], { radius: 8, color: "#fff", weight: 2, fillColor: n ? "#ef4444" : "#22c55e", fillOpacity: 1 }).bindTooltip((n ? "Tujuan: " : "Asal: ") + p.n, { permanent: true, direction: "top" }).addTo(GR));
     if (all.length) { try { M.fitBounds(L.latLngBounds(all).pad(.25), { maxZoom: 11 }); } catch (e) { } }
   }
@@ -367,7 +435,7 @@
     portsList().filter(p => DEG[p.k]).sort((a, b) => a.n.localeCompare(b.n)).map(p => '<option value="' + p.k + '"' + (sel && sel.k === p.k ? " selected" : "") + ">" + esc(p.n) + " — " + esc(p.prov) + "</option>").join("");
   function legHTML(Lg, i) {
     const j = jn(Lg.r), land = Lg.r.j === "land", rk = land ? risk(Lg.r, null) : riskOf(Lg.r), w = land ? null : waveOf(Lg.r);
-    return (i && Lg.r.j !== "land" ? '<div class="fr-xfer">⇄ pindah kapal — tunggu rata-rata ±' + fmin(Lg.wait) + "</div>" : "") + '<div class="fr-leg"><span class="fr-dot" style="background:' + j.col + '"></span><div><b>' + esc(PT[Lg.from].n) + " → " + esc(PT[Lg.to].n) + '</b><div class="fr-mini">' + j.ic + " " + esc(land ? "Jalan darat antar pelabuhan" : Lg.r.n) + (Lg.r.op ? " • " + esc(Lg.r.op) : "") + " • " + fkm(Lg.km) + (Lg.r.j === "land" ? " • tempuh " : " • layar ") + fmin(Lg.sail) + (Lg.stops.length > 2 ? " • " + (Lg.stops.length - 2) + " singgah" : "") + (Lg.fare ? " • ±" + rp(Lg.fare) : "") + "</div>" +
+    return (i && Lg.r.j !== "land" ? '<div class="fr-xfer">⇄ pindah kapal — tunggu rata-rata ±' + fmin(Lg.wait) + "</div>" : "") + '<div class="fr-leg"><span class="fr-dot" style="background:' + j.col + '"></span><div><b>' + esc(PT[Lg.from].n) + " → " + esc(PT[Lg.to].n) + '</b><div class="fr-mini">' + j.ic + " " + esc(land ? "Jalan darat antar pelabuhan" + (Lg.segs.every(e => e.real) ? " (rute jalan nyata)" : " (perkiraan)") : Lg.r.n) + (Lg.r.op ? " • " + esc(Lg.r.op) : "") + " • " + fkm(Lg.km) + (Lg.r.j === "land" ? " • tempuh " : " • layar ") + fmin(Lg.sail) + (Lg.stops.length > 2 ? " • " + (Lg.stops.length - 2) + " singgah" : "") + (Lg.fare ? " • ±" + rp(Lg.fare) : "") + "</div>" +
       (w ? '<div class="fr-mini">🌊 ' + (w.hs != null ? w.hs.toFixed(1) + " m" : "—") + (w.mx != null ? " (maks 3 hr " + w.mx.toFixed(1) + " m)" : "") + ' <span class="fr-sc" style="background:' + rk.col + '">' + rk.txt + "</span></div>" : "") + "</div></div>";
   }
   function planHTML() {
@@ -377,8 +445,8 @@
     return '<div class="fr-row" style="align-items:stretch">' + cmp + "</div>" +
       '<div class="fr-ins"><b>' + esc(p.from.n) + " → " + esc(p.to.n) + '</b><div class="fr-st"><span>⏱ <b>' + fmin(p.totalMin) + "</b></span><span>📏 <b>" + fkm(p.totalKm) + "</b> total</span><span>💳 <b>±" + rp(p.totalFare) + "</b>" + (p.qty > 1 ? " (" + p.qty + " unit)" : "") + "</span><span>🔁 <b>" + p.transfers + " transit</b></span><span>🌱 CO₂ ±<b>" + (p.co2).toFixed(1) + " kg</b>/orang</span></div>" +
       (arr ? '<div class="fr-tip">🕓 Berangkat ' + esc(S.dep) + " " + tzN(tzOf(p.from.prov)) + " → perkiraan tiba <b>" + arr.clock + " " + arr.tz + "</b>" + (arr.day ? " (+" + arr.day + " hari)" : "") + " <span class=\"fr-mini\">(termasuk tunggu rata-rata)</span></div>" : "") + "</div>" +
-      (p.landA && p.landA.landKm ? '<div class="fr-tip">🚗 Darat awal ke ' + esc(p.landA.label) + ": ±" + fkm(p.landA.landKm) + " • ±" + fmin(p.landA.landMin) + " <span class=\"fr-mini\">(garis lurus ×1,35)</span></div>" : "") +
-      p.legs.map(legHTML).join("") + (p.landB && p.landB.landKm ? '<div class="fr-tip">🚗 Darat akhir dari ' + esc(p.landB.label) + ": ±" + fkm(p.landB.landKm) + " • ±" + fmin(p.landB.landMin) + "</div>" : "") +
+      (RSTAT === "busy" ? '<div class="fr-mini">⏳ Menyelaraskan rute darat dengan jalan nyata…</div>' : "") + (p.landA && p.landA.landKm ? '<div class="fr-tip">🚗 Darat awal ke ' + esc(p.landA.label) + ": " + (p.landA.real ? "" : "±") + fkm(p.landA.landKm) + " • " + (p.landA.real ? "" : "±") + fmin(p.landA.landMin) + ' <span class="fr-mini">' + (p.landA.real ? "(rute jalan nyata)" : "(perkiraan garis lurus ×1,35)") + "</span></div>" : "") +
+      p.legs.map(legHTML).join("") + (p.landB && p.landB.landKm ? '<div class="fr-tip">🚗 Darat akhir dari ' + esc(p.landB.label) + ": " + (p.landB.real ? "" : "±") + fkm(p.landB.landKm) + " • " + (p.landB.real ? "" : "±") + fmin(p.landB.landMin) + ' <span class="fr-mini">' + (p.landB.real ? "(rute jalan nyata)" : "(perkiraan garis lurus ×1,35)") + "</span></div>" : "") +
       (worst.lv >= 2 ? '<div class="fr-bad">⚠️ Gelombang pada jalur ini ' + worst.txt + " — kemungkinan jadwal ditunda. Cek BMKG & operator sebelum berangkat.</div>" : worst.lv === -1 ? '<div class="fr-mini">🌊 Gelombang belum dicek — buka tab Cuaca.</div>' : "") +
       (p.legs.some(l => l.r.j !== "land" && (l.r.j === "pelni" || l.r.f < 1)) ? '<div class="fr-warn">⏳ Ada leg dengan jadwal jarang (Pelni/musiman): waktu tunggu bisa berhari-hari — cek jadwal resmi.</div>' : "") +
       '<div class="fr-row"><button class="fr-btn g" data-fr="copy">📋 Salin ringkasan</button><button class="fr-btn g" data-fr="redraw">🗺️ Tampilkan di peta</button></div>';
@@ -520,6 +588,6 @@
     if (v) { S.on = true; S.lines = true; if (S.ports === false) S.ports = true; } else S.on = false;
     save(); sync(); say(v ? "Jalur pelayaran: NYALA" : "Jalur pelayaran: MATI"); if (P && P.style.display === "flex") render();
   }
-  window.PETAQU_FERI = { rows: () => [{ id: "feri", name: "Jaringan Rute Kapal & Feri", ic: "\uf21a", c: "#38bdf8", on: S.on !== false && !!S.lines }, { id: "feripel", name: "Pelabuhan Indonesia", ic: "\uf13d", c: "#0ea5e9", on: S.on !== false && !!S.ports }, { id: "feripanel", name: "Perencana Rute Kapal (panel)", ic: "\uf21a", c: "#7dd3fc", on: null }], act: id => { if (id === "feripanel") open(); else if (id === "feripel") setPorts(); else setNet(); }, open, toggle: setOn, waves: fetchWaves, _build: build, _plan: (A, B, obj, gol, qty) => { S.A = A; S.B = B; S.gol = gol || "0"; S.qty = qty || 1; const sa = endpoints(A), sb = endpoints(B); return assemble(dijkstra(sa, sb, obj || "cepat", S.gol, S.qty), S.gol, S.qty); }, _st: () => ({ PT, RT, ADJ, DEG }), _risk: risk, _calc: lgCalc, _S: S, _roadPorts: roadPorts, _iso: isoIslands, _pointAt: pointAt };
+  window.PETAQU_FERI = { rows: () => [{ id: "feri", name: "Jaringan Rute Kapal & Feri", ic: "\uf21a", c: "#38bdf8", on: S.on !== false && !!S.lines }, { id: "feripel", name: "Pelabuhan Indonesia", ic: "\uf13d", c: "#0ea5e9", on: S.on !== false && !!S.ports }, { id: "feripanel", name: "Perencana Rute Kapal (panel)", ic: "\uf21a", c: "#7dd3fc", on: null }], act: id => { if (id === "feripanel") open(); else if (id === "feripel") setPorts(); else setNet(); }, open, toggle: setOn, waves: fetchWaves, _build: build, _plan: (A, B, obj, gol, qty) => { S.A = A; S.B = B; S.gol = gol || "0"; S.qty = qty || 1; const sa = endpoints(A), sb = endpoints(B); return assemble(dijkstra(sa, sb, obj || "cepat", S.gol, S.qty), S.gol, S.qty); }, _st: () => ({ PT, RT, ADJ, DEG }), _risk: risk, _calc: lgCalc, _S: S, _planAll: planAll, _RG: RG, _RD: RD, _alt: () => ALT, _plan0: () => PLAN, _roadPorts: roadPorts, _iso: isoIslands, _pointAt: pointAt };
   typeof document === "undefined" ? 0 : (document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init());
 })();

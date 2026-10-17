@@ -23,3 +23,6 @@ Naikkan `?v=` di `index.html` dan `sw.js` agar cache perangkat diperbarui.
 Koordinat pelabuhan & garis rute = **pendekatan kasar** untuk pra-survei (garis lurus + titik belok); gunakan "Muat jalur feri OSM" untuk geometri nyata.
 Jadwal Pelni berubah-ubah; frekuensi hanya model. Tarif = jarak × tarif/km per golongan (bukan tarif resmi).
 Gelombang = model global Open-Meteo, bukan peringatan resmi — utamakan BMKG, Syahbandar & operator.
+
+## Rute darat mengikuti jalan nyata
+Darat awal (titik → pelabuhan), darat akhir (pelabuhan → tujuan) dan darat antar pelabuhan dihitung dari **OSRM** (router.project-osrm.org, cadangan routing.openstreetmap.de), digambar mengikuti jalan, dan pelabuhan terdekat dipilih menurut jarak jalan. Hasil di-cache di perangkat (`petaqu_fr_rd_v1`). Bila OSRM tidak terjangkau, otomatis kembali ke perkiraan garis lurus ×1,35 (tertulis "perkiraan" di panel). Waktu tempuh = durasi OSRM × 1,25 (lalu lintas/antre).
