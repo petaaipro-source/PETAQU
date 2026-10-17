@@ -50,7 +50,7 @@
   function setBadge(n) {
     if (labelEl) labelEl.textContent = n > 0 ? "Persetujuan akses (" + n + ")" : "Persetujuan akses";
     if (btn) btn.style.background = n > 0 ? "#b45309" : "#0e7490";
-    try { document.title = document.title.replace(/^\(\d+\)\s*/, ""); if (n > 0) document.title = "(" + n + ") " + document.title; } catch (e) { /* abaikan */ }
+    /* lencana "(n)" di judul dihapus: judul jendela aplikasi dibiarkan kosong; jumlah tetap tampil di tombol */
   }
   function notif(n) {   // pendaftar baru masuk -> toast + notifikasi sistem bila diizinkan
     T(n + " pendaftar baru menunggu persetujuan");
