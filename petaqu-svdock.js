@@ -24,6 +24,10 @@
     var s = document.createElement("style"); s.id = "pqSvDockCss";
     s.textContent = [
       "#svFrameWrap{--pqd-b:36px;--pqd-gap:22px;--pqd-h:calc(var(--pqd-b) + 14px);--pqd-top:calc(var(--pqd-gap) + var(--pqd-h) + 8px + env(safe-area-inset-bottom,0px))}",
+      /* ===== bersihkan layar (kartu judul & kontrol bawaan Google) — juga di Mode Ringan, saat petaqu-svview.js tidak dimuat ===== */
+      "body.pq-clean #svFrameWrap{--pq-ct:132px;--pq-cr:72px;overflow:hidden}",
+      "body.pq-clean #svFrameWrap #svFrame{position:absolute!important;left:0!important;top:calc(-1 * var(--pq-ct))!important;width:calc(100% + var(--pq-cr))!important;height:calc(100% + var(--pq-ct))!important;clip-path:inset(var(--pq-ct) var(--pq-cr) 0 0)}",
+      "body.pq-clean #pqSvPano .gm-iv-address,body.pq-clean #pqSvPano .gm-iv-address-link,body.pq-clean #pqSvPano .gm-svpc,body.pq-clean #pqSvPano .gm-fullscreen-control,body.pq-clean #pqSvPano .gm-control-active,body.pq-clean #pqSvPano .gmnoprint:not(.gm-style-cc){display:none!important}",
       /* ===== bilah atas lama: tidak dipakai lagi (semua tombol pindah ke dock) ===== */
       "#svFrameWrap #svHudTop,#svFrameWrap #svHudBottom,#svFrameWrap .pq-tag{display:none!important}",
       /* ===== dock ===== */
@@ -182,6 +186,7 @@
 
   function tick() {
     adopt();
+    if (!window.PQSvView && document.body) document.body.classList.toggle("pq-clean", ls("pq_sv_clean2", "1") === "1");   /* Mode Ringan: svview tidak ada → bersihkan layar tetap aktif */
     var o = open_();
     if (o && !wasOpen) { wasOpen = true; pending = 14; try { row.scrollLeft = 0; } catch (e) { } }
     else if (!o && wasOpen) { wasOpen = false; pending = 0; }
