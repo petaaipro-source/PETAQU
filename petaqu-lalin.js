@@ -280,8 +280,17 @@
       "<div class='pqll-s'>Arus bebas ≈ " + Math.round(e.ff) + " km/j · waktu tempuh ≈ " + (60 / Math.max(e.v, 3)).toFixed(1) + " mnt/km · " + pad2(h) + ":00 · " + KEYS[key].split(" (")[0] + "</div>" +
       sp.html + advice(g, e, sp, key) + "<div class='pqll-lv' id='pqllLive'>" + (S.ttKey ? "Memeriksa real-time…" : "<i>Estimasi model. Masukkan kunci TomTom di panel untuk pembacaan real-time.</i>") + "</div>" +
       "<div class='pqll-n'>Klasifikasi kelas jalan = perkiraan dari OpenStreetMap; bukan data resmi.</div></div>";
-    L.popup({ maxWidth: 320, minWidth: 250, className: "pqll-pop", autoPanPadding: [20, 20] }).setLatLng(ll || g.mid).setContent(html).openOn(m);
+    showDet(html, g);
     if (S.ttKey) probe(g, ll || g.mid, h, key);
+  }
+  /* panel informasi tetap (di luar peta, tidak bisa tertutup garis) + sorotan ruas terpilih */
+  var det = null, sel = null;
+  function hideDet() { if (det) det.classList.remove("open"); var m = getMap(); if (sel && m) { try { m.removeLayer(sel); } catch (e) { } } sel = null; }
+  function showDet(html, g) {
+    if (!det) { det = D.createElement("div"); det.id = "pqllDet"; D.body.appendChild(det); det.addEventListener("click", function (e) { if (e.target.closest && e.target.closest("[data-x]")) hideDet(); }); }
+    det.innerHTML = "<button data-x aria-label='Tutup' title='Tutup'>×</button>" + html; det.scrollTop = 0; det.classList.add("open");
+    var m = getMap(); if (!m) return; if (sel) { try { m.removeLayer(sel); } catch (e) { } sel = null; }
+    try { sel = L.polyline(g.pts, { renderer: rend, pane: "pqllPane", color: "#ffffff", weight: CLS[g.c].w * wScale(m.getZoom()) + 5, opacity: .9, lineCap: "round", interactive: false }); sel.addTo(m); if (sel.bringToBack) sel.bringToBack(); } catch (e) { sel = null; }
   }
   /* ---- pembacaan real-time TomTom + kalibrasi otomatis ---- */
   function probe(g, ll, h, key) {
@@ -329,7 +338,8 @@
     ".pqll-pop .leaflet-popup-content-wrapper{background:#0a0e17;color:#e6f1fb;border:1px solid rgba(148,178,204,.28);border-radius:12px}.pqll-pop .leaflet-popup-tip{background:#0a0e17}.pqll-pop .leaflet-popup-content{margin:10px 12px;font:12px/1.4 system-ui,sans-serif}" +
     ".pqll-h{display:flex;gap:6px;align-items:flex-start}.pqll-h b{flex:1;font-size:13px}.pqll-h span{color:#06121d;font-weight:700;font-size:10px;padding:2px 6px;border-radius:6px;white-space:nowrap}.pqll-s{font-size:11px;opacity:.8;margin-top:2px}.pqll-b{font-size:16px;font-weight:800;margin:6px 0 2px}" +
     ".pqll-sp{display:flex;align-items:flex-end;gap:1px;height:44px;margin-top:7px}.pqll-sp i{flex:1;border-radius:2px 2px 0 0;display:block}.pqll-ax{display:flex;justify-content:space-between;font-size:9px;opacity:.6}.pqll-p ul{margin:6px 0 0;padding-left:16px}.pqll-p li{margin:2px 0}.pqll-lv{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(34,211,238,.08);font-size:11px}.pqll-n{font-size:9.5px;opacity:.55;margin-top:6px}" +
-    "@media(max-width:700px){#pqllCard{left:8px;right:8px;width:auto;top:auto;bottom:8px;max-height:58vh}}";
+    "#pqllDet{position:fixed;left:12px;bottom:56px;z-index:1406;width:min(340px,calc(100vw - 24px));max-height:calc(100vh - 150px);overflow:auto;display:none;background:#0a0e17;color:#e6f1fb;border:1px solid rgba(148,178,204,.28);border-radius:14px;box-shadow:0 12px 38px rgba(0,0,0,.55);padding:11px 12px;font:12px/1.4 system-ui,sans-serif}#pqllDet.open{display:block}#pqllDet>button[data-x]{position:absolute;top:6px;right:8px;background:0 0;border:0;color:#8fa6bd;font-size:20px;cursor:pointer;line-height:1}#pqllDet .pqll-h{padding-right:22px}" +
+    "@media(max-width:700px){#pqllDet{left:8px;right:8px;width:auto;top:70px;bottom:auto;max-height:42vh}#pqllCard{left:8px;right:8px;width:auto;top:auto;bottom:8px;max-height:58vh}}";
   var LVL_LEG = function () { return "<div class='lg'>" + LV.map(function (l, i) { return "<span style='background:" + l.c + (i === 4 ? ";color:#fff" : "") + "' title='" + l.n + "'>" + (i === 4 ? "Parah" : l.n.split(" ")[0]) + "</span>"; }).join("") + "</div>"; };
   function status() {
     var el = $("pqllSt"); if (!el) return;
@@ -411,6 +421,7 @@
     S.on = false; stopPlay(); clearInterval(tickT); var m = getMap();
     if (card) card.classList.remove("open");
     if (m) { m.off("moveend", onMove); m.off("zoomend", onZoom); CK.forEach(function (c) { if (groups[c] && m.hasLayer(groups[c])) m.removeLayer(groups[c]); }); if (ttLayer) { try { m.removeLayer(ttLayer); } catch (e) { } ttLayer = null; } try { m.closePopup(); } catch (e) { } }
+    hideDet();
   }
   function onMove() { clearTimeout(moveT); moveT = setTimeout(function () { ensure().then(renderCard); renderCard(); }, 700); }
   function onZoom() { recolor(); }
