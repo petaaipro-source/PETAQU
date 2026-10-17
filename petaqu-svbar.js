@@ -107,11 +107,11 @@
     if (bar) return bar;
     var wrap = $("svFrameWrap") || $("svOverlay"); if (!wrap) return null;
     var st = document.createElement("style"); st.id = "pqSvBarCss";
-    st.textContent = "#pqSvBar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:9;display:none;align-items:center;gap:6px;max-width:calc(100% - 20px);padding:6px 8px;border-radius:14px;background:#0a0e17ee;border:1px solid #38bdf866;color:#e6f1fb;font:600 12px system-ui,sans-serif;box-shadow:0 8px 24px #000a;backdrop-filter:blur(6px)}" +
+    st.textContent = "#pqSvBar{position:absolute;left:50%;top:176px;transform:translateX(-50%);z-index:9;display:none;align-items:center;gap:6px;max-width:calc(100% - 20px);padding:6px 8px;border-radius:14px;background:#0a0e17ee;border:1px solid #38bdf866;color:#e6f1fb;font:600 12px system-ui,sans-serif;box-shadow:0 8px 24px #000a;backdrop-filter:blur(6px)}" +
       "#pqSvBar button{flex:none;width:30px;height:30px;border-radius:9px;border:1px solid #ffffff2e;background:#ffffff14;color:#fff;font-size:14px;cursor:pointer}#pqSvBar button:hover:not(:disabled){background:#0ea5e9}#pqSvBar button:disabled{opacity:.3;cursor:default}" +
-      "#pqSvBar .sb-t{min-width:0;display:flex;flex-direction:column;line-height:1.25;max-width:230px}#pqSvBar .sb-t b{color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#pqSvBar .sb-t span{font-weight:500;opacity:.75;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      "#pqSvBar .sb-t{min-width:0;display:flex;flex-direction:column;line-height:1.25;max-width:300px}#pqSvBar .sb-t b{color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#pqSvBar .sb-t span{font-weight:500;opacity:.75;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
       "#pqSvBar select{flex:none;max-width:104px;background:#111827;color:#e6f1fb;border:1px solid #ffffff2e;border-radius:8px;padding:5px 4px;font:600 11px system-ui,sans-serif}" +
-      "@media(max-width:520px){#pqSvBar{bottom:8px;gap:4px;padding:5px}#pqSvBar .sb-t{max-width:110px}#pqSvBar select{max-width:78px}}";
+      "@media(max-width:520px){#pqSvBar{top:112px;gap:4px;padding:5px}#pqSvBar .sb-t{max-width:110px}#pqSvBar select{max-width:78px}}";
     document.head.appendChild(st);
     bar = document.createElement("div"); bar.id = "pqSvBar";
     bar.innerHTML = '<button data-n="p" title="Sebelumnya">&#9664;</button><div class="sb-t"><b></b><span></span></div><button data-n="n" title="Berikutnya">&#9654;</button>' +

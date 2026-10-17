@@ -291,7 +291,7 @@
   var HN = ["utara", "timur laut", "timur", "tenggara", "selatan", "barat daya", "barat", "barat laut"];
   function hName(h) { return HN[Math.round(((h % 360) + 360) % 360 / 45) % 8]; }
   var ring = null;
-  function rows(it) {
+  function bridgeRows(it) {
     var b = it.b, r = [];
     function a(l, v) { if (v != null && v !== "") r.push([l, v]); }
     a("Nomor", b.nomor); a("Ruas", b.ruas); a("Kab/Kota", b.kabupaten); a("STA/KM", b.sta);
@@ -313,10 +313,10 @@
       sub: function (hh) { var a = ahead(it, hh, nb), c = items[idx] || it; return KM[c.k].s + (c.b.panjang != null && c.b.panjang !== "" ? " · " + fmt(c.b.panjang) + " m" : "") + (a.f ? " · ▶ " + Math.round(a.f.d) + " m" : ""); },
       cls: {
         opts: KLS.map(function (z) { return [z.k, z.s]; }), val: function () { return (items[idx] || it).k; },
-        set: function (v) { ov(idx, v); var s2; try { s2 = svState; } catch (e) { } if (s2) s2.rows = rows(items[idx] || it); try { if (typeof renderSvInfoPanel === "function") renderSvInfoPanel(); } catch (e) { } }
+        set: function (v) { ov(idx, v); var s2; try { s2 = svState; } catch (e) { } if (s2) s2.rows = bridgeRows(items[idx] || it); try { if (typeof renderSvInfoPanel === "function") renderSvInfoPanel(); } catch (e) { } }
       }
     };
-    try { window.openStreetViewForGeoResult(py, px, it.b.nama || "Jembatan", { hd: Math.round(h), rows: rows(it), pqJbk: idx, bar: bar }); } catch (e) { tst("Gagal membuka Street View", true); return; }
+    try { window.openStreetViewForGeoResult(py, px, it.b.nama || "Jembatan", { hd: Math.round(h), rows: bridgeRows(it), pqJbk: idx, bar: bar }); } catch (e) { tst("Gagal membuka Street View", true); return; }
     showRing(y, x);
     tst("Street View: " + (it.b.nama || "Jembatan") + (ph.known || hOverride != null ? " · menghadap " + hName(h) : ""));
   }
