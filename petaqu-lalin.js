@@ -126,21 +126,32 @@
   /* ============================ AMBIL & KLASIFIKASI JALAN ============================ */
   var OVP = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"], ovpI = 0;
   function overpass(q) {
-    var tries = 0;
-    function go() {
-      var url = OVP[ovpI % OVP.length], ac = typeof AbortController !== "undefined" ? new AbortController() : null, to = setTimeout(function () { if (ac) ac.abort(); }, 38000);
-      return fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q), signal: ac ? ac.signal : undefined })
-        .then(function (r) { clearTimeout(to); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-        .catch(function (e) { clearTimeout(to); ovpI++; if (++tries < OVP.length * 1) return go(); throw e; });
-    }
-    return go();
+    /* balapan ke semua server sekaligus; yang pertama berhasil menang, sisanya dibatalkan */
+    return new Promise(function (resolve, reject) {
+      var left = OVP.length, done = false, acs = [], lastErr = null;
+      OVP.forEach(function (url, k) {
+        var ac = typeof AbortController !== "undefined" ? new AbortController() : null; acs.push(ac);
+        var to = setTimeout(function () { if (ac) ac.abort(); }, 25000);
+        fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q), signal: ac ? ac.signal : undefined })
+          .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+          .then(function (j) {
+            clearTimeout(to); if (done) return;
+            if (!j || !j.elements || (j.remark && /timed out|runtime error|out of memory/i.test(j.remark) && !j.elements.length)) throw new Error("server sibuk");
+            done = true; acs.forEach(function (a, n) { if (n !== k && a) { try { a.abort(); } catch (e) { } } }); resolve(j);
+          })
+          .catch(function (e) { clearTimeout(to); if (done) return; lastErr = e; if (--left === 0) reject(e && e.name === "AbortError" ? new Error("waktu habis") : (lastErr || new Error("jaringan"))); });
+      });
+    });
   }
-  var HWV = { nas: ["motorway", "trunk", "primary"], prov: ["secondary"], kab: ["tertiary", "unclassified"], kota: ["tertiary", "unclassified", "residential"] };
   function wantedClasses(z) { return CK.filter(function (c) { return S.cls[c] && z >= CLS[c].minZ; }); }
-  function hwValues(cl, z) {
-    var set = {}; cl.forEach(function (c) { HWV[c].forEach(function (v) { if (v === "residential" && z < 14) return; set[v] = 1; }); });
-    if (set.unclassified && z < 12) delete set.unclassified;
-    return Object.keys(set).sort();
+  /* nilai highway yang diminta per kelas (tertiary hanya diminta sekali: oleh Kabupaten, atau Kota bila Kabupaten mati) */
+  function hwValues(c, z) {
+    var kabOn = S.cls.kab && z >= CLS.kab.minZ, v = [];
+    if (c === "nas") v = ["motorway", "trunk", "primary"];
+    else if (c === "prov") v = ["secondary"];
+    else if (c === "kab") { v = ["tertiary"]; if (z >= 12) v.push("unclassified"); }
+    else if (c === "kota") { if (z >= 14) v.push("residential"); if (!kabOn) { v.push("tertiary"); if (z >= 12) v.push("unclassified"); } }
+    return v;
   }
   var lenKm = function (g) { var s = 0; for (var i = 1; i < g.length; i++) s += Math.hypot((g[i].lon - g[i - 1].lon) * Math.cos(g[i].lat * Math.PI / 180) * 111.32, (g[i].lat - g[i - 1].lat) * 110.57); return s; };
   var num = function (v) { var n = parseFloat(String(v || "").replace(/[^0-9.]/g, "")); return isFinite(n) ? n : null; };
@@ -187,22 +198,30 @@
     var m = getMap(); if (!m || !S.on) return Promise.resolve();
     var z = Math.round(m.getZoom()), cl = wantedClasses(z), skipped = CK.filter(function (c) { return S.cls[c] && z < CLS[c].minZ; });
     S.hint = skipped.length ? "Zoom lebih dekat untuk: " + skipped.map(function (c) { return CLS[c].t + " (z≥" + CLS[c].minZ + ")"; }).join(", ") : "";
-    if (!cl.length) { status(); return Promise.resolve(); }
-    var vals = hwValues(cl, z), vb = viewBox(m);
-    if (covered(vb, vals)) { status(); return Promise.resolve(); }
-    var pl = (vb[2] - vb[0]) * .15, po = (vb[3] - vb[1]) * .15, bb = [vb[0] - pl, vb[1] - po, vb[2] + pl, vb[3] + po];
-    var key = bb.map(function (x) { return x.toFixed(3); }).join(",") + vals.join("|"); if (key === lastQ && S.busy) return Promise.resolve(); lastQ = key;
-    var my = ++seq; S.busy = true; S.loadErr = ""; status();
-    var bs = bb.map(function (x) { return x.toFixed(5); }).join(",");
-    var q = "[out:json][timeout:40];(way[\"highway\"~\"^(" + vals.join("|") + ")$\"](" + bs + "););out geom qt;";
-    kabList();
-    return overpass(q).then(function (j) {
-      if (my !== seq) return;
-      var add = ingest(j.elements || []); loaded.push({ b: bb, v: vals });
-      if (segs.size > 14000) { clearAll(); loaded = []; nodeInfo = new Map(); lastQ = ""; add = ingest(j.elements || []); loaded.push({ b: bb, v: vals }); }
-      draw(add); S.busy = false; recolor(); fetchRain([(vb[0] + vb[2]) / 2, (vb[1] + vb[3]) / 2]).then(function () { recolor(); });
-    }).catch(function (e) { S.busy = false; S.loadErr = "Gagal memuat jalan (" + ((e && e.name === "AbortError") ? "waktu habis" : (e && e.message) || "jaringan") + "). Geser/zoom peta untuk coba lagi."; status(); });
+    var vb = viewBox(m), todo = cl.filter(function (c) { var v = hwValues(c, z); return v.length && !covered(vb, v); });
+    if (!todo.length) { S.busy = false; status(); return Promise.resolve(); }
+    var my = ++seq, pl = (vb[2] - vb[0]) * .15, po = (vb[3] - vb[1]) * .15, bb = [vb[0] - pl, vb[1] - po, vb[2] + pl, vb[3] + po], bs = bb.map(function (x) { return x.toFixed(5); }).join(",");
+    S.busy = true; S.loadErr = ""; S.prog = ""; kabList(); status();
+    var chain = Promise.resolve(), errs = [];
+    todo.forEach(function (c, i) {
+      chain = chain.then(function () {
+        if (my !== seq) return; var vals = hwValues(c, z);
+        S.prog = "Memuat " + CLS[c].full + " (" + (i + 1) + "/" + todo.length + ")…"; status();
+        var q = "[out:json][timeout:30];(way[\"highway\"~\"^(" + vals.join("|") + ")$\"](" + bs + "););out geom qt;";
+        return overpass(q).then(function (j) {
+          if (my !== seq) return;
+          if (segs.size > 14000) { clearAll(); loaded = []; nodeInfo = new Map(); }
+          var add = ingest(j.elements || []); loaded.push({ b: bb, v: vals }); draw(add); recolor();
+        }).catch(function (e) { errs.push(CLS[c].t + " (" + ((e && e.message) || "gagal") + ")"); });
+      });
+    });
+    return chain.then(function () {
+      if (my !== seq) return; S.busy = false; S.prog = "";
+      S.loadErr = errs.length ? "Gagal memuat: " + errs.join(", ") + ". Ketuk ↻ untuk coba lagi." : "";
+      status(); var c0 = m.getCenter(); fetchRain([c0.lat, c0.lng]).then(function () { recolor(); });
+    });
   }
+  function reload() { loaded = []; seq++; S.busy = false; S.loadErr = ""; ensure().then(renderCard); }
 
   /* ============================ GAMBAR ============================ */
   function wScale(z) { return z < 10 ? .75 : z > 15 ? 1.35 : z > 13 ? 1.1 : 1; }
@@ -315,7 +334,7 @@
   function status() {
     var el = $("pqllSt"); if (!el) return;
     el.className = "st" + (S.loadErr ? " er" : "");
-    el.textContent = S.loadErr || (S.busy ? "Memuat jalan di area ini…" : (S.hint || "Estimasi model · geser/zoom peta untuk memuat jalan area lain"));
+    el.textContent = S.loadErr || (S.busy ? (S.prog || "Memuat jalan di area ini…") : (S.hint || "Estimasi model · geser/zoom peta untuk memuat jalan area lain"));
   }
   function nowLabel() { var d = new Date(); return HARI[d.getDay()] + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + " · " + KEYS[autoKey(d)].split(" (")[0]; }
   function renderCard() {
@@ -339,7 +358,7 @@
   function build_ui() {
     if (card) return; if (!$("pqllCss")) { var st = D.createElement("style"); st.id = "pqllCss"; st.textContent = CSS; D.head.appendChild(st); }
     card = D.createElement("div"); card.id = "pqllCard"; card.setAttribute("role", "dialog"); card.setAttribute("aria-label", "Lalu lintas jalan");
-    card.innerHTML = "<header><b>🚦 Lalu Lintas Jalan</b><button id='pqllMin' aria-label='Kecilkan' title='Kecilkan'>–</button><button id='pqllX' aria-label='Tutup'>×</button></header><div class='bd'>" +
+    card.innerHTML = "<header><b>🚦 Lalu Lintas Jalan</b><button id='pqllRl' aria-label='Muat ulang' title='Muat ulang jalan'>↻</button><button id='pqllMin' aria-label='Kecilkan' title='Kecilkan'>–</button><button id='pqllX' aria-label='Tutup'>×</button></header><div class='bd'>" +
       "<div class='ch'>" + CK.map(function (c) { return "<button data-c='" + c + "' style='--c:" + CLS[c].c + "'><i></i>" + CLS[c].full.replace("Jalan ", "") + "<small></small></button>"; }).join("") + "</div>" +
       "<div class='tb'><button id='pqllNow'>Sekarang</button><button id='pqllSim'>Simulasi</button></div><div class='nt' id='pqllMode'></div>" +
       "<div id='pqllSimBox' style='display:none;flex-direction:column;gap:6px'><select id='pqllKey'>" + Object.keys(KEYS).map(function (k) { return "<option value='" + k + "'>" + KEYS[k] + "</option>"; }).join("") + "</select><div style='display:flex;gap:8px;align-items:center'><input type='range' id='pqllHr' min='0' max='23' step='1'><b id='pqllHrL' style='min-width:84px;text-align:right'></b></div><div class='ft'><button id='pqllPlay'>▶ Animasi 24 jam</button></div></div>" +
@@ -350,12 +369,13 @@
       "<div class='nt'>Estimasi model dari pola jam/hari, karakter wilayah, kelas & lajur jalan, simpang, dan hujan — bukan data sensor kecuali TomTom aktif. Kelas jalan diperkirakan dari OpenStreetMap.</div></div>";
     D.body.appendChild(card);
     var q = function (id) { return card.querySelector(id); };
-    q("#pqllX").onclick = close; q("#pqllMin").onclick = function () { S.min = !S.min; card.classList.toggle("min", S.min); };
+    q("#pqllX").onclick = close; q("#pqllRl").onclick = reload; q("#pqllMin").onclick = function () { S.min = !S.min; card.classList.toggle("min", S.min); };
     CK.forEach(function (c) { q("[data-c=" + c + "]").onclick = function () { S.cls[c] = !S.cls[c]; savePref(); var m = getMap(); if (m && groups[c]) { if (S.cls[c]) m.addLayer(groups[c]); else m.removeLayer(groups[c]); } ensure().then(renderCard); renderCard(); }; });
     q("#pqllNow").onclick = function () { S.mode = "now"; stopPlay(); recolor(); }; q("#pqllSim").onclick = function () { if (S.mode !== "sim") { S.mode = "sim"; S.hour = hourNow(); S.key = autoKey(new Date()); } recolor(); };
     q("#pqllHr").oninput = function (e) { S.hour = +e.target.value; recolor(); }; q("#pqllKey").onchange = function (e) { S.key = e.target.value; recolor(); };
     q("#pqllPlay").onclick = function () { if (S.play) stopPlay(); else { S.mode = "sim"; S.play = true; playT = setInterval(function () { S.hour = (S.hour + 1) % 24; recolor(); }, 750); recolor(); } };
-    q("#pqllTs").onclick = function () { var v = q("#pqllTk").value.trim(); if (!v) { say("Isi kunci TomTom dulu"); return; } S.ttKey = v; try { W.localStorage.setItem("petaqu_lalin_tt", v); } catch (e) { } q("#pqllTk").value = ""; q("#pqllTk").placeholder = "Kunci tersimpan di perangkat ini"; say("Kunci TomTom tersimpan"); renderCard(); };
+    q("#pqllTs").onclick = function () { var v = q("#pqllTk").value.trim(); if (!v) { say("Isi kunci TomTom dulu"); return; } S.ttKey = v; try { W.localStorage.setItem("petaqu_lalin_tt", v); } catch (e) { } q("#pqllTk").value = ""; q("#pqllTk").placeholder = "Kunci tersimpan di perangkat ini"; S.live = true; savePref(); setLive(true); say("Kunci tersimpan · lapisan real-time TomTom aktif"); recolor(); };
+    q("#pqllTk").onkeydown = function (e) { if (e.key === "Enter") q("#pqllTs").click(); };
     q("#pqllTr").onclick = function () { S.ttKey = ""; S.live = false; try { W.localStorage.removeItem("petaqu_lalin_tt"); } catch (e) { } setLive(false); q("#pqllTk").placeholder = "Kunci API TomTom (gratis, developer.tomtom.com)"; renderCard(); };
     q("#pqllTT").onchange = function (e) { if (e.target.checked && !S.ttKey) { e.target.checked = false; say("Masukkan & simpan kunci TomTom dulu"); return; } S.live = e.target.checked; savePref(); setLive(S.live); recolor(); };
     q("#pqllGm").onclick = function () { var m = getMap(), c = m ? m.getCenter() : { lat: -7, lng: 110 }; window.open("https://www.google.com/maps/@" + c.lat.toFixed(5) + "," + c.lng.toFixed(5) + "," + Math.max(10, Math.min(17, m ? m.getZoom() : 13)) + "z/data=!5m1!1e1", "_blank", "noopener"); };
@@ -398,7 +418,7 @@
   /* ============================ MENU FOLDER ============================ */
   var rows = function () { return [{ id: "lalin", name: "Lalu lintas jalan (nasional · provinsi · kab · kota)", ic: '<i class="pq-fi">\uf637</i>', c: "#22c55e", on: S.on }]; };
   var act = function () { if (S.on) close(); else open(); };
-  W.PETAQU_LALIN = { open: open, close: close, rows: rows, act: act, isOn: function () { return S.on; }, _t: { est: est, classify: classify, mkSeg: mkSeg, ingest: ingest, lvOf: lvOf, autoKey: autoKey, S: S, segs: segs, CAL: CAL, spark: spark, summarize: summarize, popup: popup } };
+  W.PETAQU_LALIN = { open: open, close: close, reload: reload, rows: rows, act: act, isOn: function () { return S.on; }, _t: { est: est, classify: classify, mkSeg: mkSeg, ingest: ingest, lvOf: lvOf, autoKey: autoKey, S: S, segs: segs, CAL: CAL, spark: spark, summarize: summarize, popup: popup } };
   if (D && D.getElementById) {
     W.PQ_FOLDER_EXTRA = W.PQ_FOLDER_EXTRA || [];
     W.PQ_FOLDER_EXTRA.push({ t: "Lalu Lintas Jalan", rows: rows, act: act });
