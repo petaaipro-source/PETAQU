@@ -1,5 +1,7 @@
 /* PETAQU — Rekam Koordinat & KM (inventarisasi patok KM dari Street View)
-   Satu launcher kecil di tepi kanan Street View (aktif hanya saat diklik) → Rekam, Tabel, Auto, Peta + tabel (koordinat, ruas, KM, edit, hapus, unduh).
+   Satu launcher (HUB) di tepi kanan Street View. Tertutup = layar bersih; klik sekali → SEMUA alat muncul rapi
+   (mode Live/Embed/Dual, layout, bersihkan, warna, ukur, riwayat, info, buka Maps + Rekam, Tabel, Auto, Peta). Klik lagi / Esc = sembunyi.
+   Tabel rekaman: koordinat, ruas, KM, edit, hapus, unduh.
    Setiap rekaman LANGSUNG tampil di peta (titik + garis per ruas). Seluruh fitur bisa di-hide/show.
    Pintar: ruas/STA/KM terisi otomatis dari posisi Street View, KM kosong ditaksir dari rekaman
    tetangga (tanda ~), deteksi titik ganda, rekam otomatis per jarak, pintasan Shift+R.
@@ -229,6 +231,14 @@
       "#pqRkTbl td.ac{white-space:nowrap;text-align:right}#pqRkTbl td.ac button{width:26px;height:26px;border-radius:7px;background:#ffffff0d;border:1px solid #ffffff22;color:#cfe0f0;cursor:pointer;margin-left:3px}#pqRkTbl td.ac button:hover{border-color:var(--cyan,#22d3ee);color:var(--cyan,#22d3ee)}#pqRkTbl td.ac button.d:hover{border-color:#f43f5e;color:#f43f5e}",
       "#pqRkTbl tr.fl td{background:#22d3ee22}#pqRkTbl input{width:100%;box-sizing:border-box;background:#05070c;border:1px solid #38bdf866;color:#fff;border-radius:6px;padding:5px 6px;font:11.5px var(--mono,system-ui);margin-bottom:4px}",
       ".pqrk-empty{padding:22px 14px;text-align:center;color:#8fa6bd;line-height:1.6}.pqrk-tip,.leaflet-tooltip.pqrk-tip{font-size:10.5px}",
+      /* ===== HUB: satu launcher untuk semua alat Street View ===== */
+      "#pqRkTools{padding:7px;border-radius:18px;background:#0a0e17ee;border:1px solid #38bdf844;box-shadow:0 10px 28px #000a;backdrop-filter:blur(10px);gap:6px}",
+      "#pqRkTools .pqrk-b{box-shadow:none;width:46px;border-radius:12px}",
+      "#pqRkTools .pqrk-sep{width:30px;height:1px;background:#ffffff26;margin:1px 0}",
+      "#pqRkLaunch i{transition:transform .2s}#pqRkLaunch.on i{transform:rotate(90deg)}",
+      /* tertutup = hanya tombol tutup (X) + nama ruas/STA; semua alat lain disembunyikan */
+      "#svFrameWrap:not(.pq-hub-on) #svHudTop #svModeSwitch,#svFrameWrap:not(.pq-hub-on) #svHudTop #pqSvView,#svFrameWrap:not(.pq-hub-on) #svHudTop #svMeasureBtn,#svFrameWrap:not(.pq-hub-on) #svHudTop #svHistoryBtn,#svFrameWrap:not(.pq-hub-on) #svHudTop #svInfoToggleBtn,#svFrameWrap:not(.pq-hub-on) #svHudTop #svExternalLink,#svFrameWrap:not(.pq-hub-on) #pqSvMenu{display:none!important}",
+      "#svFrameWrap.pq-hub-on #svHudTop>*:not(#svClose):not(#svHudInfo){animation:pqrkIn .16s ease}",
       "@media(max-width:560px){#pqRkPanel{right:62px;width:calc(100% - 74px)}.pqrk-b{width:44px}}"
     ].join("\n");
     document.head.appendChild(s);
@@ -243,7 +253,7 @@
       '<button id="pqRkTog" class="pqrk-b" type="button" title="Tampilkan / sembunyikan tabel rekaman"><i class="fa-solid fa-table-list"></i>Tabel<span class="pqrk-n" id="pqRkCnt">0</span></button>' +
       '<button id="pqRkAuto" class="pqrk-b" type="button" title="Rekam otomatis tiap menempuh jarak tertentu"><i class="fa-solid fa-bolt"></i>Auto</button>' +
       '<button id="pqRkMapBtn" class="pqrk-b" type="button" title="Tampilkan rekaman di peta"><i class="fa-solid fa-map-location-dot"></i>Peta</button></div>' +
-      '<button id="pqRkLaunch" class="pqrk-b" type="button" title="Rekam Koordinat & KM — klik untuk mengaktifkan"><i class="fa-solid fa-location-crosshairs"></i><span class="pqrk-n" id="pqRkCnt2">0</span></button>';
+      '<button id="pqRkLaunch" class="pqrk-b" type="button" title="Menu alat Street View — klik untuk tampil / sembunyikan"><i class="fa-solid fa-grip" id="pqRkLaunchIc"></i><span class="pqrk-n" id="pqRkCnt2">0</span></button>';
     var pn = document.createElement("div"); pn.id = "pqRkPanel";
     pn.innerHTML = '<div id="pqRkHead"><i class="fa-solid fa-location-crosshairs" style="color:var(--cyan,#22d3ee)"></i><b>Rekam Koordinat &amp; KM</b>' +
       '<button class="pqrk-ib" id="pqRkClose" type="button" title="Tutup tabel"><i class="fa-solid fa-xmark"></i></button></div>' +
@@ -337,6 +347,9 @@
     var dk = $("pqRkDock"); if (!dk) return;
     $("pqRkTools").classList.toggle("show", dock);
     $("pqRkLaunch").classList.toggle("on", dock);
+    var wr = $("svFrameWrap"); if (wr) wr.classList.toggle("pq-hub-on", dock);
+    var ic = $("pqRkLaunchIc"); if (ic) ic.className = "fa-solid " + (dock ? "fa-xmark" : "fa-grip");
+    if (!dock) { try { var mn = $("pqSvMenu"); if (mn) mn.classList.remove("show"); } catch (e) {} }
     $("pqRkPanel").classList.toggle("show", dock && !!ui.open);
     $("pqRkTog").classList.toggle("on", dock && !!ui.open);
     $("pqRkMapBtn").classList.toggle("on", !!ui.onMap);
@@ -372,6 +385,10 @@
     load(); build(); syncMap();
     tick = setInterval(loop, 1000);
     document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && dock) {
+        var t0 = e.target, tg = t0 && t0.tagName, ov0 = $("svOverlay");
+        if (tg !== "INPUT" && tg !== "TEXTAREA" && tg !== "SELECT" && ov0 && ov0.classList.contains("show")) { setDock(false); return; }
+      }
       if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || (e.key !== "R" && e.key !== "r")) return;
       var t = e.target, tag = t && t.tagName; if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
       var ov = $("svOverlay"); if (!dock || !ov || !ov.classList.contains("show")) return;
