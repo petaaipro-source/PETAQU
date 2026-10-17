@@ -1,7 +1,7 @@
 /* ==========================================================================
    PETAQU — Lalu Lintas Jalan · Nasional · Provinsi · Kabupaten · Kota
    Lapisan jalan diwarnai tingkat kepadatan (lancar → macet parah) untuk SEMUA wilayah Indonesia.
-   Cara kerja (jujur): tanpa kunci → ESTIMASI MODEL (bukan data sensor langsung). Dengan kunci TomTom → lapisan
+   Cara kerja (jujur): tanpa kunci → ESTIMASI MODEL (bukan data sensor langsung). Dengan kunci API (PETAQU Live) → lapisan
    real-time + kalibrasi otomatis model dari pembacaan langsung.
    • Jalan diambil dari OpenStreetMap (Overpass) sesuai area layar, di-cache; klasifikasi perkiraan:
        motorway/trunk/primary = Nasional · secondary = Provinsi · tertiary/unclassified = Kabupaten (atau Kota bila di dalam
@@ -68,7 +68,7 @@
     return "kerja";
   }
 
-  /* kunci bawaan TomTom (dipakai bersama; tidak pernah ditampilkan di UI). Pengguna disarankan memasang kunci sendiri. */
+  /* kunci bawaan (dipakai bersama; tidak pernah ditampilkan di UI). Pengguna disarankan memasang kunci sendiri. */
   var DK = "bzJTZUx2SjVWeTVKTmlzYVdoVk1ZQU5wMUl2MFE2Z2Y=";
   var dKey = function () { try { return (W.atob || atob)(DK).split("").reverse().join(""); } catch (e) { return ""; } };
 
@@ -182,10 +182,11 @@
     var lf = ln >= 6 ? .62 : ln >= 4 ? .75 : ln === 3 ? .88 : ln <= 1 ? 1.25 : 1;
     var un = /^(unpaved|gravel|dirt|ground|sand|earth|mud|grass)$/.test(tg.surface || "");
     if (un) ff *= .7;
-    var g = { id: el.id, c: c, name: tg.name || tg.ref || "(tanpa nama)", ref: tg.ref || "", hw: hw, ln: ln, ms: ms, km: km, pts: pts, mid: [mi.lat, mi.lon], K: K, ixc: ixc, un: un, ff: ff, round: tg.junction === "roundabout", lf: lf };
+    var g = { id: el.id, bb: bbOf(pts), c: c, name: tg.name || tg.ref || "(tanpa nama)", ref: tg.ref || "", hw: hw, ln: ln, ms: ms, km: km, pts: pts, mid: [mi.lat, mi.lon], K: K, ixc: ixc, un: un, ff: ff, round: tg.junction === "roundabout", lf: lf };
     g.adj = lf * (hw === "motorway" ? 1 : 1) * (1 + Math.min(.4, (ixc / Math.max(.15, km)) * .035)) * (g.round ? 1.1 : 1) * (un ? 1.1 : 1) * (hw === "motorway" ? .65 : 1);
     return g;
   }
+  function bbOf(p) { var a = 90, b = 180, c = -90, d = -180; p.forEach(function (q) { if (q[0] < a) a = q[0]; if (q[0] > c) c = q[0]; if (q[1] < b) b = q[1]; if (q[1] > d) d = q[1]; }); return [a, b, c, d]; }
   var RANK = { nas: 0, prov: 1, kab: 2, kota: 3 };
   function ingest(elems) {
     var added = [], out = [];
@@ -283,7 +284,7 @@
       "<div class='pqll-s'>" + esc(reg) + " · ±" + g.km.toFixed(g.km < 1 ? 2 : 1) + " km · " + g.ln + " lajur" + (g.ms ? " · batas " + g.ms + " km/j" : "") + (g.ref && g.ref !== g.name ? " · " + esc(g.ref) : "") + "</div>" +
       "<div class='pqll-b' style='color:" + lv.c + "'>" + lv.n + " · ≈ " + Math.round(e.v) + " km/j</div>" +
       "<div class='pqll-s'>Arus bebas ≈ " + Math.round(e.ff) + " km/j · waktu tempuh ≈ " + (60 / Math.max(e.v, 3)).toFixed(1) + " mnt/km · " + pad2(h) + ":00 · " + KEYS[key].split(" (")[0] + "</div>" +
-      sp.html + advice(g, e, sp, key) + "<div class='pqll-lv' id='pqllLive'>" + (S.ttKey ? "Memeriksa real-time…" : "<i>Estimasi model. Pasang kunci TomTom di panel untuk pembacaan real-time.</i>") + "</div>" +
+      sp.html + advice(g, e, sp, key) + "<div class='pqll-lv' id='pqllLive'>" + (S.ttKey ? "Memeriksa real-time…" : "<i>Estimasi model. Aktifkan PETAQU Live (kunci API) di panel untuk pembacaan real-time.</i>") + "</div>" +
       "<div class='pqll-n'>Klasifikasi kelas jalan = perkiraan dari OpenStreetMap; bukan data resmi.</div></div>";
     showDet(html, g, ll);
     if (S.ttKey) probe(g, ll || g.mid, h, key);
@@ -299,30 +300,46 @@
     if (!g) { try { sel = L.circleMarker(ll, { renderer: rend, pane: "pqllPane", radius: 7, color: "#ffffff", weight: 2, fillColor: "#22d3ee", fillOpacity: 1, interactive: false }); sel.addTo(m); } catch (e) { sel = null; } return; }
     try { sel = L.polyline(g.pts, { renderer: rend, pane: "pqllPane", color: "#ffffff", weight: CLS[g.c].w * wScale(m.getZoom()) + 5, opacity: .9, lineCap: "round", interactive: false }); sel.addTo(m); if (sel.bringToBack) sel.bringToBack(); } catch (e) { sel = null; }
   }
-  /* ---- pembacaan real-time TomTom + kalibrasi otomatis ---- */
+  /* ---- pembacaan real-time (PETAQU Live) + kalibrasi otomatis ---- */
   function probe(g, ll, h, key) {
     var m = getMap(), la = ll.lat != null ? ll.lat : ll[0], lo = ll.lng != null ? ll.lng : ll[1], z = clamp(Math.round(m ? m.getZoom() : 12), 10, 22);
     var u = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/" + z + "/json?unit=KMPH&point=" + la.toFixed(5) + "," + lo.toFixed(5) + "&key=" + encodeURIComponent(S.ttKey);
     fetch(u).then(function (r) {
-      if (!r.ok) throw new Error(r.status === 403 || r.status === 401 ? "kunci ditolak" : r.status === 400 ? "tidak ada ruas jalan TomTom tepat di titik ini — klik tepat di atas garis jalan" : r.status === 429 ? "kuota harian habis" : "HTTP " + r.status);
+      if (!r.ok) throw new Error(r.status === 403 || r.status === 401 ? "kunci ditolak" : r.status === 400 ? "tidak ada ruas jalan terdeteksi tepat di titik ini — klik tepat di atas garis jalan" : r.status === 429 ? "kuota harian habis" : "HTTP " + r.status);
       return r.json();
     }).then(function (j) {
       var f = j && j.flowSegmentData, box = $("pqllLive"); if (!f || !box) return;
       var cs = f.currentSpeed, ffs = f.freeFlowSpeed, rl = ffs ? clamp(cs / ffs, .05, 1) : null, li = rl == null ? 0 : lvOf(rl), conf = f.confidence || 0;
       var dly = Math.max(0, Math.round((f.currentTravelTime || 0) - (f.freeFlowTravelTime || 0)));
-      var t = "<div class='pqll-b' style='color:" + LV[li].c + ";margin:0 0 3px'>" + LV[li].n + " · " + Math.round(cs) + " km/j</div><b>Langsung (TomTom):</b> arus bebas " + Math.round(ffs) + " km/j · keyakinan " + Math.round(conf * 100) + "%" + (dly ? " · tambahan waktu ≈ " + dly + " dtk di ruas ini" : "") + (f.roadClosure ? " · <b style='color:#f87171'>JALAN DITUTUP</b>" : "");
+      var t = "<div class='pqll-b' style='color:" + LV[li].c + ";margin:0 0 3px'>" + LV[li].n + " · " + Math.round(cs) + " km/j</div><b>PETAQU Live:</b> arus bebas " + Math.round(ffs) + " km/j · keyakinan " + Math.round(conf * 100) + "%" + (dly ? " · tambahan waktu ≈ " + dly + " dtk di ruas ini" : "") + (f.roadClosure ? " · <b style='color:#f87171'>JALAN DITUTUP</b>" : "");
+      var an = "";
+      if (g && conf >= .6 && S.mode === "now") { var vn = est(g, h, key, rainAt(g, h)).v, dd = cs / Math.max(vn, 3); an = dd < .75 ? "<br><b style='color:#fb923c'>⚠ ±" + Math.round((1 - dd) * 100) + "% lebih lambat dari pola biasanya jam ini</b> — kemungkinan ada hambatan (kejadian, hujan, pekerjaan/penyempitan)." : dd > 1.2 ? "<br>Lebih lancar dari pola biasanya jam ini." : "<br>Sesuai pola biasanya jam ini."; }
+      t += an;
       if (g && rl != null && conf >= .6 && S.mode === "now") {
         var xm = est(g, h, key, rainAt(g, h), true).x, xl = Math.pow(Math.max(1 / rl - 1, .001) / .8, 1 / 3.2), tg = clamp(xl / Math.max(xm, .05), .5, 2), kk = g.c + "|" + band(h);
         CAL[kk] = clamp(.7 * (CAL[kk] == null ? 1 : CAL[kk]) + .3 * tg, .5, 2); lsSet("petaqu_lalin_cal", CAL); t += "<br><span style='opacity:.8'>Model dikalibrasi otomatis (" + CLS[g.c].t + ", " + { p: "pagi", s: "siang", o: "sore", m: "malam" }[band(h)] + "): ×" + CAL[kk].toFixed(2) + "</span>"; recolorSoft();
       } else if (!g) t += "<br><span style='opacity:.85'>" + (li >= 3 ? "Padat/macet sekarang — hindari penutupan lajur dan cari rute alternatif." : li === 2 ? "Mulai padat — tunda pekerjaan yang butuh penutupan lajur." : "Arus relatif lancar saat ini.") + "</span>";
       box.innerHTML = t;
-    }).catch(function (e) { var box = $("pqllLive"); if (box) box.innerHTML = "<i>Real-time tidak tersedia (" + esc(e && e.message || "gagal") + ")." + (S.own || !/ditolak|kuota/.test(e && e.message || "") ? "" : " Kunci bawaan bermasalah/habis kuota — pasang kunci TomTom Anda sendiri di panel.") + "</i>"; });
+    }).catch(function (e) { var box = $("pqllLive"); if (box) box.innerHTML = "<i>Real-time tidak tersedia (" + esc(e && e.message || "gagal") + ")." + (S.own || !/ditolak|kuota/.test(e && e.message || "") ? "" : " Kunci bawaan bermasalah/habis kuota — pasang kunci API Anda sendiri di panel.") + "</i>"; });
   }
-  /* klik di titik mana pun (tanpa ruas model) → label lalu lintas langsung TomTom */
+  /* ruas model terdekat dari titik klik (≤ maxM meter) */
+  function nearestSeg(ll, maxM) {
+    var la = ll.lat != null ? ll.lat : ll[0], lo = ll.lng != null ? ll.lng : ll[1], kx = Math.cos(la * Math.PI / 180) * 111320, ky = 110570, best = null, bd = maxM, pd = .0015;
+    segs.forEach(function (g) {
+      if (!S.cls[g.c] || !g.line || !g.bb || la < g.bb[0] - pd || la > g.bb[2] + pd || lo < g.bb[1] - pd || lo > g.bb[3] + pd) return;
+      for (var i = 1; i < g.pts.length; i++) {
+        var ax = (g.pts[i - 1][1] - lo) * kx, ay = (g.pts[i - 1][0] - la) * ky, bx = (g.pts[i][1] - lo) * kx, by = (g.pts[i][0] - la) * ky, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? clamp(-(ax * dx + ay * dy) / L2, 0, 1) : 0, x = ax + t * dx, y = ay + t * dy, d = Math.sqrt(x * x + y * y);
+        if (d < bd) { bd = d; best = g; }
+      }
+    });
+    return best;
+  }
+  /* klik di titik mana pun (tanpa ruas model) → label lalu lintas langsung */
   function liveInfo(ll) {
-    if (!S.ttKey) { say("Belum ada kunci TomTom"); return; }
+    if (!S.ttKey) { say("Belum ada kunci API"); return; }
+    var g0 = nearestSeg(ll, 70); if (g0) { popup(g0, ll); return; }
     var la = ll.lat != null ? ll.lat : ll[0], lo = ll.lng != null ? ll.lng : ll[1];
-    showDet("<div class='pqll-p'><div class='pqll-h'><b>Lalu lintas langsung</b><span style='background:#22d3ee'>TomTom</span></div><div class='pqll-s'>Titik " + la.toFixed(5) + ", " + lo.toFixed(5) + " · " + (S.mode === "now" ? nowLabel() : "") + "</div><div class='pqll-lv' id='pqllLive'>Memeriksa kondisi lalu lintas…</div><div class='pqll-n'>Pembacaan sensor/kendaraan TomTom; cakupan di jalan kecil/pelosok bisa terbatas.</div></div>", null, ll);
+    showDet("<div class='pqll-p'><div class='pqll-h'><b>Lalu lintas langsung</b><span style='background:#22d3ee'>PETAQU Live</span></div><div class='pqll-s'>Titik " + la.toFixed(5) + ", " + lo.toFixed(5) + " · " + (S.mode === "now" ? nowLabel() : "") + "</div><div class='pqll-lv' id='pqllLive'>Memeriksa kondisi lalu lintas…</div><div class='pqll-n'>Pembacaan langsung dari jaringan sensor &amp; kendaraan; cakupan di jalan kecil/pelosok bisa terbatas.</div></div>", null, ll);
     probe(null, ll, curHour(), curKey());
   }
   function onMapClick(e) { if (S.on && S.pick && S.ttKey && e && e.latlng) liveInfo(e.latlng); }
@@ -382,7 +399,7 @@
     q("#pqllHot").innerHTML = sm.top.length ? sm.top.map(function (g, i) { return "<div class='rw cl' data-h='" + g.id + "'><span class='d' style='background:" + LV[g.lv].c + "'></span><span class='n'>" + esc(g.name) + (g.K ? " · " + esc(g.K.n) : "") + "</span><span class='v'>" + Math.round(g.v) + " km/j</span></div>"; }).join("") : "<div class='nt'>Tidak ada ruas padat pada jam ini di layar.</div>";
     q("#pqllReg").innerHTML = sm.rg.length ? sm.rg.map(function (r) { var rr = r.rk / r.km, lv = lvOf(rr); return "<div class='rw'><span class='d' style='background:" + LV[lv].c + "'></span><span class='n'>" + esc(r.n) + "</span><span class='v'>" + LV[lv].n + "</span></div>"; }).join("") : "<div class='nt'>—</div>";
     q("#pqllTT").checked = !!(S.live && S.ttKey); q("#pqllPk").checked = !!S.pick;
-    q("#pqllKs").innerHTML = !S.ttKey ? "Belum ada kunci — hanya estimasi model." : S.own ? "Memakai <b>kunci TomTom Anda sendiri</b> (tersimpan di perangkat ini)." : "Memakai <b>kunci bawaan PETAQU</b> (dipakai bersama, kuota harian terbatas). <b>Disarankan memasang kunci TomTom sendiri</b> — gratis di developer.tomtom.com (Kunci API &amp; SDK → salin → tempel di bawah).";
+    q("#pqllKs").innerHTML = !S.ttKey ? "Belum ada kunci — hanya estimasi model." : S.own ? "Memakai <b>kunci API Anda sendiri</b> (tersimpan di perangkat ini)." : "Memakai <b>kunci bawaan PETAQU</b> (dipakai bersama, kuota harian terbatas). <b>Disarankan memasang kunci API Anda sendiri</b> (gratis) agar kuota tidak habis oleh pengguna lain — ketuk <b>Panduan kunci</b>.";
     status();
   }
   function build_ui() {
@@ -394,8 +411,8 @@
       "<div id='pqllSimBox' style='display:none;flex-direction:column;gap:6px'><select id='pqllKey'>" + Object.keys(KEYS).map(function (k) { return "<option value='" + k + "'>" + KEYS[k] + "</option>"; }).join("") + "</select><div style='display:flex;gap:8px;align-items:center'><input type='range' id='pqllHr' min='0' max='23' step='1'><b id='pqllHrL' style='min-width:84px;text-align:right'></b></div><div class='ft'><button id='pqllPlay'>▶ Animasi 24 jam</button></div></div>" +
       "<div class='st' id='pqllSt'></div>" + LVL_LEG() +
       "<div><h5>Ringkasan layar</h5><div id='pqllSum'></div></div><div><h5>Titik terpadat (klik untuk lihat)</h5><div id='pqllHot'></div></div><div><h5>Kab/kota terpadat di layar</h5><div id='pqllReg'></div></div>" +
-      "<div class='lv'><h5 style='margin:0'>Lalu lintas langsung (TomTom)</h5><label><input type='checkbox' id='pqllTT'> Tampilkan lapisan lalu lintas langsung</label><label><input type='checkbox' id='pqllPk'> Klik peta = cek kondisi lalu lintas langsung di titik itu</label><div class='nt' id='pqllKs'></div><input type='text' id='pqllTk' name='pqll_tomtom_api_key' placeholder='Tempel kunci TomTom Anda sendiri (opsional)' autocomplete='off' autocapitalize='off' autocorrect='off' spellcheck='false' data-lpignore='true' data-1p-ignore data-form-type='other'><div class='ft'><button id='pqllTs'>Simpan kunci saya</button><button id='pqllTr'>Pakai bawaan</button></div></div><div class='ft'><button id='pqllGm'>Google Maps (lalin langsung)</button><button id='pqllCsv'>Ekspor CSV layar</button><button id='pqllRs'>Reset kalibrasi</button></div>" +
-      "<div class='nt'>Estimasi model dari pola jam/hari, karakter wilayah, kelas & lajur jalan, simpang, dan hujan — bukan data sensor kecuali TomTom aktif. Kelas jalan diperkirakan dari OpenStreetMap.</div></div>";
+      "<div class='lv'><h5 style='margin:0'>PETAQU Live · lalu lintas langsung</h5><label><input type='checkbox' id='pqllTT'> Tampilkan lapisan lalu lintas langsung</label><label><input type='checkbox' id='pqllPk'> Klik peta = cek kondisi lalu lintas langsung di titik itu</label><div class='nt' id='pqllKs'></div><input type='text' id='pqllTk' name='pqll_live_key' placeholder='Tempel kunci API lalu lintas Anda sendiri (opsional)' autocomplete='off' autocapitalize='off' autocorrect='off' spellcheck='false' data-lpignore='true' data-1p-ignore data-form-type='other'><div class='ft'><button id='pqllTs'>Simpan kunci saya</button><button id='pqllTr'>Pakai bawaan</button><button id='pqllTg'>Panduan kunci</button></div></div><div class='ft'><button id='pqllGm'>Google Maps (lalin langsung)</button><button id='pqllCsv'>Ekspor CSV layar</button><button id='pqllRs'>Reset kalibrasi</button></div>" +
+      "<div class='nt'>Estimasi model dari pola jam/hari, karakter wilayah, kelas & lajur jalan, simpang, dan hujan — bukan data sensor kecuali PETAQU Live aktif. Kelas jalan diperkirakan dari OpenStreetMap.</div></div>";
     D.body.appendChild(card);
     var q = function (id) { return card.querySelector(id); };
     q("#pqllX").onclick = close; q("#pqllRl").onclick = reload; q("#pqllMin").onclick = function () { S.min = !S.min; card.classList.toggle("min", S.min); };
@@ -403,11 +420,12 @@
     q("#pqllNow").onclick = function () { S.mode = "now"; stopPlay(); recolor(); }; q("#pqllSim").onclick = function () { if (S.mode !== "sim") { S.mode = "sim"; S.hour = hourNow(); S.key = autoKey(new Date()); } recolor(); };
     q("#pqllHr").oninput = function (e) { S.hour = +e.target.value; recolor(); }; q("#pqllKey").onchange = function (e) { S.key = e.target.value; recolor(); };
     q("#pqllPlay").onclick = function () { if (S.play) stopPlay(); else { S.mode = "sim"; S.play = true; playT = setInterval(function () { S.hour = (S.hour + 1) % 24; recolor(); }, 750); recolor(); } };
-    q("#pqllTs").onclick = function () { var v = q("#pqllTk").value.trim(); if (!v) { say("Isi kunci TomTom dulu"); return; } S.ttKey = v; S.own = true; try { W.localStorage.setItem("petaqu_lalin_tt", v); } catch (e) { } q("#pqllTk").value = ""; q("#pqllTk").placeholder = "Kunci tersimpan di perangkat ini"; S.live = true; savePref(); setLive(true); say("Kunci tersimpan · lapisan real-time TomTom aktif"); recolor(); };
+    q("#pqllTs").onclick = function () { var v = q("#pqllTk").value.trim(); if (!v) { say("Isi kunci API dulu"); return; } S.ttKey = v; S.own = true; try { W.localStorage.setItem("petaqu_lalin_tt", v); } catch (e) { } q("#pqllTk").value = ""; q("#pqllTk").placeholder = "Kunci tersimpan di perangkat ini"; S.live = true; savePref(); setLive(true); say("Kunci tersimpan · lapisan PETAQU Live aktif"); recolor(); };
     q("#pqllTk").onkeydown = function (e) { if (e.key === "Enter") q("#pqllTs").click(); };
-    q("#pqllTr").onclick = function () { S.ttKey = dKey(); S.own = false; try { W.localStorage.removeItem("petaqu_lalin_tt"); } catch (e) { } if (S.live) setLive(true); q("#pqllTk").placeholder = "Tempel kunci TomTom Anda sendiri (opsional)"; say("Memakai kunci bawaan"); renderCard(); };
-    q("#pqllTT").onchange = function (e) { if (e.target.checked && !S.ttKey) { e.target.checked = false; say("Masukkan & simpan kunci TomTom dulu"); return; } S.live = e.target.checked; savePref(); setLive(S.live); recolor(); };
+    q("#pqllTr").onclick = function () { S.ttKey = dKey(); S.own = false; try { W.localStorage.removeItem("petaqu_lalin_tt"); } catch (e) { } if (S.live) setLive(true); q("#pqllTk").placeholder = "Tempel kunci API lalu lintas Anda sendiri (opsional)"; say("Memakai kunci bawaan"); renderCard(); };
+    q("#pqllTT").onchange = function (e) { if (e.target.checked && !S.ttKey) { e.target.checked = false; say("Masukkan & simpan kunci API dulu"); return; } S.live = e.target.checked; savePref(); setLive(S.live); recolor(); };
     q("#pqllPk").onchange = function (e) { S.pick = e.target.checked; savePref(); };
+    q("#pqllTg").onclick = function () { window.open("https://developer.tomtom.com/", "_blank", "noopener"); };
     q("#pqllGm").onclick = function () { var m = getMap(), c = m ? m.getCenter() : { lat: -7, lng: 110 }; window.open("https://www.google.com/maps/@" + c.lat.toFixed(5) + "," + c.lng.toFixed(5) + "," + Math.max(10, Math.min(17, m ? m.getZoom() : 13)) + "z/data=!5m1!1e1", "_blank", "noopener"); };
     q("#pqllCsv").onclick = exportCsv; q("#pqllRs").onclick = function () { CAL = {}; lsSet("petaqu_lalin_cal", CAL); recolor(); say("Kalibrasi direset"); };
     q("#pqllHot").onclick = function (e) { var t = e.target.closest("[data-h]"); if (!t) return; var g = segs.get(+t.getAttribute("data-h")), m = getMap(); if (!g || !m) return; m.flyTo(g.mid, Math.max(m.getZoom(), 15), { duration: .8 }); setTimeout(function () { popup(g, L.latLng(g.mid)); }, 900); };
