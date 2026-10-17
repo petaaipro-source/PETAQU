@@ -160,7 +160,7 @@
       r("Tipe", b.tipe) + r("Tahun", b.tahun) + r("Kondisi", b.kondisi) +
       '<div class="jbk-why"><b>Dasar kelas:</b> ' + esc(it.why) + ' <i>(keyakinan ' + it.conf + ")</i></div>" +
       '<div class="jbk-ac"><select onchange="PETAQU_JBK.ov(' + it.i + ',this.value)" title="Koreksi kelas jembatan ini"><option value="">Kelas otomatis</option>' + opts + "</select>" +
-      '<a target="_blank" rel="noopener" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + b.lat + "," + b.lng + '">Street View</a></div></div>';
+      '<a href="javascript:void 0" onclick="PETAQU_JBK.sv(' + it.i + ')">Street View</a></div></div>';
   }
   function paint() {
     var m = MAP(); if (!m || !window.L) return;
@@ -172,7 +172,8 @@
       var c = KM[it.k].c, low = it.conf === "rendah";
       it.mk = L.circleMarker([y, x], { renderer: rend, radius: R, color: "#fff", weight: low ? 1 : 2, dashArray: low ? "2 2" : null, fillColor: c, fillOpacity: low ? 0.6 : 0.95 });
       it.mk.bindTooltip(esc(it.b.nama || "Jembatan"), { direction: "top", offset: [0, -R], className: "jbk-tip" });
-      it.mk.bindPopup(function () { return popup(it); });
+      it.mk.on("click", function (e) { try { if (window.L && L.DomEvent) L.DomEvent.stopPropagation(e); } catch (x) { } openSV(it); });
+      it.mk.on("contextmenu", function (e) { var m2 = MAP(); if (m2) L.popup({ maxWidth: 280 }).setLatLng(e.latlng).setContent(popup(it)).openOn(m2); });
       (grp[it.k] || (grp[it.k] = L.layerGroup())).addLayer(it.mk);
     });
     KLS.forEach(function (x) {
@@ -198,7 +199,7 @@
     if (!it.mk) paint();
     var y = +it.b.lat, x = +it.b.lng; if (!isFinite(y) || !isFinite(x)) return;
     m.setView([y, x], Math.max(m.getZoom(), 16));
-    setTimeout(function () { try { it.mk && it.mk.openPopup(); } catch (e) { } }, 350);
+    openSV(it);
   }
   function fitKelas(k) {
     var m = MAP(); if (!m || !window.L) return;
@@ -216,6 +217,163 @@
     build(); renderPanel();
     if (v && !st.on[v]) setOn(v, true);
     tst(v ? "Kelas diubah ke " + KM[v].s : "Kelas dikembalikan ke otomatis");
+  }
+
+  /* ---------- KLIK → STREET VIEW OTOMATIS (cerdas) ----------
+     • Klik titik jembatan / baris daftar → langsung masuk Street View (sama seperti fitur Patok KM & hasil cari).
+     • Posisi "snap" ke garis Jalan Nasional terdekat (≤ 25 m) agar panorama jatuh di badan jalan, bukan di sungai.
+     • Arah pandang otomatis searah sumbu jalan (rata-rata arah segmen di sekitar jembatan);
+       bila bukan Jalan Nasional: dari jembatan tetangga pada ruas yang sama.
+     • Panel Street View menampilkan data lengkap jembatan; bilah kecil di bawah: ◀ ▶ jembatan sebelum/sesudah
+       sepanjang ruas, ⇄ balik arah, ↻ putar 90°, dan koreksi kelas. Klik kanan / tahan pada titik = popup data. */
+  function bearingXY(dx, dy) { return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360; }
+  function vecM(a, b) { var k = 111320, cx = Math.cos(a[0] * Math.PI / 180); return [(b[1] - a[1]) * k * cx, (b[0] - a[0]) * k]; }
+  function axisAt(y, x) {
+    if (!NAT) buildNat(); if (!NAT || !NAT.ok) return null;
+    var cy = Math.floor(y / CELL), cx = Math.floor(x / CELL), segs = [], best = Infinity;
+    for (var j = cy - 1; j <= cy + 1; j++) for (var i = cx - 1; i <= cx + 1; i++) {
+      var L = NAT.grid[j + "|" + i]; if (!L) continue;
+      for (var n = 0; n < L.length; n++) { var d = dseg(y, x, L[n].a, L[n].b); segs.push({ s: L[n], d: d }); if (d < best) best = d; }
+    }
+    if (!segs.length || best > 40) return null;
+    var sx = 0, sy = 0, tw = 0, bs = null;
+    segs.forEach(function (o) {
+      if (o.d > best + 18) return;
+      if (o.d === best) bs = o;
+      var v = vecM(o.s.a, o.s.b), len = Math.sqrt(v[0] * v[0] + v[1] * v[1]); if (len < 0.5) return;
+      var th = bearingXY(v[0], v[1]) * Math.PI / 180, w = Math.min(len, 80);
+      sx += w * Math.sin(2 * th); sy += w * Math.cos(2 * th); tw += w;
+    });
+    if (!tw) return null;
+    var axis = ((Math.atan2(sx, sy) * 90 / Math.PI) + 180) % 180, conf = Math.sqrt(sx * sx + sy * sy) / tw;
+    /* titik kaki tegak lurus pada segmen terdekat */
+    var foot = null;
+    if (bs && best <= 25) {
+      var a = bs.s.a, b = bs.s.b, p = vecM(a, [y, x]), v2 = vecM(a, b), l2 = v2[0] * v2[0] + v2[1] * v2[1], t = l2 ? Math.max(0, Math.min(1, (p[0] * v2[0] + p[1] * v2[1]) / l2)) : 0;
+      foot = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    return { axis: axis, conf: conf, d: best, foot: foot, name: bs ? bs.s.nm : "" };
+  }
+  function geoOK(it) { var y = +it.b.lat, x = +it.b.lng; return isFinite(y) && isFinite(x) && it.b.lat !== null && it.b.lng !== null; }
+  /* tetangga pada ruas yang sama (atau sangat dekat bila ruas kosong), diurutkan jarak; jembatan kembar (<12 m) dilewati */
+  function neighbours(it) {
+    var y = +it.b.lat, x = +it.b.lng, rk = norm(it.b.ruas), out = [];
+    items.forEach(function (o) {
+      if (o === it || !geoOK(o)) return;
+      var v = vecM([y, x], [+o.b.lat, +o.b.lng]), d = Math.sqrt(v[0] * v[0] + v[1] * v[1]);
+      if (d < 12 || d > 5000) return;
+      var same = rk && norm(o.b.ruas) === rk;
+      if (!same && d > 1500) return;
+      out.push({ it: o, d: d, dx: v[0], dy: v[1], same: same });
+    });
+    out.sort(function (a, b) { return a.d - b.d; });
+    return out;
+  }
+  function pickHeading(it, nb) {
+    var y = +it.b.lat, x = +it.b.lng, ax = axisAt(y, x), axis = null, foot = null;
+    if (ax && ax.conf > 0.35) { axis = ax.axis; foot = ax.foot; }
+    if (axis == null) { var n0 = nb.filter(function (n) { return n.same || n.d < 600; })[0]; if (n0) axis = bearingXY(n0.dx, n0.dy) % 180; }
+    if (axis == null) return { h: 0, known: false, foot: foot };
+    var cands = [axis, (axis + 180) % 360], h = cands[0];
+    var n1 = nb[0];
+    if (n1) { var tb = bearingXY(n1.dx, n1.dy), d0 = Math.abs(((tb - cands[0] + 540) % 360) - 180), d1 = Math.abs(((tb - cands[1] + 540) % 360) - 180); h = d0 <= d1 ? cands[0] : cands[1]; }
+    return { h: h, known: true, foot: foot };
+  }
+  function ahead(it, h, nb) {
+    var s = Math.sin(h * Math.PI / 180), c = Math.cos(h * Math.PI / 180), f = null, bk = null;
+    nb.forEach(function (n) {
+      var pr = n.dx * s + n.dy * c, lat = Math.abs(n.dx * c - n.dy * s);
+      if (!n.same && lat > 120) return;
+      if (pr > 0 && (!f || n.d < f.d)) f = n; else if (pr < 0 && (!bk || n.d < bk.d)) bk = n;
+    });
+    return { f: f, b: bk };
+  }
+  var HN = ["utara", "timur laut", "timur", "tenggara", "selatan", "barat daya", "barat", "barat laut"];
+  function hName(h) { return HN[Math.round(((h % 360) + 360) % 360 / 45) % 8]; }
+  var cur = null, ring = null, chip = null, obs = null;
+  function rows(it, pos) {
+    var b = it.b, r = [];
+    function a(l, v) { if (v != null && v !== "") r.push([l, v]); }
+    a("Nomor", b.nomor); a("Ruas", b.ruas); a("Kab/Kota", b.kabupaten); a("STA/KM", b.sta);
+    if (b.panjang != null && b.panjang !== "") a("Panjang", fmt(b.panjang) + " m");
+    if (b.lebar != null && b.lebar !== "") a("Lebar", fmt(b.lebar) + " m");
+    a("Tipe", b.tipe); a("Tahun", b.tahun); a("Kondisi", b.kondisi);
+    a("Kelas", KM[it.k].s + " (" + it.conf + ")");
+    return r;
+  }
+  function openSV(it, hOverride, keepFoot) {
+    if (!it || !geoOK(it)) { tst("Koordinat jembatan tidak tersedia", true); return; }
+    if (typeof window.openStreetViewForGeoResult !== "function") { window.open("https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" + it.b.lat + "," + it.b.lng, "_blank", "noopener"); return; }
+    var y = +it.b.lat, x = +it.b.lng, nb = neighbours(it), ph = pickHeading(it, nb);
+    var h = hOverride != null ? ((hOverride % 360) + 360) % 360 : ph.h;
+    var py = y, px = x; if (ph.foot) { py = ph.foot[0]; px = ph.foot[1]; }
+    var k = 111320, cx = Math.cos(py * Math.PI / 180), D = 30;
+    var nx = { lat: py + Math.cos(h * Math.PI / 180) * D / k, lng: px + Math.sin(h * Math.PI / 180) * D / (k * cx) };
+    cur = { it: it, h: h, known: ph.known, nb: nb };
+    try { window.openStreetViewForGeoResult(py, px, it.b.nama || "Jembatan", { next: nx, rows: rows(it), pqJbk: it.i }); } catch (e) { tst("Gagal membuka Street View", true); return; }
+    showRing(y, x); mkChip(); updChip();
+    tst("Street View: " + (it.b.nama || "Jembatan") + (ph.known || hOverride != null ? " · menghadap " + hName(h) : ""));
+  }
+  function showRing(y, x) {
+    var m = MAP(); if (!m || !window.L) return;
+    if (ring) { try { m.removeLayer(ring); } catch (e) { } ring = null; }
+    ring = L.circleMarker([y, x], { radius: 17, color: "#22d3ee", weight: 3, fill: false, className: "jbk-ring", interactive: false }).addTo(m);
+  }
+  function active() {
+    var o = $("svOverlay"), s; try { s = typeof svState !== "undefined" ? svState : null; } catch (e) { s = null; }
+    return !!(o && o.classList.contains("show") && s && s.pqJbk != null && cur && cur.it.i === s.pqJbk);
+  }
+  function sync() {
+    if (active()) { if (chip) chip.style.display = "flex"; return; }
+    if (chip) chip.style.display = "none";
+    var m = MAP(); if (ring && m) { try { m.removeLayer(ring); } catch (e) { } ring = null; }
+  }
+  function mkChip() {
+    if (chip) return;
+    var wrap = $("svFrameWrap") || $("svOverlay"); if (!wrap) return;
+    var st2 = document.createElement("style");
+    st2.textContent = "#pqJbNav{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:9;display:flex;align-items:center;gap:6px;max-width:calc(100% - 20px);padding:6px 8px;border-radius:14px;background:#0a0e17ee;border:1px solid #38bdf866;color:#e6f1fb;font:600 12px system-ui,sans-serif;box-shadow:0 8px 24px #000a;backdrop-filter:blur(6px)}" +
+      "#pqJbNav button{flex:none;width:30px;height:30px;border-radius:9px;border:1px solid #ffffff2e;background:#ffffff14;color:#fff;font-size:14px;cursor:pointer}#pqJbNav button:hover:not(:disabled){background:#0ea5e9}#pqJbNav button:disabled{opacity:.3;cursor:default}" +
+      "#pqJbNav .jn-t{min-width:0;display:flex;flex-direction:column;line-height:1.25;max-width:230px}#pqJbNav .jn-t b{color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#pqJbNav .jn-t span{font-weight:500;opacity:.75;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      "#pqJbNav select{flex:none;max-width:104px;background:#111827;color:#e6f1fb;border:1px solid #ffffff2e;border-radius:8px;padding:5px 4px;font:600 11px system-ui,sans-serif}" +
+      ".jbk-ring{animation:jbkPulse 1.3s ease-in-out infinite}@keyframes jbkPulse{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}" +
+      "@media(max-width:520px){#pqJbNav{bottom:8px;gap:4px;padding:5px}#pqJbNav .jn-t{max-width:110px}#pqJbNav select{max-width:78px}}";
+    document.head.appendChild(st2);
+    chip = document.createElement("div"); chip.id = "pqJbNav";
+    chip.innerHTML = '<button data-n="p" title="Jembatan sebelumnya pada ruas ini">&#9664;</button><div class="jn-t"><b></b><span></span></div><button data-n="n" title="Jembatan berikutnya pada ruas ini">&#9654;</button>' +
+      '<button data-n="f" title="Balik arah pandang">&#8644;</button><button data-n="r" title="Putar 90&deg;">&#8635;</button>' +
+      '<select title="Koreksi kelas jembatan ini">' + KLS.map(function (x) { return '<option value="' + x.k + '">' + x.s + "</option>"; }).join("") + "</select>";
+    chip.addEventListener("click", function (e) {
+      e.stopPropagation(); var t = e.target.closest("button[data-n]"); if (!t || t.disabled || !cur) return;
+      var n = t.getAttribute("data-n");
+      if (n === "f") reHead(cur.h + 180); else if (n === "r") reHead(cur.h + 90);
+      else { var a = ahead(cur.it, cur.h, cur.nb), tg = n === "n" ? a.f : a.b; if (tg) { var h2 = n === "n" ? cur.h : cur.h + 180; openSV(tg.it, h2); } }
+    });
+    chip.querySelector("select").addEventListener("change", function (e) { if (cur) { ov(cur.it.i, e.target.value); cur.it = items[cur.it.i]; var s2; try { s2 = svState; } catch (x) { } if (s2) s2.rows = rows(cur.it); try { if (typeof renderSvInfoPanel === "function") renderSvInfoPanel(); } catch (x) { } updChip(); } });
+    ["mousedown", "touchstart", "wheel", "dblclick"].forEach(function (ev) { chip.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+    wrap.appendChild(chip);
+    var ov_ = $("svOverlay"), fr = $("svFrame");
+    obs = new MutationObserver(sync);
+    if (ov_) obs.observe(ov_, { attributes: true, attributeFilter: ["class"] });
+    if (fr) obs.observe(fr, { attributes: true, attributeFilter: ["src"] });
+  }
+  function reHead(h) {
+    if (!cur) return; h = ((h % 360) + 360) % 360; cur.h = h;
+    var s2; try { s2 = svState; } catch (e) { s2 = null; }
+    if (!s2 || s2.pqJbk == null) return;
+    var k = 111320, cx = Math.cos(s2.lat * Math.PI / 180);
+    s2.next = { lat: s2.lat + Math.cos(h * Math.PI / 180) * 30 / k, lng: s2.lng + Math.sin(h * Math.PI / 180) * 30 / (k * cx) };
+    try { renderStreetView(); } catch (e) { return; }
+    updChip(); tst("Menghadap " + hName(h));
+  }
+  function updChip() {
+    if (!chip || !cur) return;
+    var it = cur.it, a = ahead(it, cur.h, cur.nb);
+    chip.querySelector(".jn-t b").textContent = it.b.nama || "Jembatan";
+    chip.querySelector(".jn-t span").textContent = KM[it.k].s + (it.b.panjang != null && it.b.panjang !== "" ? " · " + fmt(it.b.panjang) + " m" : "") + " · hadap " + hName(cur.h) + (a.f ? " · ▶ " + Math.round(a.f.d) + " m" : "");
+    chip.querySelector('[data-n="n"]').disabled = !a.f; chip.querySelector('[data-n="p"]').disabled = !a.b;
+    chip.querySelector("select").value = it.k;
+    chip.style.display = "flex";
   }
 
   /* ---------- impor ---------- */
@@ -398,7 +556,7 @@
   window.PQ_FOLDER_EXTRA = window.PQ_FOLDER_EXTRA || [];
   window.PQ_FOLDER_EXTRA.push({ t: "Lapisan Jembatan", rows: rows, act: act });
   window.PETAQU_JBK = {
-    rows: rows, act: act, open: openPanel, ov: ov, classify: classify, stats: function () { if (!built) build(); return counts(); },
+    rows: rows, act: act, open: openPanel, ov: ov, sv: function (i) { var it = items[+i]; if (it) openSV(it); }, classify: classify, stats: function () { if (!built) build(); return counts(); },
     items: function () { return items.map(function (it) { return { nama: it.b.nama, kelas: it.k, keyakinan: it.conf, dasar: it.why }; }); }
   };
 
