@@ -26,3 +26,9 @@ Gelombang = model global Open-Meteo, bukan peringatan resmi — utamakan BMKG, S
 
 ## Rute darat mengikuti jalan nyata
 Darat awal (titik → pelabuhan), darat akhir (pelabuhan → tujuan) dan darat antar pelabuhan dihitung dari **OSRM** (router.project-osrm.org, cadangan routing.openstreetmap.de), digambar mengikuti jalan, dan pelabuhan terdekat dipilih menurut jarak jalan. Hasil di-cache di perangkat (`petaqu_fr_rd_v1`). Bila OSRM tidak terjangkau, otomatis kembali ke perkiraan garis lurus ×1,35 (tertulis "perkiraan" di panel). Waktu tempuh = durasi OSRM × 1,25 (lalu lintas/antre).
+
+## Ikon kapal & pelabuhan (tab Jaringan)
+- **Ikon kapal**: Siluet tampak atas per jenis (Ro-Ro, kapal cepat katamaran, Pelni, speedboat, kapal kontainer internasional, perahu danau) / Emoji / Panah klasik.
+- **Ukuran kapal**: kecil, sedang, besar. **Jejak ombak** di belakang kapal bisa dimatikan.
+- **Ikon pelabuhan**: lencana jangkar berwarna menurut jenis (hub ramai berdenyut) atau titik klasik.
+Pilihan tersimpan di perangkat.

@@ -20,9 +20,9 @@
   const LANDJ = { n: "Darat (jalan)", ic: "🚗", kmh: 40, dwell: 0, hs: 99, col: "#e2e8f0" }, LANDR = { id: "darat", n: "Jalan darat", j: "land", f: 99, op: "", km: 0, stops: [], idx: [], pts: [], cum: [] };
   const JN = () => window.FR_JENIS || {}, GOLS = () => window.FR_GOL || [];
   const OBJ = [["cepat", "⏱ Tercepat"], ["murah", "💳 Termurah"], ["sedikit", "🔁 Transit sedikit"]];
-  let S = { tab: "jaringan", on: false, lines: true, ports: true, anim: true, wcol: false, osm: true, min: false, sp: 600, jn: { ro: 1, cepat: 1, pelni: 1, speed: 1, intl: 1, danau: 1 }, A: null, B: null, obj: "cepat", gol: "0", qty: 1, dep: "", closedP: [], closedR: [], custom: { ports: [], routes: [] }, lg: { m: 0, r: "", q: 1, deck: 40 }, q: "" };
+  let S = { tab: "jaringan", on: false, lines: true, ports: true, anim: true, wcol: false, osm: true, min: false, sp: 600, jn: { ro: 1, cepat: 1, pelni: 1, speed: 1, intl: 1, danau: 1 }, A: null, B: null, obj: "cepat", gol: "0", qty: 1, dep: "", closedP: [], closedR: [], custom: { ports: [], routes: [] }, lg: { m: 0, r: "", q: 1, deck: 40 }, q: "", ico: "siluet", isz: "m", pico: "lencana", wake: true };
   try { const o = JSON.parse(localStorage.getItem(KEY) || "null"); if (o) { Object.assign(S, o); S.jn = Object.assign({ ro: 1, cepat: 1, pelni: 1, speed: 1, intl: 1, danau: 1 }, S.jn || {}); S.custom = Object.assign({ ports: [], routes: [] }, S.custom || {}); S.lg = Object.assign({ m: 0, r: "", q: 1, deck: 40 }, S.lg || {}); } } catch (e) { }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, on: S.on, lines: S.lines, ports: S.ports, anim: S.anim, wcol: S.wcol, osm: S.osm, min: S.min, sp: S.sp, jn: S.jn, A: S.A, B: S.B, obj: S.obj, gol: S.gol, qty: S.qty, dep: S.dep, closedP: S.closedP, closedR: S.closedR, custom: S.custom, lg: S.lg })); } catch (e) { } };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, on: S.on, lines: S.lines, ports: S.ports, anim: S.anim, wcol: S.wcol, osm: S.osm, min: S.min, sp: S.sp, ico: S.ico, isz: S.isz, pico: S.pico, wake: S.wake, jn: S.jn, A: S.A, B: S.B, obj: S.obj, gol: S.gol, qty: S.qty, dep: S.dep, closedP: S.closedP, closedR: S.closedR, custom: S.custom, lg: S.lg })); } catch (e) { } };
   let P, BTN, PT = {}, RT = [], RM = {}, ADJ = {}, DEG = {}, GL, GP, GA, GR, GO, PLAN = null, ALT = null, W = {}, wBusy = false, wAt = 0, wErr = "", clickMode = "", TT = 0, ships = [], shipT = 0, OSMN = 0, osmBusy = false, osmSeen = new Set(), MVT = 0, shownRoute = "", ROADS_CACHE = null;
 
   const hav = (a, b, c, d) => { const x = Math.sin(rad(c - a) / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(rad(d - b) / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); };
@@ -72,6 +72,38 @@
   }
   function applyLand(ka, kb, o) { [[ka, kb], [kb, ka]].forEach(([x, y]) => (ADJ[x] || []).forEach(e => { if (e.land && e.to === y) { e.km = o.km; e.rmin = o.min; e.real = true; } })); }
   async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const it = items[i++]; try { await fn(it); } catch (e) { } } })); }
+
+  /* ================= IKON KAPAL & PELABUHAN =================
+     Siluet tampak atas (haluan ke atas, diputar searah rute) per jenis kapal; gaya: siluet / emoji / panah klasik. */
+  const W_ = '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">', SO = 'stroke="#fff" stroke-width="1.5" stroke-linejoin="round"';
+  const SHIP_SVG = {
+    ro: W_ + '<path d="M16 1.5 L24.5 9 V28.5 Q24.5 30 23 30 H9 Q7.5 30 7.5 28.5 V9 Z" fill="var(--c)" ' + SO + '/><rect x="10.5" y="10" width="11" height="6.5" rx="1.2" fill="#fff"/><rect x="12" y="11.4" width="8" height="2.4" rx=".6" fill="#0f172a" opacity=".8"/><rect x="10.5" y="18.5" width="11" height="9" rx="1" fill="#0f172a" opacity=".38"/><path d="M13.2 18.5v9M16 18.5v9M18.8 18.5v9" stroke="#fff" stroke-width=".8" opacity=".7"/></svg>',
+    cepat: W_ + '<path d="M9.5 2 L12.3 8 V28 H6.7 V8 Z M22.5 2 L25.3 8 V28 H19.7 V8 Z" fill="var(--c)" ' + SO + '/><rect x="11.8" y="10" width="8.4" height="14" rx="1.8" fill="#fff" ' + 'stroke="var(--c)" stroke-width="1"/><rect x="13" y="11.4" width="6" height="3.2" rx=".8" fill="#0f172a" opacity=".8"/><circle cx="16" cy="19" r="1.6" fill="var(--c)"/></svg>',
+    pelni: W_ + '<path d="M16 .5 L22.5 6.5 V28 Q22.5 30.5 20 30.5 H12 Q9.5 30.5 9.5 28 V6.5 Z" fill="var(--c)" ' + SO + '/><rect x="11.5" y="9" width="9" height="15" rx="1.6" fill="#fff"/><path d="M11.5 13h9M11.5 17h9M11.5 21h9" stroke="#0f172a" stroke-width=".9" opacity=".45"/><circle cx="16" cy="15.5" r="2.6" fill="#0f172a" opacity=".85"/><rect x="14.4" y="14" width="3.2" height="3" rx=".6" fill="var(--c)"/></svg>',
+    speed: W_ + '<path d="M16 3 Q22 12 22 24 L20.5 28.5 H11.5 L10 24 Q10 12 16 3 Z" fill="var(--c)" ' + SO + '/><path d="M12.6 17 Q16 13.6 19.4 17 V20 H12.6 Z" fill="#fff" opacity=".95"/><path d="M13.4 17.6 Q16 15.2 18.6 17.6" stroke="#0f172a" stroke-width="1" fill="none" opacity=".6"/><rect x="14.6" y="22" width="2.8" height="4" rx=".8" fill="#0f172a" opacity=".6"/></svg>',
+    intl: W_ + '<path d="M16 1.5 L23 8 V28.5 Q23 30 21.5 30 H10.5 Q9 30 9 28.5 V8 Z" fill="var(--c)" ' + SO + '/><rect x="11" y="9.5" width="10" height="4" rx=".8" fill="#fff"/><g opacity=".95"><rect x="11" y="15" width="4.6" height="4.4" fill="#fbbf24"/><rect x="16.4" y="15" width="4.6" height="4.4" fill="#38bdf8"/><rect x="11" y="20.2" width="4.6" height="4.4" fill="#22c55e"/><rect x="16.4" y="20.2" width="4.6" height="4.4" fill="#f97316"/><rect x="11" y="25.4" width="10" height="2.8" fill="#e2e8f0"/></g></svg>',
+    danau: W_ + '<path d="M16 1.5 C23 8 23 22 16 30.5 C9 22 9 8 16 1.5 Z" fill="var(--c)" ' + SO + '/><path d="M12.2 12.5 Q16 10 19.8 12.5 V20.5 Q16 23 12.2 20.5 Z" fill="#fde68a" stroke="#92400e" stroke-width=".9"/><path d="M16 11v11M12.5 16.5h7" stroke="#92400e" stroke-width=".8" opacity=".6"/></svg>'
+  };
+  const SHIP_SZ = { s: 18, m: 26, l: 36 };
+  const shipSz = () => SHIP_SZ[S.isz] || 26;
+  function shipHtml(r) {
+    const j = jn(r), c = j.col || "#0ea5e9", sz = shipSz();
+    if (S.ico === "emoji") return '<div class="pqfr-sh emo" style="--c:' + c + ";font-size:" + Math.round(sz * .85) + 'px">' + (j.ic || "⛴️") + "</div>";
+    if (S.ico === "panah") return '<div class="pqfr-sh" style="--c:' + c + '"><i></i></div>';
+    return '<div class="pqfr-sh svg' + (S.wake ? " wk" : "") + '" style="--c:' + c + ";width:" + sz + "px;height:" + sz + 'px">' + (SHIP_SVG[r.j] || SHIP_SVG.ro) + "</div>";
+  }
+  function shipIcon(r) { const sz = S.ico === "panah" ? 16 : shipSz(); return L.divIcon({ className: "", iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2], html: shipHtml(r) }); }
+  const ANCHOR = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><path d="M12 7.2V20M8.5 10.5h7M4.8 14.5C5.5 18 8.4 20.5 12 20.5s6.5-2.5 7.2-6M3.6 15.3l1.2-1.6 1.7 1.2M20.4 15.3l-1.2-1.6-1.7 1.2"/></g></svg>';
+  function rebuildShips() { stopShips(); if (S.on !== false && S.anim) startShips(); }
+  const selH = (a, cur, arr) => '<select data-fr="' + a + '">' + arr.map(x => '<option value="' + x[0] + '"' + (cur === x[0] ? " selected" : "") + ">" + x[1] + "</option>").join("") + "</select>";
+  function icoRows() {
+    const pv = Object.keys(JN()).map(k => '<span title="' + esc(JN()[k].n) + '" style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:#0d1b2e;border:1px solid #38bdf833">' + shipHtml({ j: k }).replace('class="pqfr-sh', 'class="pqfr-sh pv') + "</span>").join("");
+    return '<div class="fr-row"><span class="fr-mini s">Ikon kapal</span>' + selH("ico", S.ico, [["siluet", "🚢 Siluet kapal (per jenis)"], ["emoji", "😀 Emoji kapal"], ["panah", "🔺 Panah klasik"]]) + "</div>" +
+      '<div class="fr-row"><span class="fr-mini s">Ukuran kapal</span>' + selH("isz", S.isz, [["s", "Kecil"], ["m", "Sedang"], ["l", "Besar"]]) + "</div>" +
+      '<div class="fr-row"><span class="fr-mini s">Ikon pelabuhan</span>' + selH("pico", S.pico, [["lencana", "⚓ Lencana jangkar"], ["bulat", "⚪ Titik klasik"]]) + "</div>" +
+      ck("wake", "Jejak ombak di belakang kapal", S.wake) +
+      '<div class="fr-row" style="gap:5px;flex-wrap:wrap">' + pv + "</div>";
+  }
 
   function build() {
     PT = {}; RT = []; RM = {}; ADJ = {}; DEG = {};
@@ -285,8 +317,8 @@
       GL.addLayer(ln);
     });
     portsList().forEach(p => {
-      if (!DEG[p.k]) return; const closed = S.closedP.includes(p.k), d = DEG[p.k], sz = d >= 4 ? 20 : d >= 2 ? 16 : 13;
-      const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2], html: '<div class="pqfr-pt ' + (closed ? "x" : "t" + p.t[0]) + '" style="width:' + sz + "px;height:" + sz + 'px"></div>' }) });
+      if (!DEG[p.k]) return; const closed = S.closedP.includes(p.k), d = DEG[p.k], badge = S.pico !== "bulat", sz = badge ? (d >= 4 ? 28 : d >= 2 ? 24 : 20) : (d >= 4 ? 20 : d >= 2 ? 16 : 13);
+      const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2], html: badge ? '<div class="pqfr-pb ' + (closed ? "x" : "t" + p.t[0]) + (d >= 4 && !closed ? " hub" : "") + '" style="width:' + sz + "px;height:" + sz + 'px">' + ANCHOR + "</div>" : '<div class="pqfr-pt ' + (closed ? "x" : "t" + p.t[0]) + '" style="width:' + sz + "px;height:" + sz + 'px"></div>' }) });
       m.bindTooltip(p.n + (closed ? " (ditutup)" : ""), { direction: "top", offset: [0, -sz / 2] }); m.bindPopup(() => popPort(p), { maxWidth: 320 });
       GP.addLayer(m);
     });
@@ -314,9 +346,9 @@
         const pa = pointAt(r, sh.ph * r.km), vis = z >= 5 && bd.contains([pa.lat, pa.lng]);
         if (!vis) { if (sh.m) { GA.removeLayer(sh.m); sh.m = null; } return; }
         const brg = sh.dir > 0 ? pa.brg : (pa.brg + 180) % 360;
-        if (!sh.m) { sh.m = L.marker([pa.lat, pa.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: "", iconSize: [16, 16], iconAnchor: [8, 8], html: '<div class="pqfr-sh" style="--c:' + jn(r).col + '"><i></i></div>' }) }); GA.addLayer(sh.m); }
+        if (!sh.m) { sh.m = L.marker([pa.lat, pa.lng], { interactive: false, keyboard: false, icon: shipIcon(r) }); GA.addLayer(sh.m); }
         else sh.m.setLatLng([pa.lat, pa.lng]);
-        const el = sh.m.getElement && sh.m.getElement(); if (el && el.firstChild) el.firstChild.style.transform = "rotate(" + brg.toFixed(0) + "deg)";
+        const el = sh.m.getElement && sh.m.getElement(); if (el && el.firstChild) el.firstChild.style.transform = S.ico === "emoji" ? (brg > 180 ? "scaleX(-1)" : "none") : "rotate(" + brg.toFixed(0) + "deg)";
       });
     }, 200);
   }
@@ -397,6 +429,8 @@
       "#pqfrToast{position:fixed;left:50%;transform:translateX(-50%);bottom:80px;z-index:5000;display:none;background:#0369a1;color:#fff;padding:8px 14px;border-radius:999px;font:600 12.5px system-ui;box-shadow:0 6px 20px #0007;max-width:90vw;text-align:center}\n" +
       "#pqfrOnOff{position:relative}#pqfrOnOff.on{color:#38bdf8}#pqfrOnOff.off{opacity:.55}#pqfrOnOff.off::after{content:\"\";position:absolute;left:18%;right:18%;top:50%;height:2px;background:#ef4444;transform:rotate(-45deg);border-radius:2px;pointer-events:none}\n" +
       ".pqfr-pt{border-radius:50%;background:#fff;border:3px solid #0369a1;box-shadow:0 0 0 1px #fff,0 2px 6px #0008;box-sizing:border-box}.pqfr-pt.tP{border-color:#16a34a}.pqfr-pt.tC{border-color:#9333ea}.pqfr-pt.tI{border-color:#dc2626}.pqfr-pt.tD{border-color:#0d9488}.pqfr-pt.x{border-color:#6b7280;background:#374151}\n" +
+      ".pqfr-pb{--c:#0284c7;position:relative;border-radius:50%;background:radial-gradient(circle at 30% 25%,#ffffff55,transparent 55%),var(--c);border:2px solid #fff;box-shadow:0 2px 7px #000a;box-sizing:border-box;display:flex;align-items:center;justify-content:center}.pqfr-pb svg{width:66%;height:66%;filter:drop-shadow(0 1px 1px #0006)}.pqfr-pb.tP{--c:#16a34a}.pqfr-pb.tC{--c:#9333ea}.pqfr-pb.tI{--c:#dc2626}.pqfr-pb.tD{--c:#0d9488}.pqfr-pb.x{--c:#4b5563;opacity:.8}.pqfr-pb.hub::after{content:\"\";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--c);opacity:.55;animation:pqfrPulse 2.2s ease-out infinite}@keyframes pqfrPulse{0%{transform:scale(.8);opacity:.7}100%{transform:scale(1.5);opacity:0}}\n" +
+      ".pqfr-sh.svg{position:relative;transition:transform .2s linear}.pqfr-sh.svg svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 2px 3px #000c)}.pqfr-sh.wk::after{content:\"\";position:absolute;left:50%;top:70%;width:70%;height:150%;transform:translateX(-50%);background:linear-gradient(to bottom,#ffffffb0,#ffffff00);clip-path:polygon(38% 0,62% 0,100% 100%,0 100%);opacity:.65;pointer-events:none;z-index:-1}.pqfr-sh.emo{text-shadow:0 2px 4px #000a;line-height:1}.pqfr-sh.pv{position:static;transform:none!important}.pqfr-sh.pv::after{display:none}\n" +
       ".pqfr-sh{width:16px;height:16px;display:flex;align-items:center;justify-content:center}.pqfr-sh i{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:13px solid var(--c,#0ea5e9);filter:drop-shadow(0 0 2px #000c)}\n" +
       ".fr-pop{font:12.5px/1.45 system-ui,sans-serif;min-width:200px;color:#e6f1fb!important}.fr-pop *{color:inherit}.fr-pop b{color:#7dd3fc!important;font-size:13.5px}.fr-pop .fr-mini{color:#9fb6cc!important}.fr-pa{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.fr-pa button{padding:4px 8px;border-radius:7px;border:1px solid #0369a1;background:#0284c7;color:#fff!important;font:600 11.5px system-ui;cursor:pointer}.fr-pop .fr-sc{color:#04121a}";
     document.head.appendChild(s);
@@ -427,7 +461,7 @@
       '<div class="fr-lab">Jenis kapal</div><div class="fr-chips">' + Object.keys(j).map(k => chip("jn", k, j[k].ic + " " + j[k].n.replace(/ \(.*\)/, ""), S.jn[k])).join("") + "</div>" +
       ck("on", "Tampilkan jaringan pelayaran di peta", S.on !== false) + ck("lines", "Garis rute", S.lines) + ck("ports", "Titik pelabuhan", S.ports) + ck("anim", "Kapal beranimasi (searah rute)", S.anim) + ck("wcol", "Warnai rute menurut risiko gelombang", S.wcol) + ck("osm", "Tampilkan jalur feri OSM yang dimuat", S.osm) +
       '<div class="fr-row"><span class="fr-mini s">Kecepatan animasi</span><select data-fr="sp"><option value="300"' + (S.sp == 300 ? " selected" : "") + '>×300 (lambat)</option><option value="600"' + (S.sp == 600 ? " selected" : "") + '>×600</option><option value="1500"' + (S.sp == 1500 ? " selected" : "") + '>×1500</option><option value="4000"' + (S.sp == 4000 ? " selected" : "") + ">×4000 (cepat)</option></select></div>" +
-      '<div class="fr-row"><button class="fr-btn" data-fr="osm"' + (osmBusy ? " disabled" : "") + '>' + (osmBusy ? "Memuat…" : "🗺️ Muat jalur feri OSM (area peta)") + '</button><button class="fr-btn g" data-fr="fitall">Lihat semua</button></div>' +
+      icoRows() + '<div class="fr-row"><button class="fr-btn" data-fr="osm"' + (osmBusy ? " disabled" : "") + '>' + (osmBusy ? "Memuat…" : "🗺️ Muat jalur feri OSM (area peta)") + '</button><button class="fr-btn g" data-fr="fitall">Lihat semua</button></div>' +
       '<div class="fr-lab">Hub tersibuk</div>' + st.hubs.map(h => '<div class="fr-card fr-item" data-fr="focus" data-k="' + h[0] + '"><b>⚓ ' + esc(PT[h[0]].n) + '</b> <span class="fr-mini">' + h[1] + " rute • " + esc(PT[h[0]].prov) + "</span></div>").join("") +
       '<div class="fr-lab">Rute terpanjang</div>' + st.longest.map(r => '<div class="fr-card fr-item" data-fr="frt" data-k="' + r.id + '"><b>' + jn(r).ic + " " + esc(r.n) + '</b><div class="fr-mini">' + fkm(r.km) + " • ±" + fmin(r.km / jn(r).kmh * 60) + " pelayaran</div></div>").join("");
   }
@@ -542,8 +576,8 @@
   function readForm() { const q = $("pqfrBody").querySelector('[data-fr="qty"]'), d = $("pqfrBody").querySelector('[data-fr="dep"]'); if (q) S.qty = Math.max(1, Math.min(999, +q.value || 1)); if (d) S.dep = d.value || ""; save(); }
   function onChange(e) {
     const el = e.target.closest("[data-fr]"); if (!el) return; const a = el.dataset.fr, v = el.value;
-    if (a === "ck") { const k = el.dataset.k; if (k === "on") S.on = el.checked; else S[k] = el.checked; save(); if (k === "wcol") { drawNet(); if (el.checked && !Object.keys(W).length) fetchWaves(); } if (k === "anim") { sync(); } else sync(); render(); }
-    else if (a === "sp") { S.sp = +v; save(); } else if (a === "gol") { S.gol = v; PLAN = ALT = null; save(); render(); }
+    if (a === "ck") { const k = el.dataset.k; if (k === "on") S.on = el.checked; else S[k] = el.checked; save(); if (k === "wcol") { drawNet(); if (el.checked && !Object.keys(W).length) fetchWaves(); } if (k === "anim") { sync(); } else sync(); if (k === "wake") rebuildShips(); render(); }
+    else if (a === "sp") { S.sp = +v; save(); } else if (a === "ico" || a === "isz") { S[a] = v; save(); rebuildShips(); render(); } else if (a === "pico") { S.pico = v; save(); drawNet(); render(); } else if (a === "gol") { S.gol = v; PLAN = ALT = null; save(); render(); }
     else if (a === "selA" || a === "selB") { const w = a === "selA" ? "A" : "B"; if (v === "@map") { clickMode = w; say("Klik titik di peta untuk " + (w === "A" ? "asal" : "tujuan"), 5000); render(); } else if (v === "@me") locate(w); else if (v === "@cur") { } else if (v) { setEnd(w, { k: v }); render(); } else { setEnd(w, null); render(); } }
     else if (a === "qty" || a === "dep") { readForm(); PLAN = ALT = null; render(); }
     else if (a === "lgm") { S.lg.m = +v; save(); render(); } else if (a === "lgr") { S.lg.r = v; save(); render(); } else if (a === "lgq") { S.lg.q = Math.max(1, +v || 1); save(); render(); } else if (a === "lgd") { S.lg.deck = Math.max(10, +v || 40); save(); render(); }
