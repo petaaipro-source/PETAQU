@@ -43,7 +43,7 @@
     ".pqf-acts{display:flex;gap:6px;margin-bottom:2px}.pqf-acts .pqf-row{flex:1 1 0;min-width:0;margin:0;padding:7px 8px;gap:8px}.pqf-acts .pqf-t{line-height:1.2;font-size:12px}",
     ".pqf-t small{display:block;margin-top:2px;font:500 10.5px/1.2 system-ui,sans-serif;color:#8fa6bd}",
     ".pqf-row.pqf-offall{border:1px solid #fbbf2455;background:#fbbf240d}.pqf-row.pqf-offall:hover,.pqf-row.pqf-offall:focus-visible{background:#fbbf2426}",
-    ".pqf-row.pqf-offall .pqf-ic{--c:#fbbf24}.pqf-row.pqf-restore{border-color:#34d39966;background:#34d3990d}.pqf-row.pqf-restore:hover,.pqf-row.pqf-restore:focus-visible{background:#34d39924}.pqf-row.pqf-restore .pqf-ic{--c:#34d399}",
+    ".pqf-row.pqf-offall .pqf-ic{--c:#fbbf24}.pqf-row.pqf-rs{margin-bottom:2px}.pqf-row.pqf-restore{border-color:#34d39966;background:#34d3990d}.pqf-row.pqf-restore:hover,.pqf-row.pqf-restore:focus-visible{background:#34d39924}.pqf-row.pqf-restore .pqf-ic{--c:#34d399}",
     ".pqf-row.pqf-offall[disabled]{opacity:.5;cursor:default;background:transparent;border-color:#33415588}.pqf-row.pqf-offall[disabled]:hover{background:transparent}",
     ".pqf-ic{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--c,#22d3ee);color:var(--c,#22d3ee);background:#0f1726;font-size:13px}",
     ".pqf-ic .pq-fi,.pqf-ic i{font-size:13px}",
@@ -182,11 +182,12 @@
 
     var op = gOpen();
     var canRestore = !!(stash && cnt === 0 && !stash.busy);
-    var offBtn = canRestore
-      ? '<button type="button" class="pqf-row pqf-restore" data-k="RS" style="--c:#34d399" title="Nyalakan kembali fitur yang tadi dimatikan"><span class="pqf-ic"><i class="pq-fi">\uf2f9</i></span><span class="pqf-t">Nyalakan Kembali<small>' + stash.keys.length + ' fitur tadi</small></span></button>'
-      : '<button type="button" class="pqf-row pqf-offall" data-k="OA" style="--c:#fbbf24"' + (cnt ? "" : " disabled") + ' title="Matikan semua lapisan & fitur (ringan dan berat); bisa dinyalakan kembali"><span class="pqf-ic"><i class="pq-fi">\uf011</i></span><span class="pqf-t">Matikan Semua<small>' + (stash && stash.busy ? "Mematikan…" : cnt ? cnt + " fitur aktif" : "Semua sudah mati") + '</small></span></button>';
+    var offBtn = '<button type="button" class="pqf-row pqf-offall" data-k="OA" style="--c:#fbbf24"' + (cnt ? "" : " disabled") + ' title="Matikan semua lapisan & fitur (ringan dan berat); bisa dinyalakan kembali"><span class="pqf-ic"><i class="pq-fi">\uf011</i></span><span class="pqf-t">Matikan Semua<small>' + (stash && stash.busy ? "Mematikan…" : cnt ? cnt + " fitur aktif" : "Semua sudah mati") + '</small></span></button>';
+    var rsBtn = canRestore
+      ? '<button type="button" class="pqf-row pqf-restore pqf-rs" data-k="RS" style="--c:#34d399" title="Nyalakan kembali fitur yang tadi dimatikan"><span class="pqf-ic"><i class="pq-fi">\uf2f9</i></span><span class="pqf-t">Nyalakan Kembali<small>' + stash.keys.length + ' fitur yang tadi dimatikan</small></span></button>'
+      : '';
     var h = '<div class="pqf-acts"><button type="button" class="pqf-row pqf-danger" data-k="R" style="--c:#f87171" title="Kembalikan semua data ruas ke data asli impor Excel awal">' +
-      '<span class="pqf-ic"><i class="pq-fi">\uf2ea</i></span><span class="pqf-t">Reset ke Data Asli<small>Data ruas</small></span></button>' + offBtn + '</div>' +
+      '<span class="pqf-ic"><i class="pq-fi">\uf2ea</i></span><span class="pqf-t">Reset ke Data Asli<small>Data ruas</small></span></button>' + offBtn + '</div>' + rsBtn +
       '<div class="pqf-tip"><b>Tips:</b> ketik nama lapisan di kolom cari (mis. <b>hujan</b>, <b>tol</b>, <b>gempa</b>) untuk menyalakannya langsung.</div>';
     G.forEach(function (g) {
       var on = g.rows.filter(function (r) { return r.on === true; }).length, o = !!op[g.id];
