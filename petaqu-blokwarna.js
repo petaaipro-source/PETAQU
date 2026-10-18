@@ -374,7 +374,7 @@
   }
   const badge0 = () => { pgRender(); };
   const badge = () => { pgRender(); const n = items.filter(i => i.on).length; const el = $("pqbN"); if (el) el.textContent = n ? " · " + n + " aktif" : ""; };
-  window.PETAQU_BLOK = { auto: autoColors, fit: fitAll, relayout: layout, open: openDlg, close: closeDlg, count: () => items.filter(i => i.on).length, rows: () => [{ id: "blok", name: "Blok warna wilayah", ic: "\u25A8", c: "#f59e0b", on: items.some(i => i.on) }], cancel: cancelPick };
+  window.PETAQU_BLOK = { auto: autoColors, fit: fitAll, relayout: layout, open: openDlg, close: closeDlg, count: () => items.filter(i => i.on).length, off: () => { const ids = items.filter(i => i.on).map(i => i.id); if (ids.length) { items.forEach(i => { i.on = false; }); save(); redraw(); try { list(); } catch (e) { } badge(); applyFocus(); } return ids; }, restore: ids => { ids = ids || []; items.forEach(i => { if (ids.indexOf(i.id) >= 0) i.on = true; }); save(); redraw(); try { list(); } catch (e) { } badge(); applyFocus(); }, rows: () => [{ id: "blok", name: "Blok warna wilayah", ic: "\u25A8", c: "#f59e0b", on: items.some(i => i.on) }], cancel: cancelPick };
   document.addEventListener("keydown", e => { if (e.key === "Escape") cancelPick(); });
   if (window.__PQB_TEST) window.__PQB_T = { addProv, rmMany, provItems, polysOf, paneOf, pgRender, allProv, ISL, lev, hue, hd, pickColor, cands, localFind, mk, items: () => items, data, autoColors, getBB };
   items.length ? restore() : 0;

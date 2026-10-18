@@ -4,7 +4,9 @@
      • Tampilan      : Transparansi area luar Jawa Tengah (◐)
      • Alat PETAQU   : semua item yang didaftarkan lewat PQ_DOCK (Peta offline, Apex, Cortex, dst.)
    Tidak ada logika lama yang diubah: folder hanya meneruskan klik ke tombol aslinya, sehingga
-   fitur baru yang mendaftar ke PQ_DOCK otomatis muncul di sini. */
+   fitur baru yang mendaftar ke PQ_DOCK otomatis muncul di sini.
+   Baris aksi teratas: [Reset ke Data Asli] [Matikan Semua] — Matikan Semua memadamkan semua lapisan/fitur berstatus
+   (ringan & berat) dan bisa diurungkan lewat “Nyalakan Kembali”. */
 (function () {
   "use strict";
   if (window.__pqFolder) return;
@@ -37,6 +39,12 @@
     ".pqf-row{display:flex;align-items:center;gap:11px;width:100%;padding:7px 10px;border:0;border-radius:10px;background:transparent;color:inherit;font:600 12.5px/1.25 system-ui,sans-serif;cursor:pointer;text-align:left}",
     ".pqf-row:hover,.pqf-row:focus-visible{background:#22d3ee17;outline:0}",
     ".pqf-row.pqf-danger{margin-bottom:2px;border:1px solid #f8717144;background:#f871710d}.pqf-row.pqf-danger:hover,.pqf-row.pqf-danger:focus-visible{background:#f8717126}",
+    /* baris aksi: Reset + Matikan Semua berdampingan */
+    ".pqf-acts{display:flex;gap:6px;margin-bottom:2px}.pqf-acts .pqf-row{flex:1 1 0;min-width:0;margin:0;padding:7px 8px;gap:8px}.pqf-acts .pqf-t{line-height:1.2;font-size:12px}",
+    ".pqf-t small{display:block;margin-top:2px;font:500 10.5px/1.2 system-ui,sans-serif;color:#8fa6bd}",
+    ".pqf-row.pqf-offall{border:1px solid #fbbf2455;background:#fbbf240d}.pqf-row.pqf-offall:hover,.pqf-row.pqf-offall:focus-visible{background:#fbbf2426}",
+    ".pqf-row.pqf-offall .pqf-ic{--c:#fbbf24}.pqf-row.pqf-restore{border-color:#34d39966;background:#34d3990d}.pqf-row.pqf-restore:hover,.pqf-row.pqf-restore:focus-visible{background:#34d39924}.pqf-row.pqf-restore .pqf-ic{--c:#34d399}",
+    ".pqf-row.pqf-offall[disabled]{opacity:.5;cursor:default;background:transparent;border-color:#33415588}.pqf-row.pqf-offall[disabled]:hover{background:transparent}",
     ".pqf-ic{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--c,#22d3ee);color:var(--c,#22d3ee);background:#0f1726;font-size:13px}",
     ".pqf-ic .pq-fi,.pqf-ic i{font-size:13px}",
     ".pqf-t{flex:1;min-width:0}",
@@ -163,16 +171,22 @@
   function render(force) {
     var G = model(), cnt = 0;
     G.forEach(function (g) { g.rows.forEach(function (x) { if (x.on === true) cnt++; }); });
+    var ex = extras().filter(function (x) { return x.on; }).length; cnt += ex;
+    if (stash && !stash.busy && cnt > 0) stash = null;      /* ada yang dinyalakan manual → catatan urungkan kedaluwarsa */
     var badge = btn.querySelector("b"), txt = cnt ? String(cnt) : "";
     if (badge.textContent !== txt) badge.textContent = txt;
 
-    var s = JSON.stringify(G.map(function (g) { return [g.id, g.t, g.rows.map(function (r) { return [r.k, r.name, r.on, r.label]; })]; }));
+    var s = JSON.stringify(G.map(function (g) { return [g.id, g.t, g.rows.map(function (r) { return [r.k, r.name, r.on, r.label]; })]; })) + "|" + cnt + "|" + (stash ? stash.keys.length : 0);
     if (s === sig && !force) return;
     sig = s;
 
     var op = gOpen();
-    var h = '<button type="button" class="pqf-row pqf-danger" data-k="R" style="--c:#f87171" title="Kembalikan semua data ruas ke data asli impor Excel awal">' +
-      '<span class="pqf-ic"><i class="pq-fi">\uf2ea</i></span><span class="pqf-t">Reset ke Data Asli</span></button>' +
+    var canRestore = !!(stash && cnt === 0 && !stash.busy);
+    var offBtn = canRestore
+      ? '<button type="button" class="pqf-row pqf-restore" data-k="RS" style="--c:#34d399" title="Nyalakan kembali fitur yang tadi dimatikan"><span class="pqf-ic"><i class="pq-fi">\uf2f9</i></span><span class="pqf-t">Nyalakan Kembali<small>' + stash.keys.length + ' fitur tadi</small></span></button>'
+      : '<button type="button" class="pqf-row pqf-offall" data-k="OA" style="--c:#fbbf24"' + (cnt ? "" : " disabled") + ' title="Matikan semua lapisan & fitur (ringan dan berat); bisa dinyalakan kembali"><span class="pqf-ic"><i class="pq-fi">\uf011</i></span><span class="pqf-t">Matikan Semua<small>' + (stash && stash.busy ? "Mematikan…" : cnt ? cnt + " fitur aktif" : "Semua sudah mati") + '</small></span></button>';
+    var h = '<div class="pqf-acts"><button type="button" class="pqf-row pqf-danger" data-k="R" style="--c:#f87171" title="Kembalikan semua data ruas ke data asli impor Excel awal">' +
+      '<span class="pqf-ic"><i class="pq-fi">\uf2ea</i></span><span class="pqf-t">Reset ke Data Asli<small>Data ruas</small></span></button>' + offBtn + '</div>' +
       '<div class="pqf-tip"><b>Tips:</b> ketik nama lapisan di kolom cari (mis. <b>hujan</b>, <b>tol</b>, <b>gempa</b>) untuk menyalakannya langsung.</div>';
     G.forEach(function (g) {
       var on = g.rows.filter(function (r) { return r.on === true; }).length, o = !!op[g.id];
@@ -199,6 +213,8 @@
   }
 
   function activate(k) {
+    if (k === "OA") { offAll(); return; }
+    if (k === "RS") { restore(); return; }
     if (k === "R") {
       closePanels(); closeJt();
       try { if (typeof resetToOriginal === "function") resetToOriginal(); } catch (e) { }
@@ -243,8 +259,98 @@
     if (gh) { toggleGroup(gh.parentNode); return; }
     var r = e.target.closest(".pqf-row");
     if (!r) return;
+    var ak = r.getAttribute("data-k") || "";
+    /* menu tetap terbuka: hasil & tombol urungkan langsung terlihat. stopPropagation: tombol yang diklik ikut
+       tergantikan saat menu digambar ulang, sehingga pendengar klik dokumen salah mengira klik di luar menu. */
+    if (ak === "OA") { e.stopPropagation(); offAll(); return; }
+    if (ak === "RS") { e.stopPropagation(); restore(); return; }
     set(false);
-    activate(r.getAttribute("data-k") || "");
+    activate(ak);
+  }
+
+  /* ---------- MATIKAN SEMUA / NYALAKAN KEMBALI ----------
+     Mematikan SEMUA lapisan & fitur berstatus (ringan maupun berat: lalu lintas, cuaca, awan/angin, Peta Hidup,
+     rawan/karhutla, bencana, kereta/pesawat/kapal, drainase, jembatan, tol/provinsi, blok warna, transparansi, dst).
+     Yang dimatikan dicatat, jadi bisa dinyalakan kembali dengan satu ketukan (urungkan). Alat tanpa status
+     (Apex, Cortex, Upload, dsb.) tidak disentuh. */
+  var stash = null;
+  var LSW = { jnBtn: "jnToggle", pkBtn: "pkToggle", kbBtn: "kbOn", tlBtn: "tlToggle" };
+  function setCb(el, v) { if (!el || el.checked === v) return; el.checked = v; try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) { } }
+  function hidupOn() { try { return !!document.querySelector('.leaflet-container>canvas[style*="620"]'); } catch (e) { return false; } }
+  /* fitur berat/khusus yang tidak muncul sebagai baris berstatus di menu */
+  function extras() {
+    var o = [], sp = $("tlSpOn");
+    try { if (window.PETAQU_HIDUP && PETAQU_HIDUP.stop) o.push({ k: "H", on: hidupOn() }); } catch (e) { }
+    try { if (window.PETAQU_CUACA_WIL && PETAQU_CUACA_WIL.isOn) o.push({ k: "CW", on: !!PETAQU_CUACA_WIL.isOn() }); } catch (e) { }
+    if (sp) o.push({ k: "TS", on: !!sp.checked });
+    return o;
+  }
+  /* semua yang sedang menyala (baris menu + ekstra) */
+  function activeList() {
+    var out = [];
+    try { model().forEach(function (g) { g.rows.forEach(function (r) { if (r.on === true) out.push(r.k); }); }); } catch (e) { }
+    extras().forEach(function (x) { if (x.on) out.push(x.k); });
+    return out;
+  }
+  function flipAct(k) {
+    var c = k.charAt(0), id = k.slice(2);
+    try {
+      if (c === "W") { if (id === "angin" || id === "awan") PETAQU_KLIMAT.act(id); else if (id === "enso") { var x = $("pqkX"); if (x) x.click(); } else PETAQU_CUACA.act(id); }
+      else if (c === "Z") { if (id === "penerbangan") PETAQU_FLIGHT.act(); else if (id === "gempatsunami") PETAQU_GEMPA.act(); else PETAQU_RAWAN.act(id); }
+      else if (c === "K") { var kp = k.split(":"); if (kp[1] === "KA") PETAQU_KERETA.act(kp[2]); else if (kp[1] === "PW") PETAQU_PESAWAT.act(kp[2]); else if (kp[1] === "FR") PETAQU_FERI.act(kp[2]); else PETAQU_FLIGHT.act(); }
+      else if (c === "N") PETAQU_DRAINASE.act(id);
+      else if (c === "X") { var pr = k.split(":"), sx = (window.PQ_FOLDER_EXTRA || [])[+pr[1]]; if (sx) sx.act(pr.slice(2).join(":")); }
+    } catch (e) { }
+  }
+  function setKey(k, want) {
+    try {
+      if (k.slice(0, 2) === "L:") { var sw = $(LSW[k.slice(2)]); if (sw) setCb(sw, want); }
+      else if (k === "T") { setCb(document.querySelector("#jtFloat .jt-on"), want); }
+      else if (k === "B") { if (want) { if (stash && stash.blok) PETAQU_BLOK.restore(stash.blok); } else { var ids = PETAQU_BLOK.off(); if (stash) stash.blok = ids; } }
+      else if (k === "H") { if (want) PETAQU_HIDUP.start(); else PETAQU_HIDUP.stop(); }
+      else if (k === "CW") { if (want) PETAQU_CUACA_WIL.open(); else PETAQU_CUACA_WIL.close(); }
+      else if (k === "TS") { setCb($("tlSpOn"), want); }
+      else flipAct(k);
+    } catch (e) { }
+  }
+  function say(m) { try { if (typeof toast === "function") toast(m, 3200); } catch (e) { } }
+  function offAll() {
+    var first = activeList();
+    if (!first.length) { say("Semua fitur sudah mati"); return 0; }
+    stash = { keys: first.slice(), blok: null, busy: true };
+    closePanels(); closeJt();
+    var tried = {};
+    first.forEach(function (k) {
+      if (tried[k]) return; tried[k] = 1;
+      if (activeList().indexOf(k) < 0) return;      /* sudah mati akibat fitur lain yang baru dimatikan */
+      setKey(k, false);
+    });
+    /* verifikasi: beberapa modul memperbarui status secara tak seketika / butuh dua langkah */
+    setTimeout(function () {
+      activeList().forEach(function (k) { setKey(k, false); });
+      setTimeout(function () {
+        var left = activeList(), n = first.length - left.length;
+        if (stash) stash.busy = false;
+        if (!left.length) say(n + " fitur dimatikan · ketuk “Nyalakan Kembali” untuk mengurungkan");
+        else { say(n + " dimatikan, " + left.length + " belum bisa dimatikan otomatis"); if (stash) stash.keys = first.filter(function (k) { return left.indexOf(k) < 0; }); }
+        sig = ""; render();
+      }, 450);
+    }, 450);
+    sig = ""; render();
+    return first.length;
+  }
+  function restore() {
+    if (!stash) return 0;
+    var s = stash; stash = null;
+    /* panel/ringkasan dinyalakan terakhir agar tidak memicu pengaktifan massal bawaan modul */
+    var late = function (k) { return /:panel$|:enso$|^W:enso$/.test(k) ? 1 : 0; };
+    var cur = activeList(), keys = s.keys.slice().sort(function (a, b) { return late(a) - late(b); }), n = 0;
+    stash = { keys: s.keys, blok: s.blok, busy: true };
+    keys.forEach(function (k) { if (cur.indexOf(k) < 0) { setKey(k, true); n++; } });
+    stash = null;
+    say(n + " fitur dinyalakan kembali");
+    sig = ""; setTimeout(function () { render(true); }, 120);
+    return n;
   }
 
   /* API untuk mesin pencari (petaqu-cari.js): daftar semua lapisan + alat, dan jalankan satu item */
@@ -255,6 +361,9 @@
       return out;
     },
     go: function (k) { if (card) set(false); activate(k); },
+    offAll: function () { return offAll(); },
+    restore: function () { return restore(); },
+    activeCount: function () { return activeList().length; },
     open: function (gid) {
       if (!card) return;
       if (gid) { var op = gOpen(); op[gid] = 1; gSave(op); }
